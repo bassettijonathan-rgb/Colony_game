@@ -2,7 +2,7 @@
 // browser allows one, or on the page itself otherwise; either way it only talks through messages.
 //   page -> sim: init {seed, mode, count, save}, land {site}, speed {v}, save {id}, cmd {op, ...}, watch {id}
 //   sim -> page: survey {world, sites}, ready {world, site, roster, ui, ...}, snap {pos, clock, perf},
-//                state {ui, log, roster?}, wear {chunks}, known {chunks}, saved {id, data}, cmd {id, r}
+//                state {ui, log, roster?}, wear {chunks}, known {chunks}, marks {gone, quarry}, saved {id, data}, cmd {id, r}
 import { generateWorld, findSites, landAt } from '../core/world.js';
 import { Pathfinder } from '../core/path.js';
 import { Sim } from '../core/sim.js';
@@ -25,7 +25,7 @@ export function createSimCore(post) {
       const pos = sim.snapshot(new Float32Array(sim.S.cols.length * 4));
       post({ t: 'snap', tick: sim.S.tick, pos, clock: sim.clock(), perf: perfOut() }, [pos.buffer]);
     }
-    if (t - lastWear > 500) { lastWear = t; chunks('wear', sim.dirty, k => sim.wearChunk(k)); chunks('known', sim.kdirty, k => sim.knownChunk(k)); }
+    if (t - lastWear > 500) { lastWear = t; chunks('wear', sim.dirty, k => sim.wearChunk(k)); chunks('known', sim.kdirty, k => sim.knownChunk(k)); marks(); }
     if (t - lastState > 400) { lastState = t; state(); }
     timer = setTimeout(step, 8);
   }
@@ -33,6 +33,11 @@ export function createSimCore(post) {
     if (!set.size) return;
     const out = []; for (const k of set) out.push([k, get(k)]); set.clear();
     post({ t: kind, chunks: out }, out.map(c => c[1].buffer));
+  }
+  // trees felled and stone quarried since the last report, as flat [tile, value, ...] lists
+  function marks() {
+    if (!sim.gnew.length && !sim.qnew.length) return;
+    post({ t: 'marks', gone: sim.gnew, quarry: sim.qnew }); sim.gnew = []; sim.qnew = [];
   }
   function state() {
     const S = sim.S, m = { t: 'state', ui: sim.ui(watch), log: sim.logSince(sentLog) };
@@ -54,11 +59,11 @@ export function createSimCore(post) {
     post({
       t: 'ready', seed: W.seed, land: W.land, site: W.site, siteId: site.id, tag: sites && sites[site.id] ? sites[site.id].tag : '', patch, rock: W.rock, mode: S.mode,
       world: { type: W.type, elev: W.elev, moist: W.moist },
-      roster: sim.roster(), ui: sim.ui(-1), log: sim.logSince(0),
+      roster: sim.roster(), ui: sim.ui(-1), log: sim.logSince(0), gone: S.gone, quarry: S.quarry,
       pos: sim.snapshot(new Float32Array(S.cols.length * 4)), clock: sim.clock(),
       timing: { world: t1 - t0, land: t2 - t1, graph: t3 - t2, field: t4 - t3, nodes: P.nodes.length }
     });
-    sentLog = S.logN;
+    sentLog = S.logN; sim.gnew = []; sim.qnew = [];
     // the trodden and the surveyed ground go out at once
     chunks('wear', sim.dirty, k => sim.wearChunk(k)); chunks('known', sim.kdirty, k => sim.knownChunk(k));
     last = now(); acc = 0; timer = setTimeout(step, 8);

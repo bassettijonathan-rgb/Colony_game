@@ -1,0 +1,257 @@
+// Building: what can be built, what each building costs stage by stage, whether a plan fits where it is drawn
+// and carries its loads, and what finished buildings do once they have power. This file keeps the books; the
+// people who cut, carry and fit are in work.js.
+import { MAP, T } from './consts.js';
+import { hash, clamp } from './rng.js';
+import { propsIn } from './world.js';
+
+// ---------- materials ----------
+export const MAT = {
+  stone: ['load of stone', 'loads of stone'], timber: ['load of timber', 'loads of timber'], salvage: ['load of salvage', 'loads of salvage'],
+  module: ['lander module', 'lander modules'], seal: ['airlock seal', 'airlock seals'], pipe: ['pipe run', 'pipe runs'], power: ['power unit', 'power units'], panel: ['solar panel', 'solar panels'],
+};
+export const matName = (k, n) => MAT[k] ? `${n} ${MAT[k][n === 1 ? 0 : 1]}` : '';
+export const RAW = ['stone', 'timber'], PRECISE = ['seal', 'pipe', 'power', 'panel'];
+// precise modules are made from salvage at a workshop bench (or, three times slower, by the fabricator)
+export const RECIPE = { seal: { salvage: 2, h: 3 }, pipe: { salvage: 1, h: 1.5 }, power: { salvage: 3, h: 4 }, panel: { salvage: 2, h: 2.5 } };
+// hours to fit one load into a building, for an average builder
+export const FIT_H = { mark: .5, test: 1, module: 1.25, stone: .5, timber: .45, seal: 1.2, pipe: .8, power: 1.2, panel: .5 };
+export const LANDER_KW = 8, PANEL_KW = .5, SALVAGE = 60, KIT = { seal: 2, pipe: 4, power: 3, panel: 0 }, FAB_SLOW = 3;
+export const STAGE_NAMES = ['Marking out', 'Foundations', 'Frame', 'Systems', 'Fit-out'];
+export const TEST_STAGES = ['Taking samples', 'Testing'];
+const SHELTER_STAGES = [['mark', 4], ['module', 8], ['module', 12], ['module', 12], ['module', 10]];
+export const SHELTER_FITS = SHELTER_STAGES.reduce((t, s) => t + s[1], 0), CARGO = SHELTER_STAGES.reduce((t, s) => t + (s[0] === 'module' ? s[1] : 0), 0);
+
+// ---------- what can be built ----------
+export const TYPES = {
+  shelter: { name: 'Shelter', fixed: true },
+  dorm: { name: 'Dormitory', min: 5, max: 12, size: [6, 8], use: 'Bunks for people who sleep outside' },
+  commons: { name: 'Commons', min: 6, max: 14, size: [7, 9], use: 'Evening meals indoors, which ease strain more than the fire does' },
+  workshop: { name: 'Workshop', min: 5, max: 10, size: [6, 7], use: 'Makes airlock seals, pipe runs, power units and solar panels from salvage' },
+  clinic: { name: 'Clinic', min: 5, max: 8, size: [5, 6], use: 'The hurt rest here and heal twice as fast' },
+  solar: { name: 'Solar field', min: 3, max: 10, size: [6, 6], open: true, use: "Power, stored in the lander's batteries for the night" },
+  test: { name: 'Load test', fixed: true },
+};
+export const PLANNABLE = ['workshop', 'commons', 'clinic', 'dorm', 'solar'];
+const inner = (w, h) => Math.max(0, (w - 2) * (h - 2));
+// what a building of this size holds, and the power it draws (kW) or makes
+export function capacity(type, w, h) {
+  const a = inner(w, h);
+  switch (type) {
+    case 'shelter': return { beds: 12, kw: 1 };
+    case 'dorm': { const beds = Math.floor(a / 3); return { beds, kw: +(.4 + beds * .1).toFixed(1) }; }
+    case 'commons': { const seats = Math.floor(a / 2); return { seats, kw: +(1 + seats * .05).toFixed(1) }; }
+    case 'workshop': { const benches = clamp(Math.floor(a / 6), 1, 4); return { benches, kw: 1 + benches }; }
+    case 'clinic': { const beds = Math.floor(a / 3); return { beds, kw: +(1.5 + beds * .1).toFixed(1) }; }
+    case 'solar': { const panels = Math.floor(w * h / 4); return { panels, kw: 0, supply: panels * PANEL_KW }; }
+  }
+  return { kw: 0 };
+}
+
+// ---------- load checks ----------
+// how strong this planet's stone and timber really are, against the databank's standard; only a load test tells
+export const strength = (seed, m) => +(m === 'stone' ? .75 + hash(seed, 1, 991) * .6 : .8 + hash(seed, 2, 991) * .5).toFixed(2);
+// untested material is designed with a safety margin, paid for in extra loads
+export const margin = (S, m) => S.mat[m].tested ? clamp(Math.round(100 / S.mat[m].f) / 100, .75, 1.3) : 1.4;
+// the widest a roof can span on timber beams before it needs a row of posts
+export const spanLimit = S => S.mat.timber.tested ? Math.floor(3 + 3 * S.mat.timber.f) : 4;
+export function loadCheck(S, type, w, h) {
+  const span = Math.min(w, h) - 2, limit = spanLimit(S), open = TYPES[type].open;
+  return { span, limit, posts: !open && span > limit ? Math.ceil(Math.max(w, h) / 4) : 0, ms: margin(S, 'stone'), mt: margin(S, 'timber'), stone: S.mat.stone.tested, timber: S.mat.timber.tested };
+}
+
+// ---------- the bill: what each stage needs, in loads ----------
+export function stageLoads(S, type, w, h, st, mat) {
+  if (type === 'shelter') { const [k, n] = SHELTER_STAGES[st]; return { [k]: n }; }
+  if (type === 'test') return st === 0 ? { [mat]: 3 } : { test: 3 };
+  const a = w * h, per = 2 * (w + h) - 4, ms = margin(S, 'stone'), mt = margin(S, 'timber'), cap = capacity(type, w, h), L = {};
+  const add = (k, n) => { n = Math.ceil(n - 1e-9); if (n > 0) L[k] = (L[k] || 0) + n; };
+  if (TYPES[type].open) {   // footings, racks, cable runs, then the panels
+    if (st === 0) add('mark', per / 8);
+    if (st === 1) add('stone', a / 12 * ms);
+    if (st === 2) add('timber', a / 10 * mt);
+    if (st === 3) { add('pipe', a / 18); add('power', 1); }
+    if (st === 4) add('panel', cap.panels);
+    return L;
+  }
+  const posts = loadCheck(S, type, w, h).posts, fixtures = (cap.beds || 0) / 4 + (cap.seats || 0) / 8 + (cap.benches || 0);
+  if (st === 0) add('mark', per / 6);
+  if (st === 1) { add('stone', a / 10 * ms); add('stone', posts); }
+  if (st === 2) { add('timber', (per / 6 + a / 16) * mt); add('timber', posts); }
+  if (st === 3) { add('seal', 1); add('pipe', a / 24); add('power', cap.kw / 2); }
+  if (st === 4) { add('stone', per / 4 * ms); add('timber', a / 16 * mt + fixtures); }
+  return L;
+}
+export function billOf(S, type, w, h) {
+  const stages = [], total = {};
+  for (let st = 0; st < 5; st++) { const L = stageLoads(S, type, w, h, st); stages.push(L); for (const k in L) if (k !== 'mark') total[k] = (total[k] || 0) + L[k]; }
+  return { stages, total };
+}
+
+// ---------- where a building can go ----------
+export const doorOf = (x, y, w, h, side) => side === 0 ? { x: x + (w >> 1), y: y - 1 } : side === 1 ? { x: x + w, y: y + (h >> 1) } : side === 2 ? { x: x + (w >> 1), y: y + h } : { x: x - 1, y: y + (h >> 1) };
+export function facing(W, x, y, w, h) { const dx = W.land.x - (x + w / 2), dy = W.land.y - (y + h / 2); return Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 1 : 3) : (dy > 0 ? 2 : 0); }
+const inRect = (x, y, r, m) => x >= r.x - m && x < r.x + r.w + m && y >= r.y - m && y < r.y + r.h + m;
+// what a tile is too close to, if anything: the camp keeps its own ground
+export function reservedAt(sim, x, y, m = 1, skip = -1) {
+  const W = sim.W, L = W.land, s = W.site;
+  if (Math.hypot(x + .5 - L.x, y + .5 - L.y) < 6 + m) return 'the Seed';
+  if (Math.hypot(x + .5 - s.fire.x, y + .5 - s.fire.y) < 3 + m) return 'the cook fire';
+  if (Math.hypot(x + .5 - s.cargo.x - .5, y + .5 - s.cargo.y - .5) < 1.5 + m) return "the Seed's cargo door";
+  if (inRect(x, y, s.yard, m)) return 'the yard';
+  for (const p of sim.S.projects) if (!p.gone && p.id !== skip && p.w && inRect(x, y, p, m)) return p.type === 'shelter' ? 'the shelter' : p.name;
+  return '';
+}
+export function checkPlot(sim, type, x, y, w, h, side) {
+  const W = sim.W, Ty = TYPES[type], bad = [], out = { ok: false, why: '', bad, door: null };
+  if (!Ty || Ty.fixed) { out.why = 'That is not something the colony can plan.'; return out; }
+  const sh = Math.min(w, h), lg = Math.max(w, h);
+  if (sh < Ty.min) { out.why = `Too small: a ${Ty.name.toLowerCase()} needs at least ${Ty.min} by ${Ty.min} tiles.`; return out; }
+  if (lg > Ty.max) { out.why = `Too big: a ${Ty.name.toLowerCase()} can be at most ${Ty.max} tiles long.`; return out; }
+  if (x < 2 || y < 2 || x + w > MAP - 2 || y + h > MAP - 2) { out.why = 'Too close to the edge of the map.'; return out; }
+  const why = new Map(), note = (t, s) => { bad.push(t); if (!why.has(s)) why.set(s, 1); };
+  for (let ty = y; ty < y + h; ty++) for (let tx = x; tx < x + w; tx++) {
+    const t = ty * MAP + tx, k = W.type[t];
+    if (!sim.known[t]) note(t, "The Seed hasn't surveyed all of this ground yet.");
+    else if (k === T.SHALLOW || k === T.DEEP) note(t, 'Part of it is in the water.');
+    else if (k === T.ROCK) note(t, 'Part of it is on bare rock.');
+    else { const r = reservedAt(sim, tx, ty, 1); if (r) note(t, `Too close to ${r}.`); else if (!W.cost[t] || !W.reach[t]) note(t, "Part of it can't be reached on foot."); }
+  }
+  const L = W.land;
+  if (!bad.length && Math.hypot(x + w / 2 - L.x, y + h / 2 - L.y) > 70) { out.why = 'Too far from camp: keep it within 140 m of the Seed.'; return out; }
+  if (!Ty.open) {
+    const d = doorOf(x, y, w, h, side), t = d.y * MAP + d.x; out.door = d;
+    if (!bad.length && (!W.cost[t] || !W.reach[t] || reservedAt(sim, d.x, d.y, 0))) { bad.push(t); why.set('The door would open onto blocked ground. Turn it to another side.', 1); }
+  }
+  if (bad.length) { out.why = [...why.keys()][0]; out.bad = bad.slice(0, 400); return out; }
+  out.ok = true; return out;
+}
+// the nearest good place for a building of this size, facing the camp: for the bot, and for the Seed's own suggestions
+export function findPlot(sim, type, w, h) {
+  const L = sim.W.land;
+  for (let r = 9; r <= 48; r += 1.5) {
+    const n = Math.max(8, Math.floor(r * 2.2));
+    for (let k = 0; k < n; k++) {
+      const a = k / n * 6.2832 + r * .37;
+      for (const [ww, hh] of w === h ? [[w, h]] : [[w, h], [h, w]]) {
+        const x = Math.round(L.x + Math.cos(a) * r - ww / 2), y = Math.round(L.y + Math.sin(a) * r - hh / 2), side = facing(sim.W, x, y, ww, hh);
+        if (checkPlot(sim, type, x, y, ww, hh, side).ok) return { x, y, w: ww, h: hh, side };
+      }
+    }
+  }
+  return null;
+}
+
+// ---------- the colony's projects ----------
+export function shelterProject(W, stage = 0, fits = 0) {
+  const s = W.site.shelter, side = s.dx > 0 ? 3 : s.dx < 0 ? 1 : s.dy > 0 ? 0 : 2;
+  const p = { id: 0, type: 'shelter', name: 'Shelter', x: s.x, y: s.y, w: s.w, h: s.h, side, door: { x: s.door.x, y: s.door.y }, stage: 0, need: { mark: 4 }, got: {}, done: false, powered: false, paused: false, gone: false, blocked: true, wait: '', stall: 0, since: 0, out: {}, used: {} };
+  // a shelter from an older save: the fittings it had, stage by stage
+  let left = fits; p.stage = stage;
+  for (let st = 0; st < stage; st++) left -= SHELTER_STAGES[st][1];
+  if (stage < 5) { const [k, n] = SHELTER_STAGES[stage]; p.need = { [k]: n }; if (left > 0) p.got = { [k]: Math.min(n, left) }; }
+  return p;
+}
+export function addProject(sim, type, x, y, w, h, side, mat) {
+  const S = sim.S, Ty = TYPES[type], id = S.pid++;
+  const n = S.projects.filter(p => p.type === type).length + 1;
+  const p = {
+    id, type, name: type === 'test' ? `Load test: ${mat}` : `${Ty.name} ${n}`, x, y, w, h, side, door: Ty.open || type === 'test' ? null : doorOf(x, y, w, h, side),
+    stage: 0, need: stageLoads(S, type, w, h, 0, mat), got: {}, done: false, powered: false, paused: false, gone: false, blocked: false, wait: '', stall: 0, since: S.tick, out: {}, used: {}, mat,
+  };
+  if (type === 'test') S.projects.unshift(p); else S.projects.push(p);
+  S.rv++;
+  return p;
+}
+export const active = S => S.projects.filter(p => !p.gone && !p.done);
+export const built = S => S.projects.filter(p => !p.gone && p.done && p.type !== 'test');
+export const byId = (S, id) => S.projects.find(p => p.id === id && !p.gone) || null;
+export const capOf = p => capacity(p.type, p.w, p.h);
+
+// ---------- power ----------
+// The lander's core and any solar fields make power; finished buildings take it in the order of the project
+// list, and whatever doesn't fit stays dark until there is more.
+export function powerCheck(sim) {
+  const S = sim.S; let supply = LANDER_KW, draw = 0; const changed = [];
+  for (const p of built(S)) if (p.type === 'solar') { supply += capOf(p).supply; if (!p.powered) { p.powered = true; changed.push(p); } }
+  for (const p of built(S)) {
+    if (p.type === 'solar') continue;
+    const kw = capOf(p).kw, on = draw + kw <= supply + 1e-9;
+    if (on) draw += kw;
+    if (on !== p.powered) { p.powered = on; changed.push(p); }
+  }
+  S.power = { supply: +supply.toFixed(1), draw: +draw.toFixed(1) };
+  return changed;
+}
+export function shortOf(S, p) { const kw = capOf(p).kw; return +Math.max(0, S.power.draw + kw - S.power.supply).toFixed(1); }
+
+// ---------- stock ----------
+export function stockOf(S, k) {
+  if (k in S.stores.yard) return S.stores.yard[k];
+  let n = S.stores.cargo[k] || 0;
+  for (const p of S.projects) if (!p.gone && p.out[k]) n += p.out[k];
+  return n;
+}
+// everywhere a builder could fetch a load of k from, with what's there
+export function sources(sim, k) {
+  const S = sim.S, out = [];
+  if (k in S.stores.yard) { if (S.stores.yard[k] > 0) out.push({ key: 'yard', tile: sim.yardTile }); return out; }
+  if (S.stores.cargo[k] > 0) out.push({ key: 'cargo', tile: sim.cargoTile });
+  for (const p of built(S)) if (p.type === 'workshop' && p.out[k] > 0) out.push({ key: 'w' + p.id, tile: p.door.y * MAP + p.door.x });
+  return out;
+}
+export function takeFrom(S, key, k) {
+  const st = key === 'yard' ? S.stores.yard : key === 'cargo' ? S.stores.cargo : (byId(S, +key.slice(1)) || {}).out;
+  if (!st || !(st[k] > 0)) return false;
+  st[k]--; return true;
+}
+// things carried home from an interrupted job go back where they came from
+export function putBack(S, k) { if (k in S.stores.yard) S.stores.yard[k]++; else if (k in S.stores.cargo || PRECISE.includes(k)) S.stores.cargo[k] = (S.stores.cargo[k] || 0) + 1; }
+
+// what a workshop bench (or the fabricator) should make next: the first precise module the project list will
+// run short of, counting what is in stock and already being made
+export function nextOrder(sim) {
+  const S = sim.S, have = {}, need = {};
+  for (const k of PRECISE) have[k] = stockOf(S, k);
+  if (S.fab.job) have[S.fab.job.k]++;
+  for (const c of S.cols) if (!c.dead && c.make && (c.job === 'salv' || c.job === 'bench')) have[c.make]++;
+  for (const c of S.cols) if (!c.dead && PRECISE.includes(c.carry)) have[c.carry]++;   // on the way to a site
+  for (const p of active(S)) {
+    if (p.paused || p.type === 'test') continue;
+    for (let st = p.stage; st < 5; st++) {
+      const L = st === p.stage ? p.need : stageLoads(S, p.type, p.w, p.h, st);
+      for (const k of PRECISE) {
+        const n = (L[k] || 0) - (st === p.stage ? (p.got[k] || 0) : 0); if (n <= 0) continue;
+        need[k] = (need[k] || 0) + n;
+        if (need[k] > have[k]) return k;
+      }
+    }
+  }
+  return null;
+}
+// raw material the colony wants piled in the yard: everything the project list still needs, plus a little
+export function rawWanted(S, k) {
+  let n = 6;
+  for (const p of active(S)) {
+    if (p.paused) continue;
+    for (let st = p.stage; st < (p.type === 'test' ? 1 : 5); st++) {
+      const L = st === p.stage ? p.need : stageLoads(S, p.type, p.w, p.h, st, p.mat);
+      n += Math.max(0, (L[k] || 0) - (st === p.stage ? (p.got[k] || 0) : 0));
+    }
+  }
+  return Math.min(60, n);
+}
+
+// ---------- clearing a plot ----------
+// trees and boulders on the plot come down when it is marked out: logs and stone go to the yard
+export function clearPlot(sim, p) {
+  const S = sim.S, W = sim.W; let logs = 0, stones = 0;
+  for (const q of propsIn(W, p.x, p.y, p.x + p.w, p.y + p.h)) {
+    const t = Math.floor(q.y) * MAP + Math.floor(q.x);
+    if (q.k === 'tree') { const left = S.gone[t] ?? 2; logs += left; sim.setGone(t, 0); }
+    else if (q.k === 'boulder') { stones++; sim.setGone(t, 0); }
+    else if (q.k === 'bush') sim.setGone(t, 0);
+  }
+  S.stores.yard.timber += logs; S.stores.yard.stone += stones;
+  if (logs || stones) sim.log(`Clearing the plot for ${p.name} gave ${[logs ? matName('timber', logs) : '', stones ? matName('stone', stones) : ''].filter(Boolean).join(' and ')}.`);
+}

@@ -91,14 +91,25 @@ export function drawPerson(g, a, x, y, ang, moving, act, t) {
   else if (act === 9 && still) { lh = [-.1, -.17]; rh = [.1, -.17]; prop = 'bowl'; }
   else if (act === 10 && still) { lh = [-.12, -.12]; rh = [.12, -.12]; }
   else if (act === 11 && still) { lh = [-.06, -.26]; rh = [.08, -.26]; prop = 'stake'; }
+  else if ((act === 13 || act === 14) && still) { const k = Math.max(0, Math.sin(t * (act === 13 ? 4.2 : 3.6) + a.walk * 2)); a.k = k; lh = [-.02, -.22 - k * .06]; rh = [.08, -.24 - k * .1]; prop = act === 13 ? 'pick' : 'axe'; }
+  else if (act === 16) { lh = [-.13, -.24]; rh = [.13, -.24]; prop = 'stone'; }
+  else if (act === 17) { lh = [-.18, -.08]; rh = [.12, -.2]; prop = 'log'; }
+  else if (act === 18 && still) { const k = Math.sin(t * 3 + a.walk); lh = [-.12, -.22 + k * .02]; rh = [.12, -.22 - k * .02]; prop = 'tablet'; }
   if (prop === 'crate') { g.fillStyle = 'rgba(0,0,0,.25)'; rrect(g, -.2, -.5, .42, .3, .03); g.fill(); }
   hand(lh[0], lh[1]); hand(rh[0], rh[1]);
   if (prop === 'tablet') { g.fillStyle = '#2a3038'; rrect(g, -.1, -.34, .2, .12, .02); g.fill(); g.fillStyle = `rgba(120,220,255,${.55 + .3 * Math.sin(t * 2 + a.walk)})`; rrect(g, -.085, -.33, .17, .09, .015); g.fill(); }
   else if (prop === 'crate') { g.fillStyle = '#8b939b'; rrect(g, -.21, -.52, .42, .28, .03); g.fill(); g.fillStyle = '#e8924e'; g.fillRect(-.21, -.4, .42, .04); g.strokeStyle = 'rgba(30,36,44,.6)'; g.lineWidth = .015; rrect(g, -.21, -.52, .42, .28, .03); g.stroke(); }
   else if (prop === 'tool') { g.save(); g.translate(rh[0], rh[1]); g.rotate(-.6 + a.k * .9); g.fillStyle = '#4a4f57'; g.fillRect(-.015, -.2, .03, .2); g.fillStyle = '#b8c0c8'; rrect(g, -.05, -.25, .1, .06, .015); g.fill(); g.restore(); }
   else if (prop === 'bowl') { g.fillStyle = '#5b4a3a'; ell(g, 0, -.21, .07, .055); g.fill(); g.fillStyle = 'rgba(230,190,120,.8)'; ell(g, 0, -.215, .05, .035); g.fill(); }
+  else if (prop === 'pick' || prop === 'axe') {   // swung from over the shoulder down onto the work
+    g.save(); g.translate((lh[0] + rh[0]) / 2, (lh[1] + rh[1]) / 2); g.rotate((prop === 'pick' ? -1.1 : -.7) + a.k * 1.5); g.fillStyle = '#6a4a2e'; g.fillRect(-.018, -.38, .036, .4);
+    g.fillStyle = '#9aa2aa'; if (prop === 'pick') { g.beginPath(); g.moveTo(-.14, -.36); g.quadraticCurveTo(0, -.43, .14, -.36); g.lineTo(0, -.39); g.closePath(); g.fill(); } else { rrect(g, -.01, -.42, .1, .09, .02); g.fill(); }
+    g.restore();
+  }
+  else if (prop === 'stone') { g.fillStyle = '#9d968a'; rrect(g, -.19, -.5, .38, .26, .03); g.fill(); g.strokeStyle = 'rgba(40,36,30,.5)'; g.lineWidth = .015; rrect(g, -.19, -.5, .38, .26, .03); g.stroke(); }
   else if (prop === 'stake') { g.fillStyle = '#9aa4ae'; g.fillRect(-.015, -.42, .03, .18); g.fillStyle = `rgba(120,230,255,${.6 + .4 * Math.sin(t * 6)})`; ell(g, 0, -.42, .03, .03); g.fill(); }
   g.drawImage(a.body, -.5, -.5, 1, 1);
+  if (prop === 'log') { g.save(); g.translate(.06, -.06); g.rotate(-.35); g.fillStyle = 'rgba(0,0,0,.25)'; rrect(g, -.53, -.03, 1.1, .14, .07); g.fill(); g.fillStyle = '#7a5430'; rrect(g, -.55, -.07, 1.1, .14, .07); g.fill(); g.fillStyle = '#c9a273'; ell(g, .54, 0, .06, .07); g.fill(); g.restore(); }   // over the shoulder
   if (act === 10 && still) { g.globalAlpha = .85; g.drawImage(a.head, -.5, -.44, 1, 1); g.globalAlpha = 1; }
   else g.drawImage(a.head, -.5, -.5, 1, 1);
   g.restore();

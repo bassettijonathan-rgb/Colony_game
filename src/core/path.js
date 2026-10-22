@@ -68,8 +68,9 @@ export class Pathfinder {
   chunkRect(c) { const cx = c % NCH, cy = c / NCH | 0; return [cx * CH, cy * CH, Math.min(MAP, cx * CH + CH), Math.min(MAP, cy * CH + CH)]; }
   chunkOf(i) { return ((i / MAP | 0) / CH | 0) * NCH + ((i % MAP) / CH | 0); }
 
-  // the coarse graph: a node on each side of every gap between neighbouring chunks
-  build() {
+  // the coarse graph: a node on each side of every gap between neighbouring chunks. The distances inside each
+  // chunk are kept, so when buildings change the ground only the chunks they touch are searched again.
+  build(dirty) {
     const t0 = now(), C = this.cost, nodes = [], byChunk = Array.from({ length: NCH * NCH }, () => []), edges = [];
     const add = (i) => { const n = nodes.length; nodes.push(i); byChunk[this.chunkOf(i)].push(n); edges.push([]); return n; };
     const link = (a, b, c) => { edges[a].push(b, c); edges[b].push(a, c); };
@@ -90,16 +91,27 @@ export class Pathfinder {
       if (y1 < MAP) { const cells = []; for (let x = cx * CH; x < x1; x++) cells.push([(y1 - 1) * MAP + x, y1 * MAP + x]); gap(cells); }
     }
     // inside each chunk, how far every node is from every other
+    const cache = this.cache || (this.cache = new Array(byChunk.length));
     for (let c = 0; c < byChunk.length; c++) {
-      const L = byChunk[c], r = this.chunkRect(c);
+      const L = byChunk[c], r = this.chunkRect(c), key = L.map(n => nodes[n]).join(','), old = cache[c];
+      if (old && old.key === key && !(dirty && dirty.has(c))) { let k = 0; for (let a = 0; a < L.length; a++) for (let b = a + 1; b < L.length; b++) { const d = old.d[k++]; if (d < Infinity) link(L[a], L[b], d); } continue; }
+      const ds = [];
       for (let a = 0; a < L.length; a++) {
         this.search(r[0], r[1], r[2], r[3], nodes[L[a]], -1);
-        for (let b = a + 1; b < L.length; b++) { const d = this.costTo(r[0], r[1], r[2], r[3], nodes[L[b]]); if (d < Infinity) link(L[a], L[b], d); }
+        for (let b = a + 1; b < L.length; b++) { const d = this.costTo(r[0], r[1], r[2], r[3], nodes[L[b]]); ds.push(d); if (d < Infinity) link(L[a], L[b], d); }
       }
+      cache[c] = { key, d: ds };
     }
     this.nodes = Int32Array.from(nodes); this.byChunk = byChunk; this.edges = edges.map(e => Float64Array.from(e));
     this.ng = new Float64Array(nodes.length + 1); this.nfrom = new Int32Array(nodes.length + 1); this.nstamp = new Int32Array(nodes.length + 1); this.nclosed = new Int32Array(nodes.length + 1); this.ngen = 0;
     this.buildMs = now() - t0;
+  }
+
+  // the ground inside a rectangle changed (a building went up or came down): rebuild what it touches
+  update(x0, y0, x1, y1) {
+    const dirty = new Set();
+    for (let cy = Math.max(0, Math.floor((y0 - 1) / CH)); cy <= Math.min(NCH - 1, Math.floor((y1 + 1) / CH)); cy++) for (let cx = Math.max(0, Math.floor((x0 - 1) / CH)); cx <= Math.min(NCH - 1, Math.floor((x1 + 1) / CH)); cx++) dirty.add(cy * NCH + cx);
+    this.build(dirty); this.fields.clear();
   }
 
   // A route from tile a to tile b: a list of waypoints, each reachable from the one before by a short

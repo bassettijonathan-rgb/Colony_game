@@ -32,7 +32,7 @@ export class Terrain {
     this.tTable = G.tex2D(NCH, NCH, { filter: gl.NEAREST, data: this.table });
     this.slotChunk = new Int32Array(LAYERS).fill(-1); this.slotSeen = new Float64Array(LAYERS);
     this.chunkSlot = new Int32Array(NCH * NCH).fill(-1);
-    this.stale = new Uint8Array(NCH * NCH); this.ovStale = new Set(); this.lastOv = 0;
+    this.stale = new Uint8Array(NCH * NCH); this.ovStale = new Set(); this.ovH = new Set(); this.lastOv = 0;
     this.pA = G.prog(FS_PAINT_ALB); this.pH = G.prog(FS_PAINT_HM); this.pS = G.prog(FS_SPRITE, VS_SPRITE);
     this.ok = !!(this.pA && this.pH && this.pS);
     this.fbA = gl.createFramebuffer(); this.fbH = gl.createFramebuffer();
@@ -172,6 +172,12 @@ export class Terrain {
     if (this.chunkSlot[k] >= 0) this.stale[k] = 1;
     this.ovStale.add(k);
   }
+  // trees felled and boulders broken up: the chunks around them are painted again without them, near and far
+  propsGone(tiles) {
+    const ks = new Set();
+    for (const t of tiles) { const x = t % MAP, y = t / MAP | 0; for (const [ox, oy] of [[-2, -2], [2, -2], [-2, 2], [2, 2]]) { const X = Math.min(MAP - 1, Math.max(0, x + ox)), Y = Math.min(MAP - 1, Math.max(0, y + oy)); ks.add((Y / CH | 0) * NCH + (X / CH | 0)); } }
+    for (const k of ks) { if (this.chunkSlot[k] >= 0) this.stale[k] = 1; this.ovStale.add(k); this.ovH.add(k); }
+  }
   sub(tex, k, data) {
     const gl = this.G.gl, cx = k % NCH, cy = k / NCH | 0, x0 = cx * CH, y0 = cy * CH, w = Math.min(CH, MAP - x0), h = Math.min(CH, MAP - y0);
     let d = data; if (w < CH || h < CH) { d = new Uint8Array(w * h); for (let y = 0; y < h; y++) d.set(data.subarray(y * CH, y * CH + w), y * w); }
@@ -205,7 +211,7 @@ export class Terrain {
     }
     // far away, the overview catches up on trodden ground now and then
     if (this.ovStale.size && now - this.lastOv > 400 && painted < budget) {
-      const k = this.ovStale.values().next().value; this.ovStale.delete(k); this.repaintOverview(k); this.lastOv = now; this.ovDirty = true;
+      const k = this.ovStale.values().next().value; this.ovStale.delete(k); this.repaintOverview(k, this.ovH.delete(k)); this.lastOv = now; this.ovDirty = true;
     }
     if (this.ovDirty && now - (this.lastOvMip || 0) > 2500) { const gl = this.G.gl; gl.bindTexture(gl.TEXTURE_2D, this.albO); gl.generateMipmap(gl.TEXTURE_2D); this.ovDirty = false; this.lastOvMip = now; }
     this.stats.ms = performance.now() - t0;
