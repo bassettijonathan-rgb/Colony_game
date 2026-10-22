@@ -1,15 +1,19 @@
 // The colony's simulation: the Seed, its people and crews, the day, and the ground they wear down. It never
 // draws anything. The state is plain data (numbers, arrays, two byte arrays), so saving is JSON plus the
 // trampled and the surveyed ground, and the same seed always plays out the same way.
-// How people spend their days lives in life.js; crews, the shelter and the fabricator in work.js.
-import { MAP, CH, NCH, DAY_TICKS, YEAR_DAYS, SEASON_DAYS, T, HOUR, ACT } from './consts.js';
+// How people spend their days lives in life.js; crews, projects and the fabricator in work.js; the books for
+// buildings in build.js.
+import { MAP, CH, NCH, DAY_TICKS, YEAR_DAYS, SEASON_DAYS, T, T_COST, HOUR, ACT, hidden } from './consts.js';
 import { R, srand, rnd, ri, lcg } from './rng.js';
 import { makeArchive, makePerson } from './founders.js';
+import { propsIn } from './world.js';
 import { think, mindTick, daily, remember } from './life.js';
-import { crewThink, seedTick, onArrive, onTimer, command, STAGES } from './work.js';
+import { crewThink, seedTick, onArrive, onTimer, command, projectsThink, dropCarry } from './work.js';
+import { shelterProject, strength, powerCheck, capOf, byId, stockOf, PRECISE, SALVAGE, KIT, CARGO, LANDER_KW } from './build.js';
 
 export const CREW_NAMES = ['Basalt', 'Kestrel', 'Cedar', 'Drift', 'Ember', 'Fern', 'Gale', 'Heron', 'Iris', 'Juniper', 'Lichen', 'Moss', 'Nettle', 'Onyx', 'Pike', 'Quartz', 'Rowan', 'Sedge', 'Thistle', 'Umber', 'Vetch', 'Willow', 'Yarrow', 'Zinc', 'Alder', 'Bramble', 'Cobalt', 'Dune', 'Flint', 'Garnet', 'Hazel', 'Ivy', 'Jasper', 'Kelp', 'Larch', 'Marl'];
-export const STAKES = 10, CARGO = STAGES.reduce((t, s) => t + (s[2] ? s[1] : 0), 0), FOOD_DAYS = 60, FIRST_BODIES = 6;
+export const STAKES = 10, FOOD_DAYS = 60, FIRST_BODIES = 6;
+const SOURCE_R = 70;   // how far from the Seed people go for stone and timber
 
 export class Sim {
   constructor(W, P) {
@@ -18,11 +22,34 @@ export class Sim {
     this.known = new Uint8Array(MAP * MAP); this.kdirty = new Set();   // what the Seed's sensors and its people have seen
     this.grid = new Int32Array((MAP / 2) * (MAP / 2)).fill(-1); this.next = null;
     const L = W.land, site = W.site, ring = [];
+    if (!W.cost0) W.cost0 = W.cost.slice();   // the ground as it was at landfall, before anything was built on it
+    if (!W.gone) W.gone = new Map();
     // the camp: everyone walking back from far away follows this field down to the lander and the fire
-    for (let y = L.y - 7; y <= L.y + 7; y++) for (let x = L.x - 7; x <= L.x + 7; x++) { const i = y * MAP + x; if (W.cost[i] && W.reach[i]) ring.push(i); }
-    this.home = P.field('home', ring);
-    this.spots = this.shelterSpots(site.shelter);
-    this.cargoTile = site.cargo.y * MAP + site.cargo.x; this.doorTile = site.shelter.door.y * MAP + site.shelter.door.x;
+    for (let y = L.y - 7; y <= L.y + 7; y++) for (let x = L.x - 7; x <= L.x + 7; x++) { const i = y * MAP + x; if (W.cost0[i] && W.reach[i]) ring.push(i); }
+    this.ring = ring; this.home = P.field('home', ring);
+    this.spots = this.shelterSpots(site.shelter); this.spotCache = new Map();
+    this.cargoTile = site.cargo.y * MAP + site.cargo.x; this.doorTile = site.shelter.door.y * MAP + site.shelter.door.x; this.yardTile = site.yard.pick.y * MAP + site.yard.pick.x;
+    this.gnew = []; this.qnew = [];
+    this.sourcesNear();
+  }
+  // every tree, boulder and rock face within reach of camp, nearest to the yard first
+  sourcesNear() {
+    const W = this.W, L = W.land, Y = W.site.yard.pick, g = W.gone, trees = [], rocks = [];
+    W.gone = null;
+    const x0 = L.x - SOURCE_R, y0 = L.y - SOURCE_R, x1 = L.x + SOURCE_R, y1 = L.y + SOURCE_R;
+    const ok = t => W.cost0[t] && W.reach[t], d = t => Math.hypot(t % MAP - Y.x, (t / MAP | 0) - Y.y);
+    for (const q of propsIn(W, x0, y0, x1, y1)) {
+      const t = Math.floor(q.y) * MAP + Math.floor(q.x);
+      if (q.k === 'tree' && ok(t)) trees.push({ src: t, work: t, kind: 0, d: d(t) });
+      else if (q.k === 'boulder' && ok(t)) rocks.push({ src: t, work: t, kind: 1, d: d(t) });
+    }
+    W.gone = g;
+    for (let y = Math.max(1, y0); y < Math.min(MAP - 1, y1); y++) for (let x = Math.max(1, x0); x < Math.min(MAP - 1, x1); x++) {
+      const t = y * MAP + x; if (W.type[t] !== T.ROCK) continue;
+      for (const n of [t - 1, t + 1, t - MAP, t + MAP]) if (ok(n) && W.type[n] !== T.SHALLOW) { rocks.push({ src: t, work: n, kind: 2, d: d(t) }); break; }
+    }
+    const by = (a, b) => a.d - b.d || a.src - b.src;
+    this.trees = trees.sort(by); this.rocks = rocks.sort(by);
   }
 
   // ---------- a new landing ----------
@@ -30,13 +57,17 @@ export class Sim {
   newGame(mode = 'landfall', count = 300) {
     const W = this.W, L = W.land; srand(W.seed * 7919 + 17);
     this.S = {
-      v: 2, mode, seed: W.seed, site: { x: L.x, y: L.y, id: W.siteId ?? 0 }, tick: Math.round(6 * HOUR),
+      v: 3, mode, seed: W.seed, site: { x: L.x, y: L.y, id: W.siteId ?? 0 }, tick: Math.round(6 * HOUR),
       cols: [], crews: [], archive: makeArchive(W.seed), autoCrews: true,
-      seedc: { feed: mode === 'stress' ? 0 : FIRST_BODIES, queue: [], printing: null, stakes: STAKES, cargo: CARGO },
-      shelter: { stage: 0, fits: 0, done: false, beds: [] }, stakes: [], food: mode === 'stress' ? 1e9 : FOOD_DAYS * FIRST_BODIES,
+      seedc: { feed: mode === 'stress' ? 0 : FIRST_BODIES, queue: [], printing: null, stakes: STAKES },
+      projects: [shelterProject(W)], pid: 1, blueprints: [], fab: { job: null }, power: { supply: LANDER_KW, draw: 0 },
+      stores: { yard: { stone: 0, timber: 0, salvage: SALVAGE }, cargo: { module: CARGO, ...KIT } },
+      mat: { stone: { tested: false, f: strength(W.seed, 'stone') }, timber: { tested: false, f: strength(W.seed, 'timber') } }, gone: {}, quarry: {},
+      stakes: [], food: mode === 'stress' ? 1e9 : FOOD_DAYS * FIRST_BODIES,
       log: [], logN: 0, chunkLast: new Array(NCH * NCH).fill(0), rr: 0, walked: 0, knownN: 0, rv: 1,
-      stats: { breakdowns: 0, accidents: 0, fits: 0, trips: 0, darkReturns: 0, friends: 0, rivals: 0, deaths: 0 },
+      stats: { breakdowns: 0, accidents: 0, fits: 0, trips: 0, darkReturns: 0, friends: 0, rivals: 0, deaths: 0, felled: 0, quarried: 0, made: 0 },
     };
+    this.resetGround();
     this.wear.fill(0); this.dirty.clear(); this.known.fill(0); this.kdirty.clear(); this.used = new Set(); this.seats = new Set();
     this.reveal(L.x, L.y, 30);   // the lander's own instruments
     if (mode === 'stress') {
@@ -52,12 +83,13 @@ export class Sim {
   }
   newCrew(work = 'rest') {
     const S = this.S, k = S.crews.length;
-    return { id: k, name: CREW_NAMES[k % CREW_NAMES.length] + (k >= CREW_NAMES.length ? ' ' + (1 + (k / CREW_NAMES.length | 0)) : ''), gone: false, lead: -1, members: [], work, shift: 1, rules: { dark: true, pairs: true, rest: true }, target: -1, dest: -1, wait: ri(0, 200), siteLeft: 0, recalled: false, trips: 0 };
+    return { id: k, name: CREW_NAMES[k % CREW_NAMES.length] + (k >= CREW_NAMES.length ? ' ' + (1 + (k / CREW_NAMES.length | 0)) : ''), gone: false, lead: -1, members: [], work, shift: 1, rules: { dark: true, pairs: true, rest: true }, target: -1, dest: -1, wait: ri(0, 200), siteLeft: 0, recalled: false, trips: 0, proj: -1 };
   }
   addTo(c, k) {
     const S = this.S;
     if (c.crew >= 0) { const o = S.crews[c.crew]; o.members = o.members.filter(i => i !== c.id); if (o.lead === c.id) o.lead = bestLead(S, o); }
-    c.crew = k; c.plan = ''; c.job = '';
+    if (c.job !== 'wake') { dropCarry(this, c); c.plan = ''; c.job = ''; c.noWork = 0; }
+    c.crew = k;
     if (k >= 0) { const cr = S.crews[k]; cr.members.push(c.id); if (cr.lead < 0) cr.lead = c.id; }
     S.rv++;
   }
@@ -68,7 +100,8 @@ export class Sim {
       id, fid: p.fid, name: p.name, look: p.look, age: p.age, trade: p.trade, skills: { ...p.skills }, traits: p.traits.slice(), mem: p.mem.map(m => ({ d: 0, m })), ties: {},
       x: t % MAP + .5, y: (t / MAP | 0) + .5, ang: rnd() * 6.283, spd: .125 + rnd() * .02, tile: t, act, moving: 0,
       mv: 0, wps: [], wi: 0, leg: [], li: 0, goal: -1, then: ACT.IDLE, wait: 0, stuck: 0, timer: 0,
-      crew: -1, plan: '', job: '', carry: 0, spot: -1, slot, seat: this.seat(),
+      crew: -1, plan: '', job: '', carry: '', cn: 0, want: '', pj: -1, src: -1, srcKind: 0, srcKey: '', make: '', ws: -1, fx: 0, fy: 0, noWork: 0,
+      home: -1, mess: -1, ward: -1, where: -1, spot: -1, slot, seat: this.seat(),
       fat: 18, str: 8, tru: Math.round(60 + (has('stubborn') ? -8 : 0) + (has('cheerful') ? 5 : 0) + (has('anxious') ? -3 : 0) + (rnd() - .5) * 12), hp: 100,
       fresh: 10 * DAY_TICKS, hurt: 0, alone: 0, worked: 0, dark: 0, ate: 0, hungry: false, dead: false, escort: 0, outside: 0, bed: 21.3 + rnd() * .9,
     };
@@ -86,7 +119,7 @@ export class Sim {
       for (let k = 0; k < n; k++) {
         const a = (k / n) * 6.2832 + r * .7, x = Math.floor(L.x + Math.cos(a) * r), y = Math.floor(L.y + Math.sin(a) * r), t = y * MAP + x;
         if (this.used.has(t) || !W.reach[t] || !W.cost[t] || W.type[t] === T.SHALLOW || W.type[t] === T.MARSH) continue;
-        if (Math.hypot(x + .5 - F.x, y + .5 - F.y) < 4.5 || Math.hypot(x - C.x, y - C.y) < 2.5 || this.nearPlot(x, y, 1.5)) continue;
+        if (Math.hypot(x + .5 - F.x, y + .5 - F.y) < 4.5 || Math.hypot(x - C.x, y - C.y) < 2.5 || this.nearPlot(x, y, 1.5) || !this.W.cost[t]) continue;
         this.used.add(t); return t;
       }
     }
@@ -99,13 +132,65 @@ export class Sim {
       const n = Math.floor(r * 4.2);
       for (let k = 0; k < n; k++) {
         const a = (k / n) * 6.2832 + r, x = Math.floor(F.x + Math.cos(a) * r), y = Math.floor(F.y + Math.sin(a) * r), t = y * MAP + x;
-        if (this.seats.has(t) || !W.reach[t] || !W.cost[t] || W.type[t] === T.SHALLOW) continue;
+        if (this.seats.has(t) || !W.reach[t] || !W.cost[t] || W.type[t] === T.SHALLOW || this.nearPlot(x, y, .5)) continue;
         this.seats.add(t); return t;
       }
     }
     return Math.floor(F.y) * MAP + Math.floor(F.x);
   }
-  nearPlot(x, y, m) { const s = this.W.site.shelter; return x >= s.x - m && x < s.x + s.w + m && y >= s.y - m && y < s.y + s.h + m; }
+  // on (or within m tiles of) the yard or a building's plot
+  nearPlot(x, y, m) {
+    const In = r => x >= r.x - m && x < r.x + r.w + m && y >= r.y - m && y < r.y + r.h + m;
+    if (In(this.W.site.shelter) || In(this.W.site.yard)) return true;
+    for (const p of this.S.projects) if (!p.gone && p.type !== 'test' && In(p)) return true;
+    return false;
+  }
+  // where builders stand to work on a project: around its edge, or around the test rig
+  spotsOf(p) {
+    if (p.type === 'shelter') return this.spots;
+    const key = p.id * 2 + (p.blocked ? 1 : 0); let s = this.spotCache.get(key);
+    if (s) return s;
+    const W = this.W, ok = t => W.cost[t] && W.reach[t]; s = [];
+    if (p.type === 'test') { for (let y = p.y - 1; y <= p.y + 1; y++) for (let x = p.x - 1; x <= p.x + 1; x++) if ((x !== p.x || y !== p.y) && ok(y * MAP + x)) s.push(y * MAP + x); }
+    else for (let y = p.y - 1; y <= p.y + p.h; y++) for (let x = p.x - 1; x <= p.x + p.w; x++) if ((x === p.x - 1 || y === p.y - 1 || x === p.x + p.w || y === p.y + p.h) && ok(y * MAP + x)) s.push(y * MAP + x);
+    if (!s.length) s.push(p.door ? p.door.y * MAP + p.door.x : this.yardTile);
+    this.spotCache.set(key, s); return s;
+  }
+  doorOf(p) { return p.type === 'shelter' ? this.doorTile : p.door.y * MAP + p.door.x; }
+
+  // ---------- the ground a building stands on ----------
+  // once foundations start, a plot can't be walked across: the paths around it are searched again
+  block(p) { p.blocked = true; this.reground(p); }
+  unblock(p) { p.blocked = false; this.reground(p); }
+  reground(p) {
+    const W = this.W, S = this.S, on = p.blocked;
+    for (let y = p.y; y < p.y + p.h; y++) for (let x = p.x; x < p.x + p.w; x++) { const t = y * MAP + x; W.cost[t] = on ? 0 : W.cost0[t]; }
+    this.P.update(p.x, p.y, p.x + p.w - 1, p.y + p.h - 1); this.home = this.P.field('home', this.ring);
+    if (!on) return;
+    const inR = (t, m) => { const x = t % MAP, y = t / MAP | 0; return x >= p.x - m && x < p.x + p.w + m && y >= p.y - m && y < p.y + p.h + m; }, spots = this.spotsOf(p);
+    for (const c of S.cols) {
+      if (c.dead) continue;
+      if (inR(c.tile, 0)) {   // standing on the plot: step off it
+        let best = spots[0], bd = 1e9; for (const t of spots) { const d = Math.hypot(t % MAP + .5 - c.x, (t / MAP | 0) + .5 - c.y); if (d < bd) { bd = d; best = t; } }
+        c.x = best % MAP + .5; c.y = (best / MAP | 0) + .5; c.tile = best; c.leg = []; c.li = 0;
+      }
+      if (c.mv === 1) { const r = this.P.route(c.tile, c.goal); c.wps = r && r.length ? r : [c.goal]; c.wi = 0; c.leg = []; c.li = 0; }
+      if (inR(c.slot, 1)) { this.used.delete(c.slot); c.slot = this.restSlot(); }
+      if (inR(c.seat, 1)) { this.seats.delete(c.seat); c.seat = this.seat(); }
+    }
+  }
+  // the ground as landfall left it, with every fenced-off plot of this colony on it (after loading a save)
+  resetGround() {
+    const W = this.W, C = W.cost, want = W.cost0.slice(), dirty = new Set();
+    for (const p of this.S.projects) if (!p.gone && p.blocked && p.type !== 'shelter') for (let y = p.y; y < p.y + p.h; y++) want.fill(0, y * MAP + p.x, y * MAP + p.x + p.w);
+    for (let i = 0; i < C.length; i++) if (C[i] !== want[i]) dirty.add(((i / MAP | 0) / CH | 0) * NCH + ((i % MAP) / CH | 0));
+    if (dirty.size) { C.set(want); this.P.build(dirty); this.P.fields.clear(); this.home = this.P.field('home', this.ring); }
+    this.spotCache.clear();
+    W.gone.clear(); for (const k in this.S.gone) W.gone.set(+k, this.S.gone[k]);
+  }
+  // a tree felled (n logs still lying there), a boulder quarried away, a bush cleared
+  setGone(t, n) { this.S.gone[t] = n; this.W.gone.set(t, n); this.gnew.push(t, n); }
+  setQuarry(t, n) { this.S.quarry[t] = n; this.qnew.push(t, n); }
   shelterSpots(s) {
     const out = [];
     for (let y = s.y - 1; y <= s.y + s.h; y++) for (let x = s.x - 1; x <= s.x + s.w; x++) { const t = y * MAP + x; if (this.W.cost[t] && this.W.reach[t] && (x === s.x - 1 || y === s.y - 1 || x === s.x + s.w || y === s.y + s.h)) out.push(t); }
@@ -123,6 +208,7 @@ export class Sim {
     S.tick++;
     seedTick(this);
     for (const cr of S.crews) crewThink(this, cr);
+    if (S.tick % 120 === 0 && S.mode === 'landfall') projectsThink(this);
     for (let i = S.tick % 30; i < cols.length; i += 30) { mindTick(this, cols[i]); think(this, cols[i]); }
     for (let i = 0; i < cols.length; i++) this.move(cols[i]);
     this.separate();
@@ -171,9 +257,7 @@ export class Sim {
         if (rnd() < .004) c.ang += (rnd() - .5) * 2;
         if (rnd() < (a === ACT.SURVEY ? .002 : .0008)) { const x = Math.floor(c.x + (rnd() - .5) * 4), y = Math.floor(c.y + (rnd() - .5) * 4), t = y * MAP + x; if (x > 0 && y > 0 && x < MAP && y < MAP && this.W.reach[t] && this.W.cost[t]) { c.leg = [t]; c.li = 0; } }
         if (c.li < c.leg.length) { const t = c.leg[c.li]; if (this.walk(c, t % MAP + .5, (t / MAP | 0) + .5)) c.li++; }
-      } else if (a === ACT.BUILD) {
-        const s = this.W.site.shelter; this.face(c, s.x + s.w / 2, s.y + s.h / 2);
-      } else if (a === ACT.EAT) {
+      } else if (a === ACT.BUILD || a === ACT.TEST || a === ACT.QUARRY || a === ACT.FELL) this.face(c, c.fx, c.fy); else if (a === ACT.EAT) {
         const F = this.W.site.fire; this.face(c, F.x, F.y);
       }
     }
@@ -218,8 +302,8 @@ export class Sim {
   separate() {
     const cols = this.S.cols, n = cols.length, G = this.grid, GW = MAP / 2;
     if (!this.next || this.next.length < n) this.next = new Int32Array(n);
-    const nx = this.next, cells = [], still = a => a === ACT.BED || a === ACT.EAT || a === ACT.WAKE || a === ACT.ALONE || a === ACT.BUILD || a === ACT.PLANT;
-    for (let i = 0; i < n; i++) { const c = cols[i]; nx[i] = -2; if (c.dead || c.act === ACT.INSIDE) continue; const g = (c.y / 2 | 0) * GW + (c.x / 2 | 0); nx[i] = G[g]; if (G[g] < 0) cells.push(g); G[g] = i; }
+    const nx = this.next, cells = [], still = a => a === ACT.BED || a === ACT.EAT || a === ACT.WAKE || a === ACT.ALONE || a === ACT.BUILD || a === ACT.PLANT || a === ACT.QUARRY || a === ACT.FELL || a === ACT.TEST;
+    for (let i = 0; i < n; i++) { const c = cols[i]; nx[i] = -2; if (c.dead || hidden(c.act)) continue; const g = (c.y / 2 | 0) * GW + (c.x / 2 | 0); nx[i] = G[g]; if (G[g] < 0) cells.push(g); G[g] = i; }
     const C = this.W.cost;
     for (let i = 0; i < n; i++) {
       if (nx[i] === -2) continue;
@@ -278,7 +362,7 @@ export class Sim {
   // ---------- what the page needs ----------
   snapshot(out) {
     const cols = this.S.cols;
-    for (let i = 0; i < cols.length; i++) { const c = cols[i], o = i * 4; out[o] = c.x; out[o + 1] = c.y; out[o + 2] = c.ang; out[o + 3] = (c.dead ? 15 : c.act) * 2 + c.moving; }
+    for (let i = 0; i < cols.length; i++) { const c = cols[i], o = i * 4; out[o] = c.x; out[o + 1] = c.y; out[o + 2] = c.ang; out[o + 3] = (c.dead ? ACT.DEAD : c.act) * 2 + c.moving; }
     return out;
   }
   chunkOf(a, k) {
@@ -296,16 +380,19 @@ export class Sim {
     };
   }
   ui(watch) {
-    const S = this.S, sd = S.seedc;
+    const S = this.S, sd = S.seedc, sh = S.projects[0];
     const c = watch >= 0 ? S.cols[watch] : null;
     return {
       rv: S.rv, mode: S.mode, logN: S.logN,
-      p: S.cols.map(c => [c.act, c.crew, Math.round(c.fat), Math.round(c.str), Math.round(c.tru), Math.round(c.hp), (c.fresh > 0 ? 1 : 0) | (c.hurt > 0 ? 2 : 0) | (c.alone > 0 ? 4 : 0) | (c.hungry ? 8 : 0) | (c.dead ? 16 : 0) | (c.carry && c.act === ACT.CARRY ? 32 : 0)]),
-      crews: S.crews.map(cr => ({ id: cr.id, name: cr.name, gone: cr.gone, lead: cr.lead, members: cr.members, work: cr.work, shift: cr.shift, rules: cr.rules, target: cr.target, dest: cr.dest, recalled: cr.recalled })),
-      seed: { feed: sd.feed, queue: sd.queue, printing: sd.printing && { fid: sd.printing.fid, left: sd.printing.left }, stakes: sd.stakes, cargo: sd.cargo, cargo0: CARGO },
-      shelter: { stage: S.shelter.stage, fits: S.shelter.fits, done: S.shelter.done, beds: S.shelter.beds.length },
+      p: S.cols.map(c => [c.act, c.crew, Math.round(c.fat), Math.round(c.str), Math.round(c.tru), Math.round(c.hp), (c.fresh > 0 ? 1 : 0) | (c.hurt > 0 ? 2 : 0) | (c.alone > 0 ? 4 : 0) | (c.hungry ? 8 : 0) | (c.dead ? 16 : 0) | (c.carry && c.mv ? 32 : 0)]),
+      crews: S.crews.map(cr => ({ id: cr.id, name: cr.name, gone: cr.gone, lead: cr.lead, members: cr.members, work: cr.work, shift: cr.shift, rules: cr.rules, target: cr.target, dest: cr.dest, recalled: cr.recalled, proj: cr.proj })),
+      seed: { feed: sd.feed, queue: sd.queue, printing: sd.printing && { fid: sd.printing.fid, left: sd.printing.left }, stakes: sd.stakes, fab: S.fab.job && { k: S.fab.job.k, left: S.fab.job.left } },
+      shelter: { stage: sh.stage, done: sh.done, beds: 12 },
+      projects: S.projects.filter(p => !p.gone).map(p => ({ id: p.id, type: p.type, name: p.name, x: p.x, y: p.y, w: p.w, h: p.h, side: p.side, door: p.door, stage: p.stage, need: p.need, got: p.got, done: p.done, powered: p.powered, paused: p.paused, wait: p.wait, stall: p.stall, mat: p.mat, cap: capOf(p), crews: S.crews.filter(cr => !cr.gone && cr.work === 'build' && cr.proj === p.id).map(cr => cr.name), out: p.out })),
+      stores: { yard: S.stores.yard, cargo: S.stores.cargo, precise: Object.fromEntries(PRECISE.map(k => [k, stockOf(S, k)])) }, power: S.power, blueprints: S.blueprints,
+      mat: { stone: { tested: S.mat.stone.tested, f: S.mat.stone.tested ? S.mat.stone.f : null }, timber: { tested: S.mat.timber.tested, f: S.mat.timber.tested ? S.mat.timber.f : null } },
       food: S.food, alive: S.cols.filter(c => !c.dead).length, known: S.knownN, stakes: S.stakes, auto: S.autoCrews, stats: S.stats,
-      detail: c && { id: c.id, skills: c.skills, mem: c.mem.slice(-6), ties: Object.entries(c.ties).filter(([, t]) => t.k).map(([id, t]) => ({ id: +id, k: t.k, f: Math.round(t.f), a: Math.round(t.a) })), worked: c.worked, fresh: c.fresh, hurt: c.hurt, plan: c.plan },
+      detail: c && { id: c.id, skills: c.skills, mem: c.mem.slice(-6), ties: Object.entries(c.ties).filter(([, t]) => t.k).map(([id, t]) => ({ id: +id, k: t.k, f: Math.round(t.f), a: Math.round(t.a) })), worked: c.worked, fresh: c.fresh, hurt: c.hurt, plan: c.plan, home: c.home >= 0 && byId(S, c.home) ? byId(S, c.home).name : '', carry: c.carry },
     };
   }
   logSince(n) { return this.S.log.filter(e => e.n > n); }
@@ -318,12 +405,33 @@ export class Sim {
   load(d) {
     const { rng, wear, known, ...S } = d;
     this.S = JSON.parse(JSON.stringify(S)); srand(rng);
+    if (this.S.v === 2) this.migrate2();
+    this.resetGround(); this.gnew = []; this.qnew = [];
     this.wear.set(unrle(wear, MAP * MAP)); this.known.set(unrle(known, MAP * MAP)); this.dirty.clear(); this.kdirty.clear();
     this.used = new Set(this.S.cols.map(c => c.slot)); this.seats = new Set(this.S.cols.map(c => c.seat));
     for (let k = 0; k < NCH * NCH; k++) { this.dirty.add(k); this.kdirty.add(k); }
     return this.S;
   }
 }
+// ---------- older saves ----------
+// version 2 (milestone 2) had one shelter and a pile of lander modules; it becomes the first project of many
+Sim.prototype.migrate2 = function () {
+  const S = this.S, W = this.W, sh = S.shelter, p = shelterProject(W, sh.done ? 0 : sh.stage, sh.done ? 0 : sh.fits);
+  if (sh.done) { p.done = true; p.stage = 5; p.need = {}; p.got = {}; p.powered = true; }
+  S.projects = [p]; S.pid = 1; S.blueprints = []; S.fab = { job: null }; S.power = { supply: LANDER_KW, draw: 0 };
+  S.stores = { yard: { stone: 0, timber: 0, salvage: SALVAGE }, cargo: { module: S.seedc.cargo, ...KIT } };
+  S.mat = { stone: { tested: false, f: strength(W.seed, 'stone') }, timber: { tested: false, f: strength(W.seed, 'timber') } }; S.gone = {}; S.quarry = {};
+  Object.assign(S.stats, { felled: 0, quarried: 0, made: 0 });
+  // the Seed sent the shelter crew to rest when the shelter was done; now there is more to build
+  for (const cr of S.crews) { if (cr.work === 'shelter' || (sh.done && cr.work === 'rest' && S.autoCrews)) cr.work = 'build'; cr.proj = -1; }
+  for (const c of S.cols) {
+    const fit = c.job === 'fit', fetch = c.job === 'fetch' || c.job === 'pick';
+    Object.assign(c, { carry: c.carry ? 'module' : '', cn: 0, want: fit ? (c.carry ? 'module' : 'mark') : fetch ? 'module' : '', pj: fit || fetch ? 0 : -1, src: -1, srcKind: 0, srcKey: fetch ? 'cargo' : '', make: '', ws: -1, fx: p.x + p.w / 2, fy: p.y + p.h / 2, noWork: 0, home: sh.beds.includes(c.id) ? 0 : -1, mess: -1, ward: -1, where: c.act === ACT.INSIDE ? 0 : -1 });
+    if (c.dead) c.act = ACT.DEAD;
+  }
+  delete S.shelter; delete S.seedc.cargo; S.v = 3;
+  powerCheck(this);
+};
 export function bestLead(S, cr) {
   let best = -1, bs = -1;
   for (const i of cr.members) { const c = S.cols[i]; if (c.dead) continue; const s = c.skills.leadership + c.tru / 40; if (s > bs) { bs = s; best = i; } }

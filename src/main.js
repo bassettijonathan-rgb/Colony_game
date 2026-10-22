@@ -1,12 +1,13 @@
 // The page: starts the simulation thread, draws what it reports, and turns input into camera moves and
 // commands. A new game starts in orbit: the player picks one of three sites, the Seed lands there, and
-// from then on the player chooses who the fabricator prints and runs the crews.
+// from then on the player chooses who the fabricator prints, runs the crews and plans what gets built.
 import { startSim } from './ui/simclient.js';
 import { View } from './render/view.js';
 import { PersonArt } from './render/people.js';
 import { Panels } from './ui/panels.js';
 import { Music, moodFor } from './ui/music.js';
-import { SEASONS, MAP, NCH, ACT, DAY_TICKS } from './core/consts.js';
+import { SEASONS, MAP, NCH, ACT, DAY_TICKS, hidden } from './core/consts.js';
+import { TYPES, facing } from './core/build.js';
 import { LAYERS } from './render/terrain.js';
 import { Store, initStorage, saveLocal, loadLocal, saveAccount, loadAccount, exportFile, importFile } from './ui/storage.js';
 
@@ -16,7 +17,8 @@ const A = {
   sim: null, view: null, panels: null, phase: 'boot', W: null, sites: null, siteSel: 0, mode: 'landfall', tag: '',
   speed: 1, lastSpeed: 1, n: 0, prev: null, cur: null, pos: new Float32Array(0), arts: [], names: [], people: [], archive: [], ui: null, log: [], leads: new Set(),
   clock: null, perf: null, sel: -1, hover: -1, follow: false, frames: [], lastSaveLocal: 0, lastSaveAcct: 0, saveId: 0, cmdId: 0, waiting: new Map(),
-  savedNote: 'not yet', thread: '-', timing: null, hold: false, pickCrew: -1, pickAt: null, pendingWear: [], pendingKnown: [], music: new Music()
+  savedNote: 'not yet', thread: '-', timing: null, hold: false, pickCrew: -1, pickAt: null, pendingWear: [], pendingKnown: [], music: new Music(),
+  place: null, projSel: -1
 };
 const pad = n => String(n).padStart(2, '0');
 const toast = (m) => { const t = $('toast'); t.textContent = m; t.classList.add('on'); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove('on'), 3200); };
@@ -33,18 +35,19 @@ function onSim(m) {
     case 'snap': A.prev = A.cur; A.cur = { pos: m.pos, t: performance.now() }; A.clock = m.clock; A.perf = m.perf; return;
     case 'wear': if (A.view && A.phase === 'colony') for (const [k, d] of m.chunks) A.view.terrain.setWear(k, d); else A.pendingWear.push(...m.chunks); return;
     case 'known': if (A.view && A.phase === 'colony') for (const [k, d] of m.chunks) A.view.setKnown(k, d); else A.pendingKnown.push(...m.chunks); return;
+    case 'marks': return onMarks(m);
     case 'saved': case 'cmd': { const r = A.waiting.get(m.id); if (r) { A.waiting.delete(m.id); r(m.t === 'saved' ? m.data : m.r); } }
   }
 }
 function ask(msg) { const id = ++A.saveId; return withTimeout(new Promise(r => { A.waiting.set(id, r); A.sim.send({ ...msg, id }); }), 4000, null); }
 const requestSave = () => ask({ t: 'save' });
 function cmd(op, args = {}) { return ask({ t: 'cmd', op, ...args }); }
-const wrap = sim => ({ v: 2, day: Math.floor(sim.tick / DAY_TICKS) + 1, count: sim.cols.length, sim });
+const wrap = sim => ({ v: 3, day: Math.floor(sim.tick / DAY_TICKS) + 1, count: sim.cols.length, sim });
 function ensureView(W) {
   if (!A.view) {
     A.view = new View(app, W);
     if (!A.view.G || !A.view.ok) { loader('This needs a browser with WebGL 2. ' + (A.view.G ? 'A shader did not compile.' : ''), 1); $('ldmsg').id = 'nogl'; return false; }
-    A.panels = new Panels(A, { cmd, select, toast, pickArea, land, siteSelect });
+    A.panels = new Panels(A, { cmd, select, toast, pickArea, land, siteSelect, startPlace, showProject });
     hookInput();
   } else A.view.setWorld(W);
   if (!A.raf) A.raf = requestAnimationFrame(frame);
@@ -62,7 +65,7 @@ function onSurvey(m) {
   $('sub').textContent = `Choosing where to land · seed ${m.seed}`;
   const V = A.view; V.cam.x = MAP / 2; V.cam.y = MAP / 2; V.cam.z = 1; V.clampCam();
   speedButtons();
-  saveLocal({ v: 2, orbit: m.seed });   // a reload comes back to the same planet
+  saveLocal({ v: 3, orbit: m.seed });   // a reload comes back to the same planet
   if (A.oldSave) { A.oldSave = false; setTimeout(() => toast('The colony from milestone 1 cannot continue in this version, so this is a new landing.'), 1500); }
 }
 function siteSelect(i) {
@@ -81,6 +84,8 @@ function land(i) {
 // the colony starts (after a landing, or from a save)
 function onReady(m) {
   const W = { seed: m.seed, land: m.land, site: m.site, rock: m.rock, type: m.world.type, elev: m.world.elev, moist: m.world.moist, siteId: m.siteId };
+  // what has been felled, cleared and quarried so far: the map is painted without it
+  W.gone = new Map(Object.entries(m.gone || {}).map(([k, v]) => [+k, v])); W.quarry = new Map(Object.entries(m.quarry || {}).map(([k, v]) => [+k, v]));
   const landing = A.phase === 'landing' && A.view;
   A.W = W; A.mode = m.mode; A.tag = m.tag; A.timing = { ...(A.timing || {}), ...m.timing };
   if (landing) A.view.land(W, m.patch);
@@ -105,12 +110,20 @@ function recolour() {
   for (let i = 0; i < A.arts.length; i++) { const k = U.p[i] ? U.p[i][1] : -1; if (A.arts[i].crew !== k) { const w = A.arts[i].walk; A.arts[i] = new PersonArt(A.people[i], k); A.arts[i].walk = w; } }
   A.leads = new Set(U.crews.filter(c => !c.gone && c.lead >= 0).map(c => c.lead));
 }
+function onMarks(m) {
+  const W = A.W; if (!W || !W.gone) return;
+  const tiles = [];
+  for (let i = 0; i < m.gone.length; i += 2) { const t = m.gone[i]; if (!W.gone.has(t)) tiles.push(t); W.gone.set(t, m.gone[i + 1]); }
+  for (let i = 0; i < m.quarry.length; i += 2) W.quarry.set(m.quarry[i], m.quarry[i + 1]);
+  if (tiles.length && A.view) A.view.terrain.propsGone(tiles);
+}
 function onState(m) {
   if (A.phase !== 'colony') return;
   if (m.roster) setRoster(m.roster);
   A.ui = m.ui;
   if (m.log.length) { A.log.push(...m.log); if (A.log.length > 300) A.log.splice(0, A.log.length - 300); for (const e of m.log) if (e.k === 'bad') toast(e.m); }
   recolour(); A.panels.update();
+  if (A.projSel >= 0 && !A.ui.projects.some(p => p.id === A.projSel)) A.projSel = -1;
 }
 
 // ---------- the frame ----------
@@ -131,9 +144,9 @@ function frame(now) {
   if (keys.has('KeyW') || keys.has('ArrowUp')) pan(0, -sp); if (keys.has('KeyS') || keys.has('ArrowDown')) pan(0, sp);
   if (A.follow && A.sel >= 0 && A.sel < A.n) { c.x += (A.pos[A.sel * 4] - c.x) * Math.min(1, dt * 6); c.y += (A.pos[A.sel * 4 + 1] - c.y) * Math.min(1, dt * 6); }
   V.clampCam();
-  const colony = A.phase === 'colony' && A.ui ? { shelter: A.ui.shelter, seed: A.ui.seed, stakes: A.ui.stakes, crews: A.ui.crews } : null;
+  const colony = A.phase === 'colony' && A.ui ? { seed: A.ui.seed, stakes: A.ui.stakes, crews: A.ui.crews, projects: A.ui.projects, stores: A.ui.stores } : null;
   const hour = A.clock && A.phase === 'colony' ? A.clock.hour : 10.5;
-  V.frame({ n: A.n, pos: A.pos, arts: A.arts, names: A.names, leads: A.leads, hour, time: now / 1000, sel: A.sel, hover: A.hover, budget: A.frames.length > 30 && avgMs() > 22 ? 1 : 2, colony, orbit: A.phase === 'orbit' ? { sites: A.sites, sel: A.siteSel } : null, pickAt: A.pickCrew >= 0 ? A.pickAt : null });
+  V.frame({ n: A.n, pos: A.pos, arts: A.arts, names: A.names, leads: A.leads, hour, time: now / 1000, sel: A.sel, hover: A.hover, budget: A.frames.length > 30 && avgMs() > 22 ? 1 : 2, colony, orbit: A.phase === 'orbit' ? { sites: A.sites, sel: A.siteSel } : null, pickAt: A.pickCrew >= 0 ? A.pickAt : null, place: A.place, projSel: A.projSel });
   if (A.hold && A.phase === 'colony' && !V.landing) { A.hold = false; setSpeed(A.speed || 1); if (V.anim) toast('The Seed is down. Choose who the fabricator prints first.'); }
   A.frames.push(now - (A.lastNow || now)); A.lastNow = now; if (A.frames.length > 120) A.frames.shift();
   A.cpuMs = (A.cpuMs || 0) * .9 + (performance.now() - t0) * .1;
@@ -194,7 +207,7 @@ function select(i, fly) {
   A.sel = i; A.follow = false; $('cFollow').textContent = 'Follow';
   if (A.sim) A.sim.send({ t: 'watch', id: i });
   if (A.panels) A.panels.card();
-  if (fly && i >= 0 && i < A.n && A.view) { const act = A.pos[i * 4 + 3] >> 1; if (act !== ACT.INSIDE) A.view.flyTo(A.pos[i * 4], A.pos[i * 4 + 1], Math.max(A.view.cam.z, 22)); else toast(`${A.names[i]} is inside the shelter.`); }
+  if (fly && i >= 0 && i < A.n && A.view) { const act = A.pos[i * 4 + 3] >> 1; if (!hidden(act)) A.view.flyTo(A.pos[i * 4], A.pos[i * 4 + 1], Math.max(A.view.cam.z, 22)); else toast(act === ACT.DEAD ? `${A.names[i]} is dead.` : `${A.names[i]} is indoors.`); }
 }
 function setSpeed(s) {
   if (s > 0) A.lastSpeed = s; A.speed = s;
@@ -207,6 +220,55 @@ function pickArea(crew) {
   $('pickTxt').textContent = `Click the map where the ${cr.name} crew should survey`; $('pickHint').hidden = false;
 }
 function endPick() { A.pickCrew = -1; A.pickAt = null; $('pickHint').hidden = true; }
+
+// ---------- placing a building ----------
+// Drawing: drag a rectangle on the map. A blueprint: the building follows the pointer, a click puts it down.
+// Either way the Seed checks the plot and its loads, and a card shows the bill before anything is committed.
+function startPlace(type, w, h, name) {
+  if (A.phase !== 'colony' || !TYPES[type]) return;
+  endPick(); select(-1);
+  A.place = { type, w: w || 0, h: h || 0, fixed: !!w, name: name || '', x: null, y: null, side: 0, turned: false, check: null, locked: false, seq: 0 };
+  $('placeTxt').textContent = w ? `Move the ${name || TYPES[type].name} where it should go and click to put it down` : `Drag on the map to draw the ${TYPES[type].name.toLowerCase()}: at least ${TYPES[type].min} by ${TYPES[type].min} tiles, at most ${TYPES[type].max} long`;
+  $('placeTurn').hidden = !!TYPES[type].open; $('plTurn').hidden = !!TYPES[type].open;
+  $('placeHint').hidden = false; app.classList.add('placing');
+  $('plKeep').checked = false; $('plName2').value = name || ''; delete $('plName2').dataset.auto;
+  A.panels.planCard(null);
+}
+function endPlace() { A.place = null; $('placeHint').hidden = true; app.classList.remove('placing'); A.panels.planCard(null); }
+function placeRect(x, y, w, h) {
+  const P = A.place; if (!P) return;
+  if (P.x === x && P.y === y && P.w === w && P.h === h) return;
+  P.x = x; P.y = y; P.w = w; P.h = h;
+  if (!P.turned) P.side = facing(A.W, x, y, w, h);
+  P.door = doorAt(P); checkPlace();
+}
+const doorAt = P => P.side === 0 ? { x: P.x + (P.w >> 1), y: P.y - 1 } : P.side === 1 ? { x: P.x + P.w, y: P.y + (P.h >> 1) } : P.side === 2 ? { x: P.x + (P.w >> 1), y: P.y + P.h } : { x: P.x - 1, y: P.y + (P.h >> 1) };
+async function checkPlace() {
+  const P = A.place; if (!P || P.x == null) return;
+  const seq = ++P.seq, r = await cmd('plan', { type: P.type, x: P.x, y: P.y, w: P.w, h: P.h, side: P.side });
+  if (A.place !== P || seq !== P.seq || !r) return;
+  P.check = r; if (r.door) P.door = r.door;
+  A.panels.planCard(P);
+}
+function turnDoor() { const P = A.place; if (!P || TYPES[P.type].open) return; P.side = (P.side + 1) % 4; P.turned = true; P.door = doorAt(P); checkPlace(); }
+async function confirmPlace() {
+  const P = A.place; if (!P || !P.check || !P.check.ok) return;
+  const keep = $('plKeep').checked, name = $('plName2').value.trim();
+  const r = await cmd('place', { type: P.type, x: P.x, y: P.y, w: P.w, h: P.h, side: P.side, save: keep ? name || TYPES[P.type].name : undefined });
+  if (r && r.ok) { endPlace(); A.projSel = r.id; A.panels.setTab('build'); toast(`Planned. ${TYPES[P.type].name} is on the project list${keep ? ', and saved as a blueprint' : ''}.`); }
+  else toast(r && r.why ? r.why : 'That could not be planned just now.');
+}
+// the Build tab and the map agree on which project you are looking at
+function showProject(id) {
+  const p = A.ui && A.ui.projects.find(q => q.id === id); if (!p || !A.view) return;
+  A.projSel = id; A.panels.sig = ''; A.panels.update();
+  A.view.flyTo(p.x + p.w / 2, p.y + p.h / 2, Math.max(A.view.cam.z, 16)); A.follow = false;
+}
+function projectAt(wx, wy) {
+  if (!A.ui) return null;
+  for (const p of A.ui.projects) if (p.type !== 'test' && wx >= p.x - .3 && wx < p.x + p.w + .3 && wy >= p.y - .3 && wy < p.y + p.h + .3) return p;
+  return null;
+}
 
 // ---------- saving ----------
 async function autosave(now) {
@@ -222,9 +284,10 @@ async function autosave(now) {
   } finally { A.busySave = false; }
 }
 function newest(a, b) { if (!a) return b; if (!b) return a; return (a.savedAt || 0) >= (b.savedAt || 0) ? a : b; }
-const isSave = d => d && d.v === 2 && d.sim && d.sim.v === 2 && Array.isArray(d.sim.cols);
+// milestone 2 colonies (version 2) carry on: their shelter becomes the first project of many
+const isSave = d => d && (d.v === 2 || d.v === 3) && d.sim && (d.sim.v === 2 || d.sim.v === 3) && Array.isArray(d.sim.cols);
 function startColony(opts) {
-  A.phase = 'boot'; A.hold = false; endPick();
+  A.phase = 'boot'; A.hold = false; endPick(); if (A.place) endPlace(); A.projSel = -1;
   if (A.panels) { A.panels.show(false); A.panels.orbit(null); }
   $('loader').classList.remove('gone'); loader(opts.save ? 'Waking the colony' : 'Surveying the planet from orbit', .15);
   A.sim.send(opts.save ? { t: 'init', seed: opts.save.seed, save: opts.save } : { t: 'init', seed: opts.seed, mode: opts.mode || 'landfall', count: opts.count || 300 });
@@ -235,15 +298,20 @@ function hookInput() {
   const V = A.view, ptrs = new Map(); let drag = null, pinch = null;
   const local = e => { const r = app.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
   window.addEventListener('resize', () => V.resize());
+  const tileAt = e => { const [wx, wy] = V.toWorld(...local(e)); return [Math.floor(wx), Math.floor(wy)]; };
   app.addEventListener('pointerdown', e => {
-    if (e.target.closest('.glass,#pickHint')) return;
+    if (e.target.closest('.glass,#pickHint,#placeHint')) return;
     app.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]);
+    // drawing a building: the left button (or one finger) draws, anything else still moves the map
+    if (A.place && ptrs.size === 1 && e.button === 0 && !A.place.fixed) { const [x, y] = tileAt(e); A.place.drag = { x0: x, y0: y }; A.place.locked = false; A.panels.planCard(null); placeRect(x, y, 1, 1); return; }
     if (ptrs.size === 1) drag = { x: e.clientX, y: e.clientY, cx: V.cam.x, cy: V.cam.y, moved: 0 };
     if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), z: V.cam.z }; drag = null; }
   });
   app.addEventListener('pointermove', e => {
     if (ptrs.has(e.pointerId)) ptrs.set(e.pointerId, [e.clientX, e.clientY]);
     if (pinch && ptrs.size === 2) { const [a, b] = [...ptrs.values()]; const d = Math.hypot(a[0] - b[0], a[1] - b[1]); V.zoomAt(pinch.z * d / pinch.d / V.cam.z, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2); return; }
+    if (A.place && A.place.drag) { const [x, y] = tileAt(e), d = A.place.drag; placeRect(Math.min(x, d.x0), Math.min(y, d.y0), Math.abs(x - d.x0) + 1, Math.abs(y - d.y0) + 1); return; }
+    if (A.place && A.place.fixed && !A.place.locked && !drag && !e.target.closest('.glass')) { const [wx, wy] = V.toWorld(...local(e)), P = A.place; placeRect(Math.round(wx - P.w / 2), Math.round(wy - P.h / 2), P.w, P.h); }
     if (drag) {
       const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.moved = Math.max(drag.moved, Math.hypot(dx, dy));
       if (drag.moved > 4) { app.classList.add('drag'); A.follow = false; V.fly = null; V.cam.x = drag.cx - dx / V.cam.z; V.cam.y = drag.cy - dy / V.cam.z; V.clampCam(); }
@@ -256,6 +324,7 @@ function hookInput() {
   });
   const up = e => {
     ptrs.delete(e.pointerId); app.classList.remove('drag');
+    if (A.place && A.place.drag) { A.place.drag = null; A.place.locked = true; A.panels.planCard(A.place); drag = null; return; }
     if (drag && drag.moved <= 4) click(...local(e));
     if (ptrs.size < 2) pinch = null; drag = null;
   };
@@ -273,8 +342,10 @@ function hookInput() {
     else if (e.code === 'KeyQ' && colony) A.panels.toggleTab('archive');
     else if (e.code === 'KeyC' && colony) A.panels.toggleTab('crews');
     else if (e.code === 'KeyL' && colony) A.panels.toggleTab('log');
+    else if (e.code === 'KeyB' && colony) A.panels.toggleTab('build');
+    else if (e.code === 'KeyR' && A.place) turnDoor();
     else if (e.code === 'KeyM') musicToggle();
-    else if (e.code === 'Escape') { if (A.pickCrew >= 0) endPick(); else if (!$('newdlg').hidden) $('newdlg').hidden = true; else select(-1); }
+    else if (e.code === 'Escape') { if (A.place) endPlace(); else if (A.pickCrew >= 0) endPick(); else if (!$('newdlg').hidden) $('newdlg').hidden = true; else select(-1); }
     else if (e.code === 'Equal' || e.code === 'NumpadAdd') V.zoomAt(1.25, V.VW / 2, V.VH / 2);
     else if (e.code === 'Minus' || e.code === 'NumpadSubtract') V.zoomAt(.8, V.VW / 2, V.VH / 2);
   });
@@ -287,6 +358,8 @@ function hookInput() {
   $('vol').oninput = e => { A.music.setVolume(e.target.value / 100); if (!A.music.on && e.target.value > 0) musicToggle(true); };
   $('fpsChip').onclick = () => { $('perf').hidden = !$('perf').hidden; };
   $('pickCancel').onclick = endPick;
+  $('placeCancel').onclick = endPlace; $('plCancel').onclick = endPlace; $('placeTurn').onclick = turnDoor; $('plTurn').onclick = turnDoor; $('plGo').onclick = confirmPlace;
+  $('plName2').oninput = e => { delete e.target.dataset.auto; $('plKeep').checked = true; };
   $('cClose').onclick = () => select(-1);
   $('cFollow').onclick = () => { A.follow = !A.follow; $('cFollow').textContent = A.follow ? 'Stop following' : 'Follow'; };
   const mm = $('mm');
@@ -315,17 +388,24 @@ function click(sx, sy) {
     return;
   }
   if (A.phase !== 'colony') return;
+  if (A.place) {   // a blueprint goes down where it is; a drawn building was handled on release
+    if (A.place.fixed) { A.place.locked = !A.place.locked; A.panels.planCard(A.place.locked ? A.place : null); if (!A.place.locked) { const [wx, wy] = V.toWorld(sx, sy); placeRect(Math.round(wx - A.place.w / 2), Math.round(wy - A.place.h / 2), A.place.w, A.place.h); } }
+    return;
+  }
   if (A.pickCrew >= 0) {
     const [wx, wy] = V.toWorld(sx, sy), x = Math.floor(wx), y = Math.floor(wy), crew = A.pickCrew;
     if (x < 0 || y < 0 || x >= MAP || y >= MAP) return;
     cmd('crewSet', { crew, target: y * MAP + x }); endPick(); toast(`The ${A.ui.crews[crew].name} crew will survey around there.`);
     return;
   }
-  select(pick(sx, sy));
+  const who = pick(sx, sy);
+  if (who < 0) { const [wx, wy] = V.toWorld(sx, sy), p = projectAt(wx, wy); if (p) { A.projSel = p.id; A.panels.setTab('build'); select(-1); return; } }
+  if (A.projSel >= 0) { A.projSel = -1; A.panels.sig = ''; }
+  select(who);
 }
 function pick(sx, sy) {
   const V = A.view, [wx, wy] = V.toWorld(sx, sy); let best = -1, bd = Math.max(.7, 9 / V.cam.z);
-  for (let i = 0; i < A.n; i++) { const act = A.pos[i * 4 + 3] >> 1; if (act === ACT.INSIDE || act === 15) continue; const d = Math.hypot(A.pos[i * 4] - wx, A.pos[i * 4 + 1] - wy); if (d < bd) { bd = d; best = i; } }
+  for (let i = 0; i < A.n; i++) { const act = A.pos[i * 4 + 3] >> 1; if (hidden(act)) continue; const d = Math.hypot(A.pos[i * 4] - wx, A.pos[i * 4 + 1] - wy); if (d < bd) { bd = d; best = i; } }
   return best;
 }
 function goHome() { const V = A.view; if (!V || !V.W.land) return; V.flyTo(V.W.land.x + .5, V.W.land.y + 3, Math.max(V.cam.z, 24)); A.follow = false; }
@@ -348,9 +428,9 @@ window.addEventListener('visibilitychange', async () => {
 window.__colony = {
   get state() {
     const V = A.view;
-    return { phase: A.phase, ready: A.phase === 'colony' && !!V && V.terrain.ready && !A.hold, painted: !!V && V.terrain.ready, n: A.n, clock: A.clock, perf: A.perf, thread: A.thread, fps: A.frames.length ? 1000 / avgMs() : 0, cam: V && { ...V.cam }, chunks: V && V.terrain.cached, paint: V && V.terrain.stats, lights: V && V.stats, timing: A.timing, sel: A.sel, saved: A.savedNote, sites: A.sites, ui: A.ui && { alive: A.ui.alive, seed: A.ui.seed, shelter: A.ui.shelter, food: A.ui.food, known: A.ui.known, stakes: A.ui.stakes.length, crews: A.ui.crews.map(c => ({ name: c.name, work: c.work, members: c.members.length, target: c.target })), stats: A.ui.stats }, log: A.log.slice(-6).map(e => e.m) };
+    return { phase: A.phase, ready: A.phase === 'colony' && !!V && V.terrain.ready && !A.hold, painted: !!V && V.terrain.ready, n: A.n, clock: A.clock, perf: A.perf, thread: A.thread, fps: A.frames.length ? 1000 / avgMs() : 0, cam: V && { ...V.cam }, chunks: V && V.terrain.cached, paint: V && V.terrain.stats, lights: V && V.stats, timing: A.timing, sel: A.sel, saved: A.savedNote, sites: A.sites, ui: A.ui && { alive: A.ui.alive, seed: A.ui.seed, shelter: A.ui.shelter, food: A.ui.food, known: A.ui.known, stakes: A.ui.stakes.length, crews: A.ui.crews.map(c => ({ name: c.name, work: c.work, members: c.members.length, target: c.target, proj: c.proj })), stats: A.ui.stats, projects: A.ui.projects.map(p => ({ id: p.id, name: p.name, type: p.type, stage: p.stage, done: p.done, powered: p.powered, wait: p.wait })), stores: A.ui.stores, power: A.ui.power, mat: A.ui.mat }, place: A.place && { type: A.place.type, x: A.place.x, y: A.place.y, w: A.place.w, h: A.place.h, ok: A.place.check && A.place.check.ok, why: A.place.check && A.place.check.why }, log: A.log.slice(-6).map(e => e.m) };
   },
-  setSpeed, select, goHome, requestSave, startColony, siteSelect, land, cmd, toast, get music() { return A.music.state; }, musicToggle,
+  setSpeed, select, goHome, requestSave, startColony, siteSelect, land, cmd, toast, startPlace, placeRect, confirmPlace, endPlace, showProject, get music() { return A.music.state; }, musicToggle,
   tab: t => A.panels.setTab(t), panels: () => A.panels,
   look(x, y, z) { const V = A.view; V.fly = null; V.cam.x = x; V.cam.y = y; if (z) V.cam.z = z; V.clampCam(); },
 };

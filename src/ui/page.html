@@ -211,7 +211,45 @@ select{font:600 12px var(--f-ui);color:var(--txt);background:rgba(0,0,0,.3);bord
 .facts em{font-style:normal;color:var(--txt);float:right;font:500 11px var(--f-num)}
 .unk{font-size:11px;color:var(--dim);margin-top:7px;line-height:1.45}
 #pickHint{position:absolute;left:50%;top:max(14px,env(safe-area-inset-top,0px));transform:translateX(-50%);padding:9px 14px;border-radius:12px;background:var(--glass2);border:1px solid rgba(243,182,92,.5);font-size:12px;font-weight:700;z-index:6;pointer-events:auto;display:flex;gap:10px;align-items:center}
-@media (max-width:760px){.keys{display:none}#perf{width:200px}#perf .rows,#spark{display:none}#card{max-width:calc(100% - 24px);bottom:230px}#side{top:auto;bottom:max(12px,env(safe-area-inset-bottom,0px));left:var(--gl);right:var(--gr);width:auto;max-width:none;height:46vh}#side.min{height:auto}.mmw{display:none}#card{bottom:calc(46vh + 24px)}}
+/* building */
+.colony .wide{grid-column:1/-1}
+.seg.wrap{display:grid;grid-template-columns:repeat(3,1fr);gap:2px}
+.num{font:500 11.5px var(--f-num);color:#d6dce6}
+.dim{font-style:normal;color:var(--mut);font-weight:600;font-size:11px}
+.stock{display:grid;grid-template-columns:1fr 1fr;gap:2px 14px;margin-top:6px;font-size:11.5px;font-weight:600;color:var(--mut)}
+.stock em{font:500 11px var(--f-num);font-style:normal;color:var(--txt);float:right}
+.mat{display:flex;align-items:flex-start;gap:10px;padding:6px 2px}
+.mat .grow{flex:1;min-width:0}
+.types{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.types button{text-align:left;border:1px solid var(--line);background:rgba(255,255,255,.035);border-radius:10px;padding:8px 9px;display:flex;flex-direction:column;gap:3px}
+.types button:hover{background:rgba(243,182,92,.08);border-color:rgba(243,182,92,.35)}
+.types b{font-size:12.5px;font-weight:800}
+.types span{font-size:10.5px;color:var(--mut);line-height:1.35;font-weight:600}
+.proj{border:1px solid var(--line);background:rgba(255,255,255,.03);border-radius:11px;padding:8px 10px;margin-bottom:7px}
+.proj.sel{border-color:rgba(243,182,92,.6);background:rgba(243,182,92,.07)}
+.proj.stuck{border-color:rgba(233,194,92,.45)}
+.proj .pn{font-size:13px;font-weight:800;text-align:left}
+.proj .row2>button:not(.pn):not(.btn){width:24px;height:24px;border-radius:7px;color:var(--mut);font-size:13px}
+.proj .row2>button:not(.pn):not(.btn):hover{background:rgba(255,255,255,.08);color:var(--txt)}
+.ps{font-size:11.5px;color:var(--mut);font-weight:600;margin-top:3px;line-height:1.4}
+.pw{font-size:11.5px;color:var(--acc2);font-weight:700;margin-top:4px;line-height:1.4}
+.pw.bad{color:#f4aaa2;margin-top:8px}
+.bar u{transition:width .4s}
+#plan{position:absolute;left:var(--gl);bottom:max(12px,env(safe-area-inset-bottom,0px));width:340px;max-width:calc(100% - 240px);max-height:min(66vh,600px);overflow:auto;padding:12px 14px;box-sizing:border-box;z-index:4}
+#plan .nm{font-size:16px;font-weight:800}
+#plan .meta{font-size:11.5px;color:var(--mut);font-weight:600;margin-top:2px}
+#plan .acts{margin-top:10px}
+#plan .acts .go:disabled{opacity:.4;cursor:default}
+.bill{display:grid;gap:2px;font-size:11.5px;font-weight:600}
+.bill div{display:grid;grid-template-columns:86px 1fr;gap:8px}
+.bill em{font-style:normal;color:var(--mut)}
+.keep{display:flex;align-items:center;gap:7px;margin-top:10px;font-size:11.5px;font-weight:600;color:var(--mut)}
+.keep input[type=checkbox]{accent-color:var(--acc);width:15px;height:15px;margin:0}
+.keep #plName2{flex:1;min-width:0;height:26px;border-radius:8px;border:1px solid var(--line2);background:rgba(0,0,0,.3);color:var(--txt);font:600 12px var(--f-ui);padding:0 8px;user-select:text;-webkit-user-select:text}
+b.warn{color:var(--mid)}
+#placeHint{position:absolute;left:50%;top:max(14px,env(safe-area-inset-top,0px));transform:translateX(-50%);padding:9px 14px;border-radius:12px;background:var(--glass2);border:1px solid rgba(127,211,143,.5);font-size:12px;font-weight:700;z-index:6;pointer-events:auto;display:flex;gap:10px;align-items:center;max-width:calc(100% - 32px);white-space:normal}
+#app.placing{cursor:crosshair}
+@media (max-width:760px){.keys{display:none}#perf{width:200px}#perf .rows,#spark{display:none}#card{max-width:calc(100% - 24px);bottom:230px}#side{top:auto;bottom:max(12px,env(safe-area-inset-bottom,0px));left:var(--gl);right:var(--gr);width:auto;max-width:none;height:46vh}#side.min{height:auto}.mmw{display:none}#card{bottom:calc(46vh + 24px)}#plan{max-width:calc(100% - 24px);bottom:calc(46vh + 24px)}}
 @media (max-width:520px){.tl{width:calc(100% - 88px)}.menu{display:none}#orbit{top:auto;bottom:max(12px,env(safe-area-inset-bottom,0px));max-height:52vh}}
 @media (prefers-reduced-motion:reduce){#card .job .dot{animation:none}#loader,#toast{transition:none}}
 </style>
@@ -238,8 +276,10 @@ select{font:600 12px var(--f-ui);color:var(--txt);background:rgba(0,0,0,.3);bord
       <div class="glass colony" id="colony" hidden>
         <div><span>People</span><b id="kPeople">-</b></div>
         <div><span>Rations</span><b id="kFood">-</b></div>
-        <div><span>Shelter</span><b id="kShelter">-</b></div>
+        <div class="wide"><span>Building</span><b id="kBuild">-</b></div>
+        <div><span>Power</span><b id="kPower">-</b></div>
         <div><span>Surveyed</span><b id="kKnown">-</b></div>
+        <div class="wide"><span>Yard</span><b id="kStock">-</b></div>
       </div>
       <div class="glass menu">
         <button class="pill" id="bSave">Save to file</button>
@@ -264,7 +304,7 @@ select{font:600 12px var(--f-ui);color:var(--txt);background:rgba(0,0,0,.3);bord
       </dl>
     </div>
     <div class="glass" id="side" hidden>
-      <div class="tabs" role="tablist"><button data-tab="archive" class="on">Archive</button><button data-tab="crews">Crews</button><button data-tab="log">Log <i id="logNew" hidden></i></button><button class="mini" id="sideMin" title="Fold the panel" aria-label="Fold the panel"><svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.8" fill="none"/></svg></button></div>
+      <div class="tabs" role="tablist"><button data-tab="archive" class="on">Archive</button><button data-tab="crews">Crews</button><button data-tab="build">Build</button><button data-tab="log">Log <i id="logNew" hidden></i></button><button class="mini" id="sideMin" title="Fold the panel" aria-label="Fold the panel"><svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.8" fill="none"/></svg></button></div>
       <div class="body" id="sideBody"></div>
     </div>
     <div class="glass" id="card" hidden>
@@ -277,8 +317,16 @@ select{font:600 12px var(--f-ui);color:var(--txt);background:rgba(0,0,0,.3);bord
     </div>
     <div class="glass" id="orbit" hidden></div>
     <div id="pickHint" hidden><span id="pickTxt"></span><button class="btn" id="pickCancel">Cancel</button></div>
+    <div id="placeHint" hidden><span id="placeTxt"></span><button class="btn" id="placeTurn">Turn door (R)</button><button class="btn" id="placeCancel">Cancel</button></div>
+    <div class="glass" id="plan" hidden>
+      <div class="nm" id="plName"></div>
+      <div class="meta" id="plMeta"></div>
+      <div id="plBody"></div>
+      <label class="keep"><input type="checkbox" id="plKeep"> Save as a blueprint called <input id="plName2" maxlength="40" aria-label="Blueprint name"></label>
+      <div class="acts"><button class="pill" id="plCancel">Cancel</button><button class="pill" id="plTurn">Turn door</button><button class="go" id="plGo">Build it</button></div>
+    </div>
     <div class="glass mmw"><canvas id="mm" aria-label="Minimap: click to look there"></canvas><div class="mmcap"><span>600 × 600 tiles</span><span id="mmc">surface</span></div></div>
-    <div class="keys" id="keys"><kbd>drag</kbd> or <kbd>WASD</kbd> move · <kbd>wheel</kbd> zoom · click a person · <kbd>Space</kbd> pause · <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> speed · <kbd>Tab</kbd> names · <kbd>Q</kbd><kbd>C</kbd><kbd>L</kbd> archive, crews, log · <kbd>M</kbd> music</div>
+    <div class="keys" id="keys"><kbd>drag</kbd> or <kbd>WASD</kbd> move · <kbd>wheel</kbd> zoom · click a person · <kbd>Space</kbd> pause · <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> speed · <kbd>Tab</kbd> names · <kbd>Q</kbd><kbd>C</kbd><kbd>B</kbd><kbd>L</kbd> archive, crews, build, log · <kbd>M</kbd> music</div>
     <div class="glass" id="newdlg" hidden>
       <h2>New landing</h2>
       <p>A new planet from a new seed. The colony you have now is replaced, so save it to a file first if you want to keep it.</p>

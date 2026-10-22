@@ -123,6 +123,17 @@ export function landAt(W, site) {
   if (!sh.dx) cargo.x = land.x; if (!sh.dy) cargo.y = land.y;
   const fire = { x: land.x - sh.dx * 8 + .5, y: land.y - sh.dy * 8 + .5 };
   for (const p of [sh.door, cargo, { x: Math.floor(fire.x), y: Math.floor(fire.y) }]) { const i = p.y * MAP + p.x; if (!cost[i]) { type[i] = T.DIRT; cost[i] = T_COST[T.DIRT]; } }
+  // the yard, where stone, timber and salvage are piled, on one of the two free sides; the load-test rig at its far end
+  let yard = null; best = 1e9;
+  for (const [px, py] of sh.dx ? [[0, 1], [0, -1]] : [[1, 0], [-1, 0]]) {
+    const w = px ? 4 : 6, h = px ? 6 : 4, x0 = Math.round(land.x + px * 9 - w / 2), y0 = Math.round(land.y + py * 9 - h / 2);
+    let bad = 0;
+    for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) { const t = type[y * MAP + x]; bad += t === T.SHALLOW || t === T.DEEP || t === T.ROCK ? 50 : t === T.MARSH ? 3 : 0; }
+    if (bad < best) { best = bad; yard = { x: x0, y: y0, w, h, px, py }; }
+  }
+  for (let y = yard.y; y < yard.y + yard.h; y++) for (let x = yard.x; x < yard.x + yard.w; x++) { const i = y * MAP + x; if (!cost[i] || type[i] === T.SHALLOW || type[i] === T.MARSH) { type[i] = T.DIRT; cost[i] = T_COST[T.DIRT]; } }
+  yard.pick = { x: yard.x + (yard.w >> 1), y: yard.y + (yard.h >> 1) };
+  yard.rig = { x: yard.px ? yard.x + (yard.px > 0 ? yard.w - 1 : 0) : yard.x + yard.w - 1, y: yard.py ? yard.y + (yard.py > 0 ? yard.h - 1 : 0) : yard.y + yard.h - 1 };
   // what can be reached on foot from the landing
   const reach = new Uint8Array(N), q = new Int32Array(N); let h = 0, tl = 0;
   const s0 = sh.door.y * MAP + sh.door.x; reach[s0] = 1; q[tl++] = s0;
@@ -133,7 +144,7 @@ export function landAt(W, site) {
     if (y > 0 && !reach[i - MAP] && cost[i - MAP]) { reach[i - MAP] = 1; q[tl++] = i - MAP; }
     if (y < MAP - 1 && !reach[i + MAP] && cost[i + MAP]) { reach[i + MAP] = 1; q[tl++] = i + MAP; }
   }
-  W.land = land; W.reach = reach; W.reachable = tl; W.site = { shelter: sh, cargo, fire };
+  W.land = land; W.reach = reach; W.reachable = tl; W.site = { shelter: sh, cargo, fire, yard };
   return [land.x - 18, land.y - 18, land.x + 18, land.y + 18];
 }
 
@@ -145,6 +156,7 @@ export function propsIn(W, x0, y0, x1, y1) {
   for (let y = Math.max(0, y0); y < Math.min(MAP, y1); y++) for (let x = Math.max(0, x0); x < Math.min(MAP, x1); x++) {
     const t = W.type[y * MAP + x], h = hash(x, y, s + 21);
     if (L && Math.hypot(x + .5 - L.x, y + .5 - L.y) < 13.5) continue;
+    if (W.gone && W.gone.has(y * MAP + x)) continue;   // felled, quarried away, or cleared for a building
     const m = W.moist[y * MAP + x] / 255, e = W.elev[y * MAP + x] / 255;
     let p = 0;
     if (t === T.FOREST) p = .22 + m * .28; else if (t === T.MEADOW) p = .018 + vnoise(x / 9, y / 9, s + 22) * .03; else if (t === T.MARSH) p = .05;
@@ -160,3 +172,5 @@ export function propsIn(W, x0, y0, x1, y1) {
   }
   return out;
 }
+// what stood on one tile before anything was felled or cleared there
+export function propAt(W, x, y) { const g = W.gone; W.gone = null; const p = propsIn(W, x, y, x + 1, y + 1)[0] || null; W.gone = g; return p; }
