@@ -221,6 +221,6 @@ export function buildingLights(out, projects, on, mul3) {
     if (p.done && p.powered && p.type !== 'solar') {
       if (p.door) out.push({ x: p.door.x + .5, y: p.door.y + .5, z: 1.2, r: 5, c: mul3([1, .78, .5], 1.6 * on), g: .25 });
       const long = p.w >= p.h; for (const k of [.3, .7]) out.push({ x: long ? p.x + p.w * k : p.x - .6, y: long ? p.y - .6 : p.y + p.h * k, z: 1, r: 4, c: mul3([1, .8, .55], 1.1 * on), g: .1 }), out.push({ x: long ? p.x + p.w * k : p.x + p.w + .6, y: long ? p.y + p.h + .6 : p.y + p.h * k, z: 1, r: 4, c: mul3([1, .8, .55], 1.1 * on), g: .1 });
-    } else if (!p.done && p.stage > 0 && !p.paused) out.push({ x: p.x + p.w / 2, y: p.y + p.h / 2, z: 2.2, r: 7, c: mul3([.85, .9, 1], 1.2 * on), g: .1 });
+    } else if (!p.done && p.stage > 0 && !p.paused) out.push({ x: p.x + p.w / 2, y: p.y + p.h / 2, z: 2.2, r: 6, c: mul3([1, .88, .7], .6 * on), g: .1 });
   }
 }

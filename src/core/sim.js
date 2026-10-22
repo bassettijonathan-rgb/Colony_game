@@ -405,8 +405,10 @@ export class Sim {
   load(d) {
     const { rng, wear, known, ...S } = d;
     this.S = JSON.parse(JSON.stringify(S)); srand(rng);
-    if (this.S.v === 2) this.migrate2();
+    const old = this.S.v === 2;
+    if (old) this.migrate2();
     this.resetGround(); this.gnew = []; this.qnew = [];
+    if (old) projectsThink(this); // give the migrated crews their project now, not at the next check
     this.wear.set(unrle(wear, MAP * MAP)); this.known.set(unrle(known, MAP * MAP)); this.dirty.clear(); this.kdirty.clear();
     this.used = new Set(this.S.cols.map(c => c.slot)); this.seats = new Set(this.S.cols.map(c => c.seat));
     for (let k = 0; k < NCH * NCH; k++) { this.dirty.add(k); this.kdirty.add(k); }
