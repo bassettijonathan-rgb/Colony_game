@@ -24,6 +24,7 @@
   --f-num:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   --gl:max(16px,env(safe-area-inset-left,0px));--gr:max(16px,env(safe-area-inset-right,0px));
 }
+[hidden]{display:none!important}
 html,body{height:100%;margin:0;overflow:hidden;background:var(--night)}
 body{font-family:var(--f-ui);color:var(--txt);-webkit-font-smoothing:antialiased;font-size:13px;user-select:none;-webkit-user-select:none;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 #app{position:fixed;inset:0;overflow:hidden;touch-action:none;cursor:grab;background:var(--night)}
@@ -58,8 +59,8 @@ svg{display:block}
 /* performance */
 #perf{position:absolute;right:var(--gr);top:max(12px,env(safe-area-inset-top,0px));width:282px;padding:12px 14px 11px;box-sizing:border-box}
 .fps{display:flex;align-items:baseline;gap:8px}
-#fps{font:600 30px/1 var(--f-num);font-variant-numeric:tabular-nums}
-#fps.g{color:var(--good)}#fps.y{color:var(--mid)}#fps.x{color:var(--bad)}
+#fps2{font:600 30px/1 var(--f-num);font-variant-numeric:tabular-nums}
+#fps2.g{color:var(--good)}#fps2.y{color:var(--mid)}#fps2.x{color:var(--bad)}
 .fps span{font-size:11px;color:var(--mut);font-weight:700;letter-spacing:.08em;text-transform:uppercase}
 #ms{margin-left:auto;font:500 11px var(--f-num);color:var(--mut)}
 #spark{display:block;width:100%;height:30px;margin:8px 0 6px}
@@ -104,8 +105,109 @@ svg{display:block}
 #loader i{display:block;width:220px;height:4px;border-radius:4px;background:rgba(255,255,255,.1);overflow:hidden}
 #loader u{display:block;height:100%;width:0;background:var(--seed);box-shadow:0 0 12px var(--seed);transition:width .25s}
 #nogl{max-width:420px;line-height:1.5}
-@media (max-width:760px){.keys{display:none}#perf{width:200px}#perf .rows,#spark{display:none}#card{max-width:calc(100% - 24px);bottom:230px}}
-@media (max-width:520px){.mmw #mm{width:130px;height:130px}#perf{top:auto;bottom:max(12px,env(safe-area-inset-bottom,0px));right:auto;left:var(--gl);width:auto}.tl{width:calc(100% - 24px)}}
+
+/* fps chip; the performance panel opens under it */
+#fpsChip{position:absolute;right:var(--gr);top:max(12px,env(safe-area-inset-top,0px));height:34px;padding:0 12px;display:flex;align-items:center;gap:7px;font-size:11px;font-weight:700;color:var(--mut);letter-spacing:.06em}
+#fpsChip b{font:600 15px var(--f-num);color:var(--good)}
+#fpsChip b.y{color:var(--mid)}#fpsChip b.x{color:var(--bad)}
+#perf{top:calc(max(12px,env(safe-area-inset-top,0px)) + 42px);z-index:3}
+/* colony strip */
+.colony{padding:10px 14px;display:grid;grid-template-columns:1fr 1fr;gap:6px 14px}
+.colony div{display:flex;flex-direction:column;gap:1px;min-width:0}
+.colony span{font-size:10px;color:var(--mut);font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.colony b{font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.colony b.warn{color:var(--mid)}.colony b.bad{color:var(--bad)}
+/* the side panel: archive, crews, log */
+#side{position:absolute;right:var(--gr);top:calc(max(12px,env(safe-area-inset-top,0px)) + 42px);width:352px;max-width:calc(100% - 32px);bottom:calc(max(12px,env(safe-area-inset-bottom,0px)) + 238px);display:flex;flex-direction:column;overflow:hidden}
+#side.min{bottom:auto}
+#side.min .body{display:none}
+.tabs{display:flex;gap:4px;padding:6px;border-bottom:1px solid var(--line)}
+.tabs button{flex:1;height:30px;border-radius:9px;font-size:12px;font-weight:700;color:var(--mut);display:flex;align-items:center;justify-content:center;gap:6px}
+.tabs button.on{background:rgba(255,255,255,.1);color:var(--txt)}
+.tabs button i{font-style:normal;font:600 10px var(--f-num);padding:1px 5px;border-radius:6px;background:rgba(243,182,92,.22);color:var(--acc2)}
+.tabs .mini{flex:0 0 30px}
+#side .body{flex:1;overflow:auto;padding:10px 12px 12px;overscroll-behavior:contain}
+#side .body::-webkit-scrollbar{width:8px}#side .body::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:8px}
+.sec{font-size:10.5px;color:var(--mut);font-weight:800;letter-spacing:.08em;text-transform:uppercase;margin:12px 2px 6px}
+.sec:first-child{margin-top:2px}
+.note{font-size:11.5px;color:var(--mut);line-height:1.5;margin:4px 2px 8px}
+.box{border:1px solid var(--line);background:rgba(255,255,255,.035);border-radius:11px;padding:9px 10px;margin-bottom:8px}
+.bar{height:5px;border-radius:5px;background:rgba(255,255,255,.08);overflow:hidden;margin-top:6px}
+.bar u{display:block;height:100%;background:var(--seed);box-shadow:0 0 8px var(--seed)}
+.row2{display:flex;align-items:center;gap:8px}
+.row2 .grow{flex:1;min-width:0}
+.btn{height:30px;padding:0 11px;border-radius:9px;border:1px solid var(--line2);background:rgba(255,255,255,.05);font-size:12px;font-weight:700;white-space:nowrap}
+.btn:hover{background:rgba(255,255,255,.1)}
+.btn.go{background:linear-gradient(180deg,rgba(243,182,92,.95),rgba(214,140,52,.95));color:#1a1206;border:0}
+.btn:disabled{opacity:.4;cursor:default}
+/* founders */
+.f{display:grid;grid-template-columns:22px 1fr;gap:2px 8px;padding:8px 8px;border-radius:10px;cursor:pointer;border:1px solid transparent}
+.f:hover{background:rgba(255,255,255,.04)}
+.f.sel{background:rgba(243,182,92,.08);border-color:rgba(243,182,92,.35)}
+.f .ck{width:16px;height:16px;border-radius:5px;border:1.5px solid var(--line2);margin-top:2px;display:grid;place-items:center}
+.f.sel .ck{background:var(--acc);border-color:var(--acc)}
+.f.sel .ck:after{content:'';width:7px;height:4px;border:2px solid #1a1206;border-top:0;border-right:0;transform:rotate(-45deg) translate(1px,-1px)}
+.f .nm{font-size:13px;font-weight:800}
+.f .tr{font-size:11.5px;color:var(--mut);font-weight:600}
+.f .more{grid-column:2;font-size:11.5px;color:#c9d0db;line-height:1.5}
+.chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
+.chip{font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:7px;background:rgba(255,255,255,.07);color:#d6dce6;white-space:nowrap}
+.chip.sk{background:rgba(143,224,255,.1);color:#bfeeff}
+.chip.t{background:rgba(243,182,92,.12);color:var(--acc2)}
+.chip.g{background:rgba(127,211,143,.14);color:#aee6b9}.chip.b{background:rgba(238,107,95,.14);color:#f4aaa2}
+.q{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;padding:3px 2px}
+.q span{flex:1}
+.q button{color:var(--mut);font-size:11px}
+/* crews */
+.crew{border:1px solid var(--line);background:rgba(255,255,255,.03);border-radius:12px;padding:10px;margin-bottom:10px}
+.crew h3{margin:0;font-size:14px;font-weight:800;display:flex;align-items:center;gap:8px}
+.crew h3 i{width:10px;height:10px;border-radius:3px}
+.crew h3 em{font-style:normal;margin-left:auto;font-size:11px;color:var(--mut);font-weight:600}
+.crew .st{font-size:11.5px;color:var(--mut);margin:3px 0 8px;font-weight:600}
+.lbl{font-size:10.5px;color:var(--mut);font-weight:700;margin:8px 0 4px;letter-spacing:.04em}
+.seg.sm button{height:26px;font-size:11.5px}
+select{font:600 12px var(--f-ui);color:var(--txt);background:rgba(0,0,0,.3);border:1px solid var(--line2);border-radius:8px;height:28px;padding:0 6px;max-width:100%}
+.rules label{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;padding:3px 0;cursor:pointer}
+.rules input{accent-color:var(--acc);width:15px;height:15px;margin:0}
+.mem{display:flex;align-items:center;gap:8px;padding:5px 4px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600}
+.mem:hover{background:rgba(255,255,255,.05)}
+.mem .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mem .lead{font-size:10px;color:var(--acc2);font-weight:800;letter-spacing:.05em}
+.mini3{display:flex;gap:3px}
+.mini3 b{width:22px;height:4px;border-radius:3px;background:rgba(255,255,255,.1);position:relative;overflow:hidden}
+.mini3 b u{position:absolute;left:0;top:0;bottom:0}
+/* log */
+.lg{font-size:12px;line-height:1.45;padding:5px 2px;border-bottom:1px solid rgba(255,255,255,.04);display:grid;grid-template-columns:64px 1fr;gap:8px}
+.lg em{font:500 10.5px var(--f-num);color:var(--dim);font-style:normal;padding-top:2px}
+.lg.good span{color:#c7efd0}.lg.bad span{color:#f6c2bc}
+/* person card */
+#card{width:320px;max-height:min(62vh,560px);overflow:auto}
+#card .meta{font-size:11.5px;color:var(--mut);font-weight:600;margin-top:2px}
+.meters{display:grid;grid-template-columns:62px 1fr 34px;gap:5px 8px;align-items:center;margin-top:10px;font-size:11.5px;font-weight:600}
+.meters span{color:var(--mut)}
+.meters em{font:500 11px var(--f-num);font-style:normal;text-align:right;color:#d6dce6}
+.meters b{height:6px;border-radius:5px;background:rgba(255,255,255,.08);overflow:hidden;display:block}
+.meters b u{display:block;height:100%}
+.skills{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:11px;font-weight:600;color:var(--mut)}
+.skills div{display:grid;grid-template-columns:1fr 26px;gap:4px;align-items:center}
+.skills em{font:500 10.5px var(--f-num);font-style:normal;color:#d6dce6;text-align:right}
+.mm2{font-size:11.5px;color:#c9d0db;line-height:1.45;margin:3px 0}
+.mm2 em{font:500 10px var(--f-num);font-style:normal;color:var(--dim);margin-right:6px}
+/* orbit */
+#orbit{position:absolute;left:var(--gl);top:max(12px,env(safe-area-inset-top,0px));width:360px;max-width:calc(100% - 32px);max-height:calc(100% - 24px);overflow:auto;padding:14px;box-sizing:border-box;background:var(--glass2);z-index:4}
+#orbit h2{margin:0;font-size:17px;font-weight:800}
+#orbit p{margin:4px 0 12px;color:var(--mut);font-size:12px;line-height:1.5}
+.site{border:1px solid var(--line);border-radius:12px;padding:10px 11px;margin-bottom:8px;cursor:pointer;background:rgba(255,255,255,.03)}
+.site:hover{background:rgba(255,255,255,.06)}
+.site.on{border-color:rgba(143,224,255,.6);background:rgba(143,224,255,.07)}
+.site h3{margin:0;font-size:13.5px;font-weight:800;display:flex;align-items:center;gap:8px}
+.site h3 b{width:20px;height:20px;border-radius:6px;display:grid;place-items:center;background:rgba(143,224,255,.16);color:var(--seed);font-size:11.5px}
+.facts{display:grid;grid-template-columns:1fr 1fr;gap:3px 12px;margin-top:7px;font-size:11.5px;color:var(--mut);font-weight:600}
+.facts em{font-style:normal;color:var(--txt);float:right;font:500 11px var(--f-num)}
+.unk{font-size:11px;color:var(--dim);margin-top:7px;line-height:1.45}
+#pickHint{position:absolute;left:50%;top:max(14px,env(safe-area-inset-top,0px));transform:translateX(-50%);padding:9px 14px;border-radius:12px;background:var(--glass2);border:1px solid rgba(243,182,92,.5);font-size:12px;font-weight:700;z-index:6;pointer-events:auto;display:flex;gap:10px;align-items:center}
+@media (max-width:760px){.keys{display:none}#perf{width:200px}#perf .rows,#spark{display:none}#card{max-width:calc(100% - 24px);bottom:230px}#side{top:auto;bottom:max(12px,env(safe-area-inset-bottom,0px));left:var(--gl);right:var(--gr);width:auto;max-width:none;height:46vh}#side.min{height:auto}.mmw{display:none}#card{bottom:calc(46vh + 24px)}}
+@media (max-width:520px){.tl{width:calc(100% - 88px)}.menu{display:none}#orbit{top:auto;bottom:max(12px,env(safe-area-inset-bottom,0px));max-height:52vh}}
 @media (prefers-reduced-motion:reduce){#card .job .dot{animation:none}#loader,#toast{transition:none}}
 </style>
 <div id="app">
@@ -128,14 +230,21 @@ svg{display:block}
           <button class="pill" id="bHome" title="Back to the Seed (H)">Seed</button>
         </div>
       </div>
+      <div class="glass colony" id="colony" hidden>
+        <div><span>People</span><b id="kPeople">-</b></div>
+        <div><span>Rations</span><b id="kFood">-</b></div>
+        <div><span>Shelter</span><b id="kShelter">-</b></div>
+        <div><span>Surveyed</span><b id="kKnown">-</b></div>
+      </div>
       <div class="glass menu">
         <button class="pill" id="bSave">Save to file</button>
         <button class="pill" id="bLoad">Load file</button>
         <button class="pill" id="bNew">New landing</button>
       </div>
     </div>
-    <div class="glass" id="perf" aria-live="off">
-      <div class="fps"><b id="fps">--</b><span>fps</span><em id="ms"></em></div>
+    <button class="glass" id="fpsChip" title="Performance"><b id="fps">--</b>FPS</button>
+    <div class="glass" id="perf" aria-live="off" hidden>
+      <div class="fps"><b id="fps2">--</b><span>fps</span><em id="ms"></em></div>
       <canvas id="spark" width="440" height="60"></canvas>
       <dl class="rows">
         <dt>People</dt><dd id="pPeople">-</dd>
@@ -148,18 +257,26 @@ svg{display:block}
         <dt>Saved</dt><dd id="pSaved">-</dd>
       </dl>
     </div>
+    <div class="glass" id="side" hidden>
+      <div class="tabs" role="tablist"><button data-tab="archive" class="on">Archive</button><button data-tab="crews">Crews</button><button data-tab="log">Log <i id="logNew" hidden></i></button><button class="mini" id="sideMin" title="Fold the panel" aria-label="Fold the panel"><svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.8" fill="none"/></svg></button></div>
+      <div class="body" id="sideBody"></div>
+    </div>
     <div class="glass" id="card" hidden>
       <div class="nm" id="cName"></div>
+      <div class="meta" id="cMeta"></div>
       <div class="cr"><i id="cSw"></i><span id="cCrew"></span></div>
       <div class="job"><span class="dot"></span><span id="cJob"></span></div>
-      <div class="row"><button class="pill" id="cFollow">Follow</button><button class="pill" id="cClose">Close</button></div>
+      <div id="cBody"></div>
+      <div class="row"><button class="pill" id="cFollow">Follow</button><select id="cMove" aria-label="Move to crew"></select><button class="pill" id="cClose">Close</button></div>
     </div>
+    <div class="glass" id="orbit" hidden></div>
+    <div id="pickHint" hidden><span id="pickTxt"></span><button class="btn" id="pickCancel">Cancel</button></div>
     <div class="glass mmw"><canvas id="mm" aria-label="Minimap: click to look there"></canvas><div class="mmcap"><span>600 × 600 tiles</span><span id="mmc">surface</span></div></div>
-    <div class="keys"><kbd>drag</kbd> or <kbd>WASD</kbd> move · <kbd>wheel</kbd> zoom · click a person · <kbd>Space</kbd> pause · <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> speed · <kbd>Tab</kbd> names</div>
+    <div class="keys" id="keys"><kbd>drag</kbd> or <kbd>WASD</kbd> move · <kbd>wheel</kbd> zoom · click a person · <kbd>Space</kbd> pause · <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> speed · <kbd>Tab</kbd> names · <kbd>Q</kbd><kbd>C</kbd><kbd>L</kbd> archive, crews, log</div>
     <div class="glass" id="newdlg" hidden>
       <h2>New landing</h2>
       <p>A new planet from a new seed. The colony you have now is replaced, so save it to a file first if you want to keep it.</p>
-      <div class="seg" id="nCount"><button data-n="300" class="on">300 colonists</button><button data-n="40">40 founders</button></div>
+      <div class="seg" id="nMode"><button data-m="landfall" class="on">Landfall</button><button data-m="stress">Stress test, 300 people</button></div>
       <div class="field"><label for="nSeed">Seed</label><input id="nSeed" inputmode="numeric" autocomplete="off"></div>
       <div class="acts"><button class="pill" id="nCancel">Cancel</button><button class="go" id="nGo">Land</button></div>
     </div>

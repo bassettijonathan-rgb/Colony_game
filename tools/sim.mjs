@@ -1,43 +1,46 @@
 // Headless runs of the real simulation: determinism, saving, and bot colonies with timings.
-// node tools/sim.mjs [worlds] [days] [colonists]
+// node tools/sim.mjs [worlds] [days] [mode: landfall|stress] [colonists]
 import { registerSealed } from './sealed.mjs';
 registerSealed();
 const { landColony, runColony } = await import('../src/bot/runner.js');
 const { Sim } = await import('../src/core/sim.js');
 import { createHash } from 'node:crypto';
 
-const worlds = +(process.argv[2] || 3), days = +(process.argv[3] || 1), count = +(process.argv[4] || 300);
+const worlds = +(process.argv[2] || 3), days = +(process.argv[3] || 3), mode = process.argv[4] || 'landfall', count = +(process.argv[5] || 300);
 const hashOf = sim => createHash('sha1').update(JSON.stringify(sim.serialize())).digest('hex').slice(0, 12);
 const ms = v => v.toFixed(v < 10 ? 2 : 0);
 
 // 1. the same seed plays out the same way
 {
-  const a = landColony(12345, count); for (let i = 0; i < 6000; i++) a.sim.tick();
-  const b = landColony(12345, count); for (let i = 0; i < 6000; i++) b.sim.tick();
+  const a = landColony(12345, mode, count); for (let i = 0; i < 30000; i++) a.sim.tick();
+  const b = landColony(12345, mode, count); for (let i = 0; i < 30000; i++) b.sim.tick();
   const ha = hashOf(a.sim), hb = hashOf(b.sim);
   console.log(`determinism: ${ha === hb ? 'ok' : 'FAILED'} (${ha} vs ${hb})`); if (ha !== hb) process.exitCode = 1;
 }
 // 2. a saved colony continues exactly as the original does
 {
-  const a = landColony(999, count); for (let i = 0; i < 4000; i++) a.sim.tick();
+  const a = landColony(999, mode, count); for (let i = 0; i < 25000; i++) a.sim.tick();
   const snap = JSON.stringify(a.sim.serialize());
   const b = new Sim(a.W, a.P); b.load(JSON.parse(snap));
   const same = hashOf(a.sim) === hashOf(b);
   // the rng is shared, so reload just before b runs to give it the state a had at the save
-  for (let i = 0; i < 9000; i++) a.sim.tick();
+  for (let i = 0; i < 20000; i++) a.sim.tick();
   const h1 = hashOf(a.sim);
   b.load(JSON.parse(snap));
-  for (let i = 0; i < 9000; i++) b.tick();
+  for (let i = 0; i < 20000; i++) b.tick();
   const h2 = hashOf(b);
-  console.log(`save round trip: at once ${same ? 'ok' : 'FAILED'}, 9000 ticks later ${h1 === h2 ? 'ok' : 'FAILED'} (${h1} vs ${h2}) · save ${(snap.length / 1024).toFixed(0)} KB`);
+  console.log(`save round trip: at once ${same ? 'ok' : 'FAILED'}, 20000 ticks later ${h1 === h2 ? 'ok' : 'FAILED'} (${h1} vs ${h2}) · save ${(snap.length / 1024).toFixed(0)} KB`);
   if (!same || h1 !== h2) process.exitCode = 1;
 }
-// 3. bot colonies on different worlds
+// 3. bot colonies on different worlds; POLICY=careless plays with long shifts and no safety rules
 for (let k = 0; k < worlds; k++) {
-  const seed = 1000 + k * 7919, r = runColony(seed, count, days);
-  console.log(`world ${seed}: generated in ${ms(r.timing.world)} ms, path graph ${ms(r.timing.graph)} ms (${r.nodes} nodes), home field ${ms(r.timing.field)} ms, ${(r.reachable / 3600).toFixed(0)}% walkable`);
-  console.log(`  ${count} colonists, ${days} day(s): ${ms(r.tickMs)} ms per tick, worst ${ms(r.worstTickMs)} ms, ${r.realtimeX.toFixed(0)}x faster than normal speed`);
-  console.log(`  ${r.trips} crew trips, ${r.paths.coarse + r.paths.local} path searches (${r.paths.coarse} long), ${ms(r.paths.ms)} ms of searching, ${r.paths.fail} failed`);
-  console.log(`  out working at noon: ${r.workingAt12.join(', ')} · home by 3 am: ${r.homeAt3.join(', ')} of ${count} · trodden tiles: ${r.wornTiles}`);
-  if (r.homeAt3.some(n => n < count)) { console.log('  NOT EVERYONE GOT HOME'); process.exitCode = 1; }
+  const seed = 1000 + k * 7919, r = runColony(seed, days, mode, count, null, process.env.POLICY || 'seed');
+  console.log(`world ${seed}: landed at "${r.site.tag}", generated in ${ms(r.timing.world)} ms, path graph ${ms(r.timing.graph)} ms (${r.nodes} nodes), ${(r.reachable / 3600).toFixed(0)}% walkable`);
+  console.log(`  ${r.people} people, ${days} day(s): ${ms(r.tickMs)} ms per tick, worst ${ms(r.worstTickMs)} ms, ${r.realtimeX.toFixed(0)}x faster than normal speed; ${r.paths.coarse + r.paths.local} path searches, ${r.paths.fail} failed`);
+  console.log(`  asleep at 3 am: ${r.nights.join(', ')} · working at noon: ${r.noons.join(', ')} · stakes ${r.stakes}`);
+  for (const d of r.daysOut) console.log(`  day ${d.day}: ${d.people} people, fatigue ${d.fat}, strain ${d.str}, trust ${d.tru}, shelter ${d.shelter}, surveyed ${d.known}%, rations ${d.food}`);
+  console.log(`  ${Object.entries(r.stats).map(([k, v]) => k + ' ' + v).join(', ')}`);
+  if (process.env.LOG) for (const e of r.log) console.log(`    [${(e.t / 21600 + 1).toFixed(2)}] ${e.m}`);
+  // with sensible play everyone is in bed by 3 am; a careless player can leave people walking home all night
+  if (r.nights.some(n => { const [a, b] = n.split('/'); return +a < +b; })) { console.log('  NOT EVERYONE WAS IN BED'); if (r.policy === 'seed') process.exitCode = 1; }
 }

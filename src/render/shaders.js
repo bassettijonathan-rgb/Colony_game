@@ -43,7 +43,7 @@ vec3 ground(int t,vec2 w){
  if(t==5){vec3 c=C(82.0,79.0,76.0)*(.78+g*.32+g3*.12);return mix(c,C(128.0,118.0,100.0),smoothstep(.5,.8,g2)*.4);}
  if(t==6)return C(112.0,106.0,96.0)*(.85+g3*.3);
  if(t==7){vec3 c=mix(C(70.0,86.0,58.0),C(46.0,58.0,46.0),smoothstep(.4,.7,g2));return c*(.9+g3*.15);}
- return mix(C(52.0,46.0,40.0),C(92.0,86.0,80.0),smoothstep(.5,.8,g3))*(.9+g*.2);}
+ return mix(C(78.0,70.0,60.0),C(112.0,104.0,94.0),smoothstep(.5,.8,g3))*(.9+g*.2);}
 void main(){
  vec2 w=uOrigin+gl_FragCoord.xy/uSize*uSpan;
  int t=typeAt(warp(w)+(h22(gl_FragCoord.xy+uSeed)-.5)*.12);
@@ -77,7 +77,7 @@ void main(){
   float e=length(d*vec2(1.0,1.25));if(e<s){col=mix(col,pc,smoothstep(s,s*.75,e));if(length(d+vec2(s*.3))<s*.4)col=mix(col,vec3(1.0),.18);}}}
  // the landing: soot rays thrown out from the Seed
  {vec2 dl=w-uLand;float l=length(dl);if(l<16.0){float a=atan(dl.y,dl.x);float ray=vn(vec2(a*14.0,l*.35));
-  col*=mix(1.0,.5,smoothstep(.5,.8,ray)*smoothstep(10.0,3.0,l));col*=mix(1.0,.72,smoothstep(12.0,5.0,l));}}
+  col*=mix(1.0,.66,smoothstep(.5,.8,ray)*smoothstep(10.0,3.0,l));col*=mix(1.0,.84,smoothstep(12.0,5.0,l));}}
  // trodden ground: paths appear where people keep walking
  float wr=wearSoft(w);float pth=smoothstep(.16,.52,wr+(fbm(w*2.5)-.5)*.24);
  if(t!=3&&t!=4&&t!=5)col=mix(col,C(118.0,96.0,70.0)*(.82+fbm(w*4.0)*.32),pth*.85);
@@ -195,8 +195,8 @@ void main(){
 export const FS_C = `#version 300 es
 precision highp float;precision highp int;
 ${LOOKUP}
-uniform sampler2D uDyn,uLight,uH;uniform vec2 uRes;uniform vec4 uCam;
-uniform float uTime,uExposure,uSat,uMist,uNight,uEnc,uVig;uniform vec3 uKeyDir,uKeyCol,uSky,uFog,uLift,uGain;
+uniform sampler2D uDyn,uLight,uH,uKnown;uniform vec2 uRes;uniform vec4 uCam;
+uniform float uTime,uExposure,uSat,uMist,uNight,uEnc,uVig,uFogOn;uniform vec3 uKeyDir,uKeyCol,uSky,uFog,uLift,uGain;
 uniform vec4 uLP[24];uniform vec4 uLC[24];uniform int uNL;out vec4 o;
 ${NOISE}
 vec3 aces(vec3 x){return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14),0.0,1.0);}
@@ -233,6 +233,10 @@ void main(){
  float lum=dot(col,vec3(0.2126,0.7152,0.0722));col=max(mix(vec3(lum),col,uSat),0.0);
  col=col*uGain+uLift*(1.0-col);
  vec2 v=s-0.5;v.x*=uRes.x/uRes.y;col*=clamp(1.0-uVig*dot(v,v)*1.15,0.0,1.0);
+ // ground the Seed has not surveyed: seen only from orbit, so drained of colour, dimmer and cold, with a soft ragged edge
+ if(uFogOn>0.5){vec2 fw=w+(vec2(vn(w*.21),vn(w*.21+7.3))-.5)*5.0;float kn=texture(uKnown,fw/uMap).r;float fg=1.0-smoothstep(.2,.8,kn);
+  if(fg>0.001){float lm=dot(col,vec3(0.2126,0.7152,0.0722));vec3 fc=vec3(lm)*vec3(.6,.7,.86)*.62+vec3(.01,.015,.03);
+   float edge=fg*(1.0-fg)*4.0;fc+=vec3(.05,.12,.16)*edge*(.6+.4*sin(uTime*1.5+w.x*.2+w.y*.13))*(1.0-uNight*.5);col=mix(col,fc,fg*.88);}}
  if(!inMap(w))col*=0.25;
  col=pow(col,vec3(1.0/2.2));
  col+=(fract(sin(dot(gl_FragCoord.xy,vec2(12.9898,78.233)))*43758.5453)-0.5)/255.0;
