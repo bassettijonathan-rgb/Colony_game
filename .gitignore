@@ -1,0 +1,5 @@
+node_modules/
+dist/
+*.png
+# the sealed texts never live in this repository; the build reads them from the project's sealed folder
+src/sealed/

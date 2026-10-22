@@ -1,0 +1,15 @@
+{
+  "name": "colony",
+  "version": "0.1.0",
+  "description": "A colony game for the browser, in the Lumen style.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "sim": "node tools/sim.mjs",
+    "check": "node tools/build.mjs && NODE_PATH=$(npm root -g) node tools/browser-check.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}
