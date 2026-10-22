@@ -1,7 +1,8 @@
 // The painted map. A whole-map overview is painted once at a low resolution; on top of it, chunks near
 // the camera are painted in full detail into the layers of a texture array, nearest first, a couple per
 // frame, and the least recently seen chunk gives its layer up when a new one is needed.
-// When the trodden ground changes, the chunks it touches are painted again.
+// When the trodden ground changes, the chunks it touches are painted again. After the landing, the ground the
+// lander changed is painted again too. What the Seed has surveyed is kept in its own small texture.
 import { MAP, CH, NCH, T } from '../core/consts.js';
 import { propsIn } from '../core/world.js';
 import { FS_PAINT_ALB, FS_PAINT_HM, VS_SPRITE, FS_SPRITE } from './shaders.js';
@@ -16,11 +17,11 @@ export class Terrain {
   constructor(G, W) {
     const gl = G.gl; this.G = G; this.W = W;
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-    const N = MAP * MAP, field = new Uint8Array(N * 4);
-    for (let i = 0; i < N; i++) { const t = W.type[i]; field[i * 4] = W.elev[i]; field[i * 4 + 1] = W.moist[i]; field[i * 4 + 2] = t === T.DEEP ? 255 : t === T.SHALLOW ? 115 : 0; field[i * 4 + 3] = t === T.ROCK ? 255 : 0; }
+    const N = MAP * MAP;
     this.tType = G.tex2D(MAP, MAP, { internal: gl.R8, format: gl.RED, filter: gl.NEAREST, data: W.type });
-    this.tField = G.tex2D(MAP, MAP, { data: field });
+    this.tField = G.tex2D(MAP, MAP, { data: fieldOf(W) });
     this.tWear = G.tex2D(MAP, MAP, { internal: gl.R8, format: gl.RED, data: new Uint8Array(N) });
+    this.tKnown = G.tex2D(MAP, MAP, { internal: gl.R8, format: gl.RED, data: new Uint8Array(N) });
     this.albA = G.texArray(CH * TP, CH * TP, LAYERS, true);
     this.hmA = G.texArray(CH * HP, CH * HP, LAYERS, false);
     this.matA = G.texArray(CH * HP, CH * HP, LAYERS, false);
@@ -53,7 +54,7 @@ export class Terrain {
     this.G.bind(u.uType, 0, this.tType); this.G.bind(u.uField, 1, this.tField); this.G.bind(u.uWear, 2, this.tWear);
     gl.uniform2f(u.uOrigin, ox, oy); gl.uniform1f(u.uSpan, span); gl.uniform1f(u.uSize, size);
     if (u.uDetail) gl.uniform1f(u.uDetail, detail);
-    gl.uniform1f(u.uSeed, (W.seed % 997) * .731); gl.uniform1f(u.uMap, MAP); gl.uniform2f(u.uLand, W.land.x, W.land.y);
+    gl.uniform1f(u.uSeed, (W.seed % 997) * .731); gl.uniform1f(u.uMap, MAP); if (W.land) gl.uniform2f(u.uLand, W.land.x, W.land.y); else gl.uniform2f(u.uLand, -999, -999);
     if (u.uRock) gl.uniform1f(u.uRock, W.rock);
   }
   // stamps props into whatever is bound, over the tile square [ox, ox+span)
@@ -134,24 +135,47 @@ export class Terrain {
     gl.bindTexture(gl.TEXTURE_2D, this.tTable); gl.texSubImage2D(gl.TEXTURE_2D, 0, k % NCH, k / NCH | 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, this.table.subarray(k * 4, k * 4 + 4));
   }
   // the overview's copy of one chunk, painted again (for trodden ground seen from far away)
-  repaintOverview(k) {
+  repaintOverview(k, heights = false) {
     const gl = this.G.gl, cx = k % NCH, cy = k / NCH | 0, ox = cx * CH, oy = cy * CH;
     gl.bindVertexArray(this.G.vao);
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbA); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.albO, 0); gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
     gl.enable(gl.SCISSOR_TEST); gl.scissor(ox * OV, oy * OV, CH * OV, CH * OV);
     gl.viewport(0, 0, MAP * OV, MAP * OV);
     this.uniforms(this.pA, 0, 0, MAP, MAP * OV, 0); gl.drawArrays(gl.TRIANGLES, 0, 3);
-    this.stamp(propsIn(this.W, ox - 2, oy - 2, ox + CH + 2, oy + CH + 2), 0, 0, MAP, false);
+    const list = propsIn(this.W, ox - 2, oy - 2, ox + CH + 2, oy + CH + 2);
+    this.stamp(list.slice(), 0, 0, MAP, false);
+    if (heights) {
+      this.bindHM(this.hmO, this.matO, -1); gl.scissor(ox * OVH, oy * OVH, CH * OVH, CH * OVH); gl.viewport(0, 0, MAP * OVH, MAP * OVH);
+      this.uniforms(this.pH, 0, 0, MAP, MAP * OVH, 0); gl.drawArrays(gl.TRIANGLES, 0, 3);
+      gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.NONE]); this.stamp(list, 0, 0, MAP, true);
+    }
     gl.disable(gl.SCISSOR_TEST); gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
+  // the lander came down: the ground it burned and cleared is painted again, near and far
+  patch(W, rect) {
+    const gl = this.G.gl; this.W = W;
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.bindTexture(gl.TEXTURE_2D, this.tType); gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, MAP, MAP, gl.RED, gl.UNSIGNED_BYTE, W.type);
+    gl.bindTexture(gl.TEXTURE_2D, this.tField); gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, MAP, MAP, gl.RGBA, gl.UNSIGNED_BYTE, fieldOf(W));
+    const [x0, y0, x1, y1] = rect;
+    for (let cy = Math.max(0, Math.floor(y0 / CH)); cy <= Math.min(NCH - 1, Math.floor(y1 / CH)); cy++) for (let cx = Math.max(0, Math.floor(x0 / CH)); cx <= Math.min(NCH - 1, Math.floor(x1 / CH)); cx++) {
+      const k = cy * NCH + cx; if (this.chunkSlot[k] >= 0) this.stale[k] = 1; if (this.ready) this.repaintOverview(k, true);
+    }
+    if (this.ready) { gl.bindTexture(gl.TEXTURE_2D, this.albO); gl.generateMipmap(gl.TEXTURE_2D); gl.bindTexture(gl.TEXTURE_2D, this.matO); gl.generateMipmap(gl.TEXTURE_2D); }
+  }
+  // what the Seed has seen, one chunk at a time (0 unseen, 255 seen)
+  setKnown(k, data) { this.sub(this.tKnown, k, data); }
 
   // new trodden ground from the simulation, one chunk at a time
   setWear(k, data) {
-    const gl = this.G.gl, cx = k % NCH, cy = k / NCH | 0, x0 = cx * CH, y0 = cy * CH, w = Math.min(CH, MAP - x0), h = Math.min(CH, MAP - y0);
-    let d = data; if (w < CH || h < CH) { d = new Uint8Array(w * h); for (let y = 0; y < h; y++) d.set(data.subarray(y * CH, y * CH + w), y * w); }
-    gl.bindTexture(gl.TEXTURE_2D, this.tWear); gl.texSubImage2D(gl.TEXTURE_2D, 0, x0, y0, w, h, gl.RED, gl.UNSIGNED_BYTE, d);
+    this.sub(this.tWear, k, data);
     if (this.chunkSlot[k] >= 0) this.stale[k] = 1;
     this.ovStale.add(k);
+  }
+  sub(tex, k, data) {
+    const gl = this.G.gl, cx = k % NCH, cy = k / NCH | 0, x0 = cx * CH, y0 = cy * CH, w = Math.min(CH, MAP - x0), h = Math.min(CH, MAP - y0);
+    let d = data; if (w < CH || h < CH) { d = new Uint8Array(w * h); for (let y = 0; y < h; y++) d.set(data.subarray(y * CH, y * CH + w), y * w); }
+    gl.bindTexture(gl.TEXTURE_2D, tex); gl.texSubImage2D(gl.TEXTURE_2D, 0, x0, y0, w, h, gl.RED, gl.UNSIGNED_BYTE, d);
   }
 
   // called every frame with the visible tile rectangle and the zoom in device pixels per tile
@@ -193,8 +217,15 @@ export class Terrain {
   }
   dispose() {
     const gl = this.G.gl;
-    for (const t of [this.tType, this.tField, this.tWear, this.albA, this.hmA, this.matA, this.albO, this.hmO, this.matO, this.tTable, this.tSprite, this.tSpriteH]) gl.deleteTexture(t);
+    for (const t of [this.tType, this.tField, this.tWear, this.tKnown, this.albA, this.hmA, this.matA, this.albO, this.hmO, this.matO, this.tTable, this.tSprite, this.tSpriteH]) gl.deleteTexture(t);
     gl.deleteFramebuffer(this.fbA); gl.deleteFramebuffer(this.fbH); gl.deleteBuffer(this.bP); gl.deleteBuffer(this.bU); gl.deleteVertexArray(this.svao);
   }
   get cached() { let n = 0; for (const c of this.slotChunk) if (c >= 0) n++; return n; }
+}
+
+// height, moisture, water depth and bare rock per tile, as the painters read them
+function fieldOf(W) {
+  const N = MAP * MAP, field = new Uint8Array(N * 4);
+  for (let i = 0; i < N; i++) { const t = W.type[i]; field[i * 4] = W.elev[i]; field[i * 4 + 1] = W.moist[i]; field[i * 4 + 2] = t === T.DEEP ? 255 : t === T.SHALLOW ? 115 : 0; field[i * 4 + 3] = t === T.ROCK ? 255 : 0; }
+  return field;
 }
