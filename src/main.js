@@ -5,6 +5,7 @@ import { startSim } from './ui/simclient.js';
 import { View } from './render/view.js';
 import { PersonArt } from './render/people.js';
 import { Panels } from './ui/panels.js';
+import { Music, moodFor } from './ui/music.js';
 import { SEASONS, MAP, NCH, ACT, DAY_TICKS } from './core/consts.js';
 import { LAYERS } from './render/terrain.js';
 import { Store, initStorage, saveLocal, loadLocal, saveAccount, loadAccount, exportFile, importFile } from './ui/storage.js';
@@ -15,7 +16,7 @@ const A = {
   sim: null, view: null, panels: null, phase: 'boot', W: null, sites: null, siteSel: 0, mode: 'landfall', tag: '',
   speed: 1, lastSpeed: 1, n: 0, prev: null, cur: null, pos: new Float32Array(0), arts: [], names: [], people: [], archive: [], ui: null, log: [], leads: new Set(),
   clock: null, perf: null, sel: -1, hover: -1, follow: false, frames: [], lastSaveLocal: 0, lastSaveAcct: 0, saveId: 0, cmdId: 0, waiting: new Map(),
-  savedNote: 'not yet', thread: '-', timing: null, hold: false, pickCrew: -1, pickAt: null, pendingWear: [], pendingKnown: []
+  savedNote: 'not yet', thread: '-', timing: null, hold: false, pickCrew: -1, pickAt: null, pendingWear: [], pendingKnown: [], music: new Music()
 };
 const pad = n => String(n).padStart(2, '0');
 const toast = (m) => { const t = $('toast'); t.textContent = m; t.classList.add('on'); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove('on'), 3200); };
@@ -158,6 +159,7 @@ function interpolate(now) {
 // ---------- the clock and the performance readout ----------
 function hud() {
   const ck = A.clock;
+  A.music.setMood(moodFor(A.phase, ck ? ck.hour : 12));
   if (ck && A.phase === 'colony') {
     const h = Math.floor(ck.hour), mi = Math.floor((ck.hour - h) * 60);
     $('time').textContent = `${pad(h)}:${pad(mi)}`;
@@ -186,6 +188,8 @@ function spark() {
   g.lineTo((f.length - 1) * step, H); g.lineTo(0, H); g.closePath(); g.fillStyle = 'rgba(127,211,143,.16)'; g.fill();
   g.beginPath(); f.forEach((v, i) => { const x = i * step, y = H - Math.min(50, v) / 50 * H; i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.strokeStyle = '#7fd38f'; g.lineWidth = 2; g.stroke();
 }
+function musicToggle(on) { const v = A.music.toggle(on); musicButton(); toast(v ? 'Music on.' : 'Music off.'); }
+function musicButton() { const on = A.music.on; $('bMusic').classList.toggle('off', !on); $('bMusic').setAttribute('aria-pressed', on); $('musicTxt').textContent = on ? 'Music' : 'Music off'; }
 function select(i, fly) {
   A.sel = i; A.follow = false; $('cFollow').textContent = 'Follow';
   if (A.sim) A.sim.send({ t: 'watch', id: i });
@@ -269,6 +273,7 @@ function hookInput() {
     else if (e.code === 'KeyQ' && colony) A.panels.toggleTab('archive');
     else if (e.code === 'KeyC' && colony) A.panels.toggleTab('crews');
     else if (e.code === 'KeyL' && colony) A.panels.toggleTab('log');
+    else if (e.code === 'KeyM') musicToggle();
     else if (e.code === 'Escape') { if (A.pickCrew >= 0) endPick(); else if (!$('newdlg').hidden) $('newdlg').hidden = true; else select(-1); }
     else if (e.code === 'Equal' || e.code === 'NumpadAdd') V.zoomAt(1.25, V.VW / 2, V.VH / 2);
     else if (e.code === 'Minus' || e.code === 'NumpadSubtract') V.zoomAt(.8, V.VW / 2, V.VH / 2);
@@ -277,6 +282,9 @@ function hookInput() {
   window.addEventListener('blur', () => keys.clear());
   document.querySelectorAll('.speeds button').forEach(b => b.addEventListener('click', () => setSpeed(+b.dataset.s)));
   $('bHome').onclick = goHome;
+  $('bMusic').onclick = () => musicToggle();
+  $('vol').value = Math.round(A.music.vol * 100); musicButton();
+  $('vol').oninput = e => { A.music.setVolume(e.target.value / 100); if (!A.music.on && e.target.value > 0) musicToggle(true); };
   $('fpsChip').onclick = () => { $('perf').hidden = !$('perf').hidden; };
   $('pickCancel').onclick = endPick;
   $('cClose').onclick = () => select(-1);
@@ -342,7 +350,7 @@ window.__colony = {
     const V = A.view;
     return { phase: A.phase, ready: A.phase === 'colony' && !!V && V.terrain.ready && !A.hold, painted: !!V && V.terrain.ready, n: A.n, clock: A.clock, perf: A.perf, thread: A.thread, fps: A.frames.length ? 1000 / avgMs() : 0, cam: V && { ...V.cam }, chunks: V && V.terrain.cached, paint: V && V.terrain.stats, lights: V && V.stats, timing: A.timing, sel: A.sel, saved: A.savedNote, sites: A.sites, ui: A.ui && { alive: A.ui.alive, seed: A.ui.seed, shelter: A.ui.shelter, food: A.ui.food, known: A.ui.known, stakes: A.ui.stakes.length, crews: A.ui.crews.map(c => ({ name: c.name, work: c.work, members: c.members.length, target: c.target })), stats: A.ui.stats }, log: A.log.slice(-6).map(e => e.m) };
   },
-  setSpeed, select, goHome, requestSave, startColony, siteSelect, land, cmd, toast,
+  setSpeed, select, goHome, requestSave, startColony, siteSelect, land, cmd, toast, get music() { return A.music.state; }, musicToggle,
   tab: t => A.panels.setTab(t), panels: () => A.panels,
   look(x, y, z) { const V = A.view; V.fly = null; V.cam.x = x; V.cam.y = y; if (z) V.cam.z = z; V.clampCam(); },
 };

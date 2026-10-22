@@ -56,6 +56,11 @@ svg{display:block}
 .c2 .pill{margin-left:auto}
 .menu{display:flex;gap:6px;padding:6px;flex-wrap:wrap}
 .menu .pill{flex:1;justify-content:center}
+.menu .music{flex-basis:100%;display:flex;align-items:center;gap:10px}
+.menu .music .pill{flex:0 0 auto;gap:6px}
+.menu .music .pill.off{opacity:.55}
+#vol{flex:1;min-width:0;accent-color:#8fe0ff;height:16px;cursor:pointer}
+#vol:disabled{opacity:.35}
 /* performance */
 #perf{position:absolute;right:var(--gr);top:max(12px,env(safe-area-inset-top,0px));width:282px;padding:12px 14px 11px;box-sizing:border-box}
 .fps{display:flex;align-items:baseline;gap:8px}
@@ -240,6 +245,7 @@ select{font:600 12px var(--f-ui);color:var(--txt);background:rgba(0,0,0,.3);bord
         <button class="pill" id="bSave">Save to file</button>
         <button class="pill" id="bLoad">Load file</button>
         <button class="pill" id="bNew">New landing</button>
+        <div class="music"><button class="pill" id="bMusic" title="Music on or off (M)" aria-pressed="true"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 9.2V2.3l6-1.3v6.9" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="3" cy="9.3" r="1.7" fill="currentColor"/><circle cx="9" cy="8" r="1.7" fill="currentColor"/></svg><span id="musicTxt">Music</span></button><input type="range" id="vol" min="0" max="100" step="1" aria-label="Music volume" title="Music volume"></div>
       </div>
     </div>
     <button class="glass" id="fpsChip" title="Performance"><b id="fps">--</b>FPS</button>
@@ -272,7 +278,7 @@ select{font:600 12px var(--f-ui);color:var(--txt);background:rgba(0,0,0,.3);bord
     <div class="glass" id="orbit" hidden></div>
     <div id="pickHint" hidden><span id="pickTxt"></span><button class="btn" id="pickCancel">Cancel</button></div>
     <div class="glass mmw"><canvas id="mm" aria-label="Minimap: click to look there"></canvas><div class="mmcap"><span>600 × 600 tiles</span><span id="mmc">surface</span></div></div>
-    <div class="keys" id="keys"><kbd>drag</kbd> or <kbd>WASD</kbd> move · <kbd>wheel</kbd> zoom · click a person · <kbd>Space</kbd> pause · <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> speed · <kbd>Tab</kbd> names · <kbd>Q</kbd><kbd>C</kbd><kbd>L</kbd> archive, crews, log</div>
+    <div class="keys" id="keys"><kbd>drag</kbd> or <kbd>WASD</kbd> move · <kbd>wheel</kbd> zoom · click a person · <kbd>Space</kbd> pause · <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> speed · <kbd>Tab</kbd> names · <kbd>Q</kbd><kbd>C</kbd><kbd>L</kbd> archive, crews, log · <kbd>M</kbd> music</div>
     <div class="glass" id="newdlg" hidden>
       <h2>New landing</h2>
       <p>A new planet from a new seed. The colony you have now is replaced, so save it to a file first if you want to keep it.</p>

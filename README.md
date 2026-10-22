@@ -17,13 +17,17 @@ NODE_PATH=$(npm root -g) node tools/browser-check.mjs   # headless Chromium: orb
 - `src/core`: plain-data simulation with no browser APIs. World generation, landing sites and the landing (`world.js`), pathfinding (`path.js`: chunk-level graph, local A*, flow fields), the colony (`sim.js`), people's days, minds and ties (`life.js`), the fabricator, crews, the shelter and the player's commands (`work.js`), the founders' archive (`founders.js`), constants and the seeded rng.
 - `src/sim`: runs the simulation in a Web Worker (`worker.js`) through a small message protocol (`host.js`). The page falls back to running it in place if the worker cannot start.
 - `src/render`: WebGL2 renderer in the Lumen style. Map chunks are painted once into texture arrays; each frame lights height, shadows and up to 24 lights.
-- `src/ui`: the page, the panels (orbital survey, archive, crews, log, person card), the connection to the simulation and saving (this browser, the player's account, a file).
+- `src/ui`: the page, the panels (orbital survey, archive, crews, log, person card), the connection to the simulation, saving (this browser, the player's account, a file) and the music (`music.js`).
 - `src/bot`: headless bot runner used by `tools/sim.mjs` to balance and test without players.
 - `src/sealed-stub`: stand-ins for texts the player must not read. The real ones live outside this public repository and are never committed.
 
 ## Numbers
 
 Map 600 x 600 tiles in 32-tile chunks; 30 simulation ticks per second at normal speed; one day lasts 12 minutes at normal speed.
+
+## Music
+
+Generated live with Web Audio, with no audio files: a pad changing chord every two bars, a bass note, a plucked melody built from a short motif that repeats with small changes and rests now and then, and an occasional bell, through a generated reverb and an echo. The mood follows the clock (orbit, dawn, day, evening, night) and changes only on a chord change. It starts on the first click or key, as browsers require. `M` or the music button turns it on and off; the slider sets the volume; both are kept in this browser.
 
 ## How a game starts (milestone 2)
 
