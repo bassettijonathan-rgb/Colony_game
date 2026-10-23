@@ -12,6 +12,7 @@ import { LAYERS } from './render/terrain.js';
 import { Store, initStorage, saveLocal, loadLocal, saveAccount, loadAccount, exportFile, importFile } from './ui/storage.js';
 
 const $ = id => document.getElementById(id);
+const HUD = '.glass,.topbar,#bar,#dock';   // the interface over the map: clicks and the wheel there are not for the map
 const app = $('app');
 const A = {
   sim: null, view: null, panels: null, phase: 'boot', W: null, sites: null, siteSel: 0, mode: 'landfall', tag: '',
@@ -262,9 +263,10 @@ async function confirmPlace() {
 // the Build tab and the map agree on which project you are looking at
 function showProject(id) {
   const p = A.ui && A.ui.projects.find(q => q.id === id); if (!p || !A.view) return;
-  A.projSel = id; A.panels.sig = ''; A.panels.update();
+  select(-1); A.projSel = id; A.panels.sig = ''; A.panels.update();
   A.view.flyTo(p.x + p.w / 2, p.y + p.h / 2, Math.max(A.view.cam.z, 16)); A.follow = false;
 }
+function menu(on) { $('menu').hidden = !on; $('bMenu').classList.toggle('on', on); if (on) $('perf').hidden = true; }
 function closeProject() { A.projSel = -1; if (A.panels) { A.panels.sig = ''; A.panels.update(); } }
 function projectAt(wx, wy) {
   if (!A.ui) return null;
@@ -302,7 +304,7 @@ function hookInput() {
   window.addEventListener('resize', () => V.resize());
   const tileAt = e => { const [wx, wy] = V.toWorld(...local(e)); return [Math.floor(wx), Math.floor(wy)]; };
   app.addEventListener('pointerdown', e => {
-    if (e.target.closest('.glass,#pickHint,#placeHint')) return;
+    if (e.target.closest(HUD + ',#pickHint,#placeHint')) return;
     app.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]);
     // drawing a building: the left button (or one finger) draws, anything else still moves the map
     if (A.place && ptrs.size === 1 && e.button === 0 && !A.place.fixed) { const [x, y] = tileAt(e); A.place.drag = { x0: x, y0: y }; A.place.locked = false; A.panels.planCard(null); placeRect(x, y, 1, 1); return; }
@@ -313,13 +315,13 @@ function hookInput() {
     if (ptrs.has(e.pointerId)) ptrs.set(e.pointerId, [e.clientX, e.clientY]);
     if (pinch && ptrs.size === 2) { const [a, b] = [...ptrs.values()]; const d = Math.hypot(a[0] - b[0], a[1] - b[1]); V.zoomAt(pinch.z * d / pinch.d / V.cam.z, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2); return; }
     if (A.place && A.place.drag) { const [x, y] = tileAt(e), d = A.place.drag; placeRect(Math.min(x, d.x0), Math.min(y, d.y0), Math.abs(x - d.x0) + 1, Math.abs(y - d.y0) + 1); return; }
-    if (A.place && A.place.fixed && !A.place.locked && !drag && !e.target.closest('.glass')) { const [wx, wy] = V.toWorld(...local(e)), P = A.place; placeRect(Math.round(wx - P.w / 2), Math.round(wy - P.h / 2), P.w, P.h); }
+    if (A.place && A.place.fixed && !A.place.locked && !drag && !e.target.closest(HUD)) { const [wx, wy] = V.toWorld(...local(e)), P = A.place; placeRect(Math.round(wx - P.w / 2), Math.round(wy - P.h / 2), P.w, P.h); }
     if (drag) {
       const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.moved = Math.max(drag.moved, Math.hypot(dx, dy));
       if (drag.moved > 4) { app.classList.add('drag'); A.follow = false; V.fly = null; V.cam.x = drag.cx - dx / V.cam.z; V.cam.y = drag.cy - dy / V.cam.z; V.clampCam(); }
       return;
     }
-    if (e.target.closest('.glass')) { A.hover = -1; return; }
+    if (e.target.closest(HUD)) { A.hover = -1; return; }
     const [sx, sy] = local(e);
     if (A.pickCrew >= 0) A.pickAt = V.toWorld(sx, sy);
     A.hover = A.phase === 'colony' ? pick(sx, sy) : -1;
@@ -331,7 +333,7 @@ function hookInput() {
     if (ptrs.size < 2) pinch = null; drag = null;
   };
   app.addEventListener('pointerup', up); app.addEventListener('pointercancel', up);
-  app.addEventListener('wheel', e => { if (e.target.closest('.glass')) return; e.preventDefault(); V.zoomAt(Math.exp(-e.deltaY * .0016), ...local(e)); }, { passive: false });
+  app.addEventListener('wheel', e => { if (e.target.closest(HUD)) return; e.preventDefault(); V.zoomAt(Math.exp(-e.deltaY * .0016), ...local(e)); }, { passive: false });
   window.addEventListener('keydown', e => {
     if (e.target.closest && e.target.closest('input,select')) return;
     keys.add(e.code);
@@ -347,7 +349,7 @@ function hookInput() {
     else if (e.code === 'KeyB' && colony) A.panels.toggleTab('build');
     else if (e.code === 'KeyR' && A.place) turnDoor();
     else if (e.code === 'KeyM') musicToggle();
-    else if (e.code === 'Escape') { if (A.place) endPlace(); else if (A.pickCrew >= 0) endPick(); else if (!$('newdlg').hidden) $('newdlg').hidden = true; else if (A.projSel >= 0) closeProject(); else select(-1); }
+    else if (e.code === 'Escape') { if (A.place) endPlace(); else if (A.pickCrew >= 0) endPick(); else if (!$('newdlg').hidden) $('newdlg').hidden = true; else if (!$('menu').hidden) menu(false); else if (A.projSel >= 0) closeProject(); else if (A.sel >= 0) select(-1); else if (A.panels && !A.panels.min) A.panels.fold(true); }
     else if (e.code === 'Equal' || e.code === 'NumpadAdd') V.zoomAt(1.25, V.VW / 2, V.VH / 2);
     else if (e.code === 'Minus' || e.code === 'NumpadSubtract') V.zoomAt(.8, V.VW / 2, V.VH / 2);
   });
@@ -358,7 +360,8 @@ function hookInput() {
   $('bMusic').onclick = () => musicToggle();
   $('vol').value = Math.round(A.music.vol * 100); musicButton();
   $('vol').oninput = e => { A.music.setVolume(e.target.value / 100); if (!A.music.on && e.target.value > 0) musicToggle(true); };
-  $('fpsChip').onclick = () => { $('perf').hidden = !$('perf').hidden; };
+  $('fpsChip').onclick = () => { $('perf').hidden = !$('perf').hidden; menu(false); };
+  $('bMenu').onclick = () => menu($('menu').hidden); $('menuX').onclick = () => menu(false);
   $('pickCancel').onclick = endPick;
   $('placeCancel').onclick = endPlace; $('plCancel').onclick = endPlace; $('placeTurn').onclick = turnDoor; $('plTurn').onclick = turnDoor; $('plGo').onclick = confirmPlace;
   $('plName2').oninput = e => { delete e.target.dataset.auto; $('plKeep').checked = true; };
@@ -380,7 +383,7 @@ function hookInput() {
   $('bLoad').onclick = async () => { const d = await importFile(); if (!isSave(d)) return toast(d && d.sim ? 'That colony is from an older version and cannot continue.' : 'That file is not a saved colony.'); startColony({ save: d.sim }); toast('Loading the colony from the file.'); };
   let nMode = 'landfall';
   document.querySelectorAll('#nMode button').forEach(b => b.onclick = () => { nMode = b.dataset.m; document.querySelectorAll('#nMode button').forEach(x => x.classList.toggle('on', x === b)); });
-  $('bNew').onclick = () => { $('nSeed').value = String(rand6()); $('newdlg').hidden = false; };
+  $('bNew').onclick = () => { menu(false); $('nSeed').value = String(rand6()); $('newdlg').hidden = false; };
   $('nCancel').onclick = () => { $('newdlg').hidden = true; };
   $('nGo').onclick = () => { const s = parseInt($('nSeed').value, 10) || 1; $('newdlg').hidden = true; startColony({ seed: s, mode: nMode, count: 300 }); };
 }
