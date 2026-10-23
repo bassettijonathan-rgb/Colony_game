@@ -86,7 +86,7 @@ function land(i) {
   if (A.phase !== 'orbit') return;
   A.phase = 'landing'; A.panels.orbit(null);
   const s = A.sites[i]; A.view.flyTo(s.x + .5, s.y + 2, 14);
-  A.sim.send({ t: 'land', site: i });
+  A.sim.send({ t: 'land', site: i, season: A.season || 0 });
 }
 
 // the colony starts (after a landing, or from a save)
@@ -153,7 +153,7 @@ function frame(now) {
   if (keys.has('KeyW') || keys.has('ArrowUp')) pan(0, -sp); if (keys.has('KeyS') || keys.has('ArrowDown')) pan(0, sp);
   if (A.follow && A.sel >= 0 && A.sel < A.n) { c.x += (A.pos[A.sel * 4] - c.x) * Math.min(1, dt * 6); c.y += (A.pos[A.sel * 4 + 1] - c.y) * Math.min(1, dt * 6); }
   V.clampCam();
-  const colony = A.phase === 'colony' && A.ui ? { seed: A.ui.seed, stakes: A.ui.stakes, crews: A.ui.crews, projects: A.ui.projects, stores: A.ui.stores, year: A.ui.year, F: A.ui.F, spots: A.ui.spots, day: A.clock ? A.clock.abs : 1 } : null;
+  const colony = A.phase === 'colony' && A.ui ? { seed: A.ui.seed, stakes: A.ui.stakes, crews: A.ui.crews, projects: A.ui.projects, stores: A.ui.stores, year: A.ui.year, F: A.ui.F, spots: A.ui.spots, day: A.clock ? A.clock.cal || A.clock.abs : 1 } : null;
   const hour = A.clock && A.phase === 'colony' ? A.clock.hour : 10.5;
   V.frame({ n: A.n, pos: A.pos, arts: A.arts, names: A.names, leads: A.leads, hour, time: now / 1000, sel: A.sel, hover: A.hover, budget: A.frames.length > 30 && avgMs() > 22 ? 1 : 2, colony, orbit: A.phase === 'orbit' ? { sites: A.sites, sel: A.siteSel } : null, pickAt: A.pickCrew >= 0 ? A.pickAt : null, place: A.place, projSel: A.projSel, thing: A.thing });
   if (A.hold && A.phase === 'colony' && !V.landing) { A.hold = false; setSpeed(A.speed || 1); if (V.anim) toast('The Seed is down. Choose who the fabricator prints first.'); }

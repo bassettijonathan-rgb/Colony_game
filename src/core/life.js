@@ -24,7 +24,7 @@ export function want(sim, c) {
     const off = h >= 16.5 ? 'eat' : 'idle';
     if (c.fat >= 90 && cr.rules.rest) return off;
     if (cr.work === 'survey' && (cr.recalled || c.escort === sim.day)) return off;
-    if (OUTDOOR.has(cr.work) && dayWeather(sim.W.seed, sim.day).out === 2) return off;   // a blizzard: nobody works outside
+    if (OUTDOOR.has(cr.work) && dayWeather(sim.W.seed, sim.cal).out === 2) return off;   // a blizzard: nobody works outside
     if (c.noWork > S.tick) return off;   // nothing for this crew to do just now: look again in a while
     return 'work';
   }
@@ -87,7 +87,7 @@ export function mindTick(sim, c) {
   const asleep = a === ACT.BED || a === ACT.INSIDE, working = WORKING(a), at = c.where >= 0 && hidden(a) ? byId(S, c.where) : null, ward = at && at.type === 'clinic';
   const cr = c.crew >= 0 ? S.crews[c.crew] : null, lead = cr && cr.lead >= 0 && cr.lead !== c.id ? S.cols[cr.lead] : null;
   const L = sim.W.land, dCamp = Math.hypot(c.x - L.x, c.y - L.y), night = h >= sim.dusk || h < sim.dawn, land = S.mode === 'landfall';
-  const wx = dayWeather(sim.W.seed, sim.day), outside = !hidden(a);
+  const wx = dayWeather(sim.W.seed, sim.cal), outside = !hidden(a);
   // what they see: everyone outside reports to the Seed; a surveyor looks harder, and fog hides a lot
   if (!asleep && outside) {
     sim.reveal(c.x, c.y, (a === ACT.SURVEY || a === ACT.PLANT ? 10 : 6) * (wx.fog ? .6 : 1));

@@ -83,7 +83,7 @@ export function patchLeft(sim, i) {
   if (st.n <= 0 && sim.day >= st.back) { delete F.patch[i]; return k.yield; }
   return st.n;
 }
-export const inSeason = (sim, k) => !!k.season[seasonOf(doyOf(sim.day))];
+export const inSeason = (sim, k) => !!k.season[seasonOf(doyOf(sim.cal))];
 export function takePatch(sim, i) {
   const F = sim.S.F, k = sim.kinds[sim.life.list[i].o], n = patchLeft(sim, i) - 1;
   F.patch[i] = { n, back: n <= 0 ? sim.day + k.regrow * WILD_REGROW : 0 };
@@ -155,7 +155,7 @@ export function cropPlan(sim, p) {
 // expected days to ripen from today at this world's usual temperatures; Infinity if Deep cold or a usual frost
 // would get it first
 export function daysToRipen(sim, k, g = 0) {
-  const c = CROPS[k], seed = sim.W.seed; let d = sim.day, left = 1 - g;
+  const c = CROPS[k], seed = sim.W.seed; let d = sim.cal, left = 1 - g;
   for (let n = 0; n < 60; n++, d++) {
     if (seasonOf(doyOf(d)) === DEEP) return Infinity;
     let r = 0;
@@ -179,7 +179,7 @@ export function fieldHour(sim, p, temp, hour) {
     if (cr.h <= 0) { cr.st = 'dead'; cr.h = 0; sim.log(`Frost killed the ${c.name.toLowerCase()} in ${p.name}.`, 'bad', { e: 'frost', lvl: 1, pid: p.id, title: 'Frost' }); }
   }
   if (cr.st === 'ripe' && hour === 12 && sim.day - cr.ripe > 8) { cr.h = Math.max(0, cr.h - .1); S.rv++; }
-  if (hour === 13 && cr.st === 'grow' && dayWeather(sim.W.seed, sim.day).k === 'storm' && hash(p.id, sim.day, 611) < .3) {
+  if (hour === 13 && cr.st === 'grow' && dayWeather(sim.W.seed, sim.cal).k === 'storm' && hash(p.id, sim.day, 611) < .3) {
     cr.h = Math.max(.1, cr.h - .2); S.rv++;
     sim.log(`The storm flattened part of the ${c.name.toLowerCase()} in ${p.name}.`, 'bad', { pid: p.id });
   }

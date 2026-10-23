@@ -52,10 +52,10 @@ export function createSimCore(post) {
     return { tps: perf.tps, tickMs: perf.avg || 0, worst: perf.lastWorst || 0, load: perf.load || 0, paths: { ...P.stats } };
   }
   // the landing itself: lay out the camp, build the path graph, start the colony
-  function begin(site, save, mode, count, t0, t1) {
+  function begin(site, save, mode, count, t0, t1, season = 0) {
     const patch = landAt(W, site); W.siteId = site.id;
     const t2 = now(); P = new Pathfinder(W); const t3 = now(); sim = new Sim(W, P); const t4 = now();
-    if (save) sim.load(save); else sim.newGame(mode, count);
+    if (save) sim.load(save); else sim.newGame(mode, count, season);
     const S = sim.S; sentLog = 0; sentRv = S.rv; sentHist = S.hist.rows.length;
     post({
       t: 'ready', seed: W.seed, land: W.land, site: W.site, siteId: site.id, tag: sites && sites[site.id] ? sites[site.id].tag : '', patch, rock: W.rock, mode: S.mode,
@@ -77,7 +77,7 @@ export function createSimCore(post) {
       if (m.save) begin({ id: m.save.site.id, x: m.save.site.x, y: m.save.site.y }, m.save, null, 0, t0, t1);
       else if (m.mode === 'stress') begin(sites[0], null, 'stress', m.count || 300, t0, t1);
       else post({ t: 'survey', seed: W.seed, rock: W.rock, world: { type: W.type, elev: W.elev, moist: W.moist }, sites, timing: { world: t1 - t0 } });
-    } else if (m.t === 'land') { if (W && !sim) { const t1 = now(); begin(sites[m.site], null, 'landfall', 0, t1, t1); } }
+    } else if (m.t === 'land') { if (W && !sim) { const t1 = now(); begin(sites[m.site], null, 'landfall', 0, t1, t1, m.season | 0); } }
     else if (m.t === 'speed') { speed = m.v; }
     else if (m.t === 'save') { post({ t: 'saved', id: m.id, data: sim ? sim.serialize() : null }); }
     else if (m.t === 'watch') { watch = m.id; if (sim) { lastState = 0; } }
