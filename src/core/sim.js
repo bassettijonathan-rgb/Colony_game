@@ -109,7 +109,9 @@ export class Sim {
     S.cols.push(c); S.rv++;
     return c;
   }
-  log(m, k = '') { const S = this.S; S.logN++; S.log.push({ n: S.logN, t: S.tick, m, k }); if (S.log.length > 300) S.log.shift(); }
+  // ev says what kind of news it is for the page: e (the kind), lvl (0 the log only, 1 a card, 2 a letter that
+  // pauses the game), title, and where to look: who (a person), pid (a project) or x, y
+  log(m, k = '', ev) { const S = this.S; S.logN++; S.log.push(ev ? { n: S.logN, t: S.tick, m, k, ...ev } : { n: S.logN, t: S.tick, m, k }); if (S.log.length > 300) S.log.shift(); }
 
   // bedrolls in rings around the lander, clear of the shelter's plot, the fire and the cargo door
   restSlot() {

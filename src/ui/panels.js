@@ -67,7 +67,7 @@ export class Panels {
 
   // ---------- the colony ----------
   show(on) {
-    this.on = on; $('side').hidden = !on || this.min; $('colony').hidden = !on; $('dock').hidden = !on; $('track').hidden = !on;
+    this.on = on; $('side').hidden = !on || this.min; $('colony').hidden = !on; $('dock').hidden = !on; $('track').hidden = !on; $('news').hidden = !on;
     if (!on) { $('card').hidden = true; $('bar').hidden = true; $('bcard').hidden = true; }
     this.dock();
   }
@@ -78,7 +78,7 @@ export class Panels {
     this.update();
   }
   fold(on = !this.min) { this.min = on; $('side').hidden = on || !this.on; this.dock(); }
-  dock() { document.querySelectorAll('#dock [data-tab]').forEach(b => b.classList.toggle('on', !this.min && b.dataset.tab === this.tab)); }
+  dock() { document.querySelectorAll('#dock [data-tab]').forEach(b => b.classList.toggle('on', !this.min && b.dataset.tab === this.tab)); $('news').classList.toggle('side', !$('side').hidden); }
   toggleTab(t) { if (this.tab === t && !this.min) this.fold(true); else this.setTab(t); }
   update() {
     const A = this.A, U = A.ui; if (!U) return;
@@ -178,7 +178,7 @@ export class Panels {
   }
 
   workNote(U, cr) {
-    const y = U.stores.yard, ws = U.projects.some(p => p.type === 'workshop' && p.done && p.powered), proj = U.projects.find(p => p.id === cr.proj);
+    const y = U.stores.yard, ws = U.projects.some(p => p.type === 'workshop' && p.done && p.powered), proj = U.projects.find(p => p.id === cr.proj && !p.done);
     const t = {
       build: proj ? `Working on ${proj.name}: ${proj.type === 'test' ? TEST_STAGES[proj.stage].toLowerCase() : STAGE_NAMES[proj.stage].toLowerCase()}. When the yard runs out, they cut stone and fell trees themselves.` : 'Nothing they can build right now. Plan something in the Build tab, or check what the projects there are waiting for.',
       quarry: `They cut stone from boulders and rock faces and stack it in the yard, until there is enough for everything planned. ${y.stone} there now.`,

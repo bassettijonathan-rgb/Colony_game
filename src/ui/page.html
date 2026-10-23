@@ -320,6 +320,44 @@ select{font:600 12px var(--f-ui);color:var(--txt);background:rgba(0,0,0,.35);bor
 @media (min-width:981px){#pickHint,#placeHint{max-width:min(600px,calc(100% - 800px))}}
 #app.placing{cursor:crosshair}
 
+/* news: standing alerts and event cards down the right of the map (left of the window when it is open), letters in the middle */
+#news{position:absolute;right:var(--gr);top:calc(var(--tb) + var(--top) + 96px);width:290px;display:flex;flex-direction:column;gap:6px;pointer-events:none;z-index:4;max-height:calc(100% - var(--tb) - var(--top) - var(--bot) - 190px);overflow:hidden}
+#news.side{right:calc(var(--gr) + 380px)}
+#alerts{display:flex;flex-direction:column;gap:3px;align-items:flex-end}
+.al{pointer-events:auto;display:flex;align-items:flex-start;gap:8px;max-width:100%;padding:6px 9px 6px 9px;border-radius:3px;border:1px solid var(--edge);background:var(--panel);text-align:left;color:var(--txt);font:600 12px var(--f-ui);box-shadow:0 6px 16px rgba(0,0,0,.4)}
+.al:hover,.al:focus-visible{border-color:rgba(143,224,255,.45)}
+.al i{width:8px;height:8px;border-radius:50%;flex:none;background:var(--seed);margin-top:4px;box-shadow:0 0 8px currentColor}
+.al.warn i{background:var(--mid);color:var(--mid)}.al.bad i{background:var(--bad);color:var(--bad)}.al.info i{color:var(--seed)}
+.al.bad{border-color:rgba(238,107,95,.55);background:linear-gradient(180deg,rgba(64,26,26,.95),rgba(30,14,16,.95))}
+.al span{display:flex;flex-direction:column;min-width:0}
+.al small{display:none;font-weight:500;color:var(--mut);font-size:11.5px;line-height:1.45;margin-top:3px;white-space:normal}
+.al:hover small,.al:focus-visible small{display:block}
+.al em{font:700 10px/16px var(--f-num);font-style:normal;min-width:16px;padding:0 3px;border-radius:2px;text-align:center;background:rgba(255,255,255,.1);color:var(--txt);margin-left:2px}
+#cards{display:flex;flex-direction:column;gap:6px}
+.nc{pointer-events:auto;position:relative;padding:8px 8px 9px 12px;border-radius:3px;border:1px solid var(--edge);border-left:3px solid var(--seed);background:var(--panel);box-shadow:0 10px 26px rgba(0,0,0,.45);animation:ncIn .28s ease-out}
+.nc.bad{border-left-color:var(--bad)}.nc.good{border-left-color:var(--good)}
+.nc.aim{cursor:pointer}.nc.aim:hover{border-color:rgba(143,224,255,.4)}
+.nh{display:flex;align-items:center;gap:8px}
+.nh b{flex:1;font:700 13px/1.25 var(--f-hd);letter-spacing:.02em}
+.nh em{font:500 10.5px var(--f-num);color:var(--dim);font-style:normal;white-space:nowrap}
+.nh .x{width:22px;height:22px;margin:-3px -2px -3px 0}.nh .x .ic{width:12px;height:12px}
+.nc p{margin:3px 22px 0 0;font-size:12px;line-height:1.45}
+.why{margin-top:7px;padding:7px 9px;border-radius:3px;background:rgba(143,224,255,.08);border:1px solid rgba(143,224,255,.22);font-size:11.5px;line-height:1.5;color:#cfe9f5}
+.why i{font:700 9.5px var(--f-hd);letter-spacing:.14em;text-transform:uppercase;color:var(--seed);font-style:normal;margin-right:7px}
+@keyframes ncIn{from{opacity:0;transform:translateX(14px)}to{opacity:1;transform:none}}
+#letter{left:50%;top:46%;transform:translate(-50%,-50%);width:440px;max-width:calc(100% - 32px);box-sizing:border-box;z-index:8;border-top:2px solid var(--seed)}
+#letter.bad{border-top-color:var(--bad)}#letter.good{border-top-color:var(--good)}
+#letter .wt em{font:500 11px var(--f-num);color:var(--mut);font-style:normal;padding-right:8px}
+#letter .in{padding:14px 16px 16px}
+#letter h2{margin:0 0 8px;font:700 21px/1.2 var(--f-hd);letter-spacing:.02em}
+#letter.bad h2{color:#ffb8ae}#letter.good h2{color:#c4f2cc}
+#letter p{margin:0;font-size:13.5px;line-height:1.55}
+#letter .why{font-size:12.5px;margin-top:12px}
+#letter .acts{display:flex;align-items:center;gap:8px;margin-top:16px}
+#letter .acts span{flex:1;font-size:11.5px;color:var(--mut);font-weight:600}
+#lPaused{flex:none!important;font:700 10px var(--f-hd)!important;letter-spacing:.14em;text-transform:uppercase;color:var(--acc)!important;padding:3px 6px;border:1px solid rgba(243,182,92,.4);border-radius:2px}
+#menu .rules{margin-top:-2px}
+
 /* orbit */
 #orbit{left:var(--gl);top:calc(var(--tb) + var(--top) + 8px);width:370px;max-width:calc(100% - 24px);max-height:calc(100% - var(--tb) - 32px);overflow:auto;box-sizing:border-box;z-index:4}
 #orbit .in{padding:12px 14px 14px}
@@ -346,12 +384,13 @@ select{font:600 12px var(--f-ui);color:var(--txt);background:rgba(0,0,0,.35);bor
 
 @media (max-width:1440px){.r{padding:0 8px}#kPeople small{display:none}#date{font-size:0}#date b{font-size:12.5px}.brand span{display:none}}
 @media (max-width:1180px){.r.opt{display:none}#bar{max-width:calc(100% - 680px)}}
-@media (max-width:980px){.brand span{display:none}#date{display:none}#track{display:none}#bar{left:var(--gl);transform:none;max-width:calc(100% - 410px)}}
+@media (max-width:980px){#news,#news.side{left:var(--gl);right:auto;width:min(290px,calc(100% - 24px))}.brand span{display:none}#date{display:none}#track{display:none}#bar{left:var(--gl);transform:none;max-width:calc(100% - 410px)}}
 @media (max-width:760px){
   :root{--tb:46px}
   .brand,.clock .speeds+*{display:none}
   .r{padding:0 7px}.r b small{display:none}
   #bar{display:none}
+  #news,#news.side{top:calc(var(--tb) + var(--top) + 8px)}
   #dock{left:var(--gl);right:var(--gr);transform:none;justify-content:space-around}
   #dock button{flex:1;width:auto;height:48px}
   #side{top:auto;bottom:calc(var(--bot) + 68px);left:var(--gl);right:var(--gr);width:auto;max-width:none;height:46vh}
@@ -426,6 +465,12 @@ select{font:600 12px var(--f-ui);color:var(--txt);background:rgba(0,0,0,.35);bor
         <button class="pill" id="bLoad">Load file</button>
         <button class="pill" id="bNew">New landing</button>
         <div class="music"><button class="pill" id="bMusic" title="Music on or off (M)" aria-pressed="true"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 9.2V2.3l6-1.3v6.9" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="3" cy="9.3" r="1.7" fill="currentColor"/><circle cx="9" cy="8" r="1.7" fill="currentColor"/></svg><span id="musicTxt">Music</span></button><input type="range" id="vol" min="0" max="100" step="1" aria-label="Music volume" title="Music volume"></div>
+        <div class="sec" style="margin-bottom:2px">News</div>
+        <div class="rules">
+          <label><input type="checkbox" id="nPause"> Pause the game for big events</label>
+          <label><input type="checkbox" id="nExplain"> Explain new things when they first happen</label>
+        </div>
+        <button class="pill" id="nAgain">Explain everything again</button>
         <div class="sec" style="margin-bottom:2px">Controls</div>
         <div class="keylist">
           <span><kbd>drag</kbd> <kbd>WASD</kbd></span><span>move the view</span>
@@ -500,6 +545,16 @@ select{font:600 12px var(--f-ui);color:var(--txt);background:rgba(0,0,0,.35);bor
         <div class="seg" id="nMode"><button data-m="landfall" class="on">Landfall</button><button data-m="stress">Stress test, 300 people</button></div>
         <div class="field"><label for="nSeed">Seed</label><input id="nSeed" inputmode="numeric" autocomplete="off"></div>
         <div class="acts"><button class="pill" id="nCancel">Cancel</button><button class="go" id="nGo">Land</button></div>
+      </div>
+    </div>
+    <div id="news"><div id="alerts"></div><div id="cards"></div></div>
+    <div class="glass info" id="letter" role="dialog" aria-labelledby="lTitle" hidden>
+      <div class="wt"><svg class="ic"><use href="#i-seed"/></svg><b>The Seed reports</b><em id="lWhen"></em></div>
+      <div class="in">
+        <h2 id="lTitle"></h2>
+        <p id="lText"></p>
+        <div class="why" id="lWhy"><i>New</i><span id="lWhyT"></span></div>
+        <div class="acts"><span id="lPaused">Paused</span><span id="lMore"></span><button class="pill" id="lGo">Show me</button><button class="go" id="lOk">OK</button></div>
       </div>
     </div>
     <div id="toast"></div>

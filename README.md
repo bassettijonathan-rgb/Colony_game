@@ -18,7 +18,7 @@ V2_SAVE=old.json ...  browser-check.mjs                 # also continue a colony
 - `src/core`: plain-data simulation with no browser APIs. World generation, landing sites and the landing (`world.js`), pathfinding (`path.js`: chunk-level graph, local A*, flow fields), the colony (`sim.js`), people's days, minds and ties (`life.js`), the fabricator, crews, building projects and the player's commands (`work.js`), what can be built and what it costs, load checks, power and stock (`build.js`), the founders' archive (`founders.js`), constants and the seeded rng.
 - `src/sim`: runs the simulation in a Web Worker (`worker.js`) through a small message protocol (`host.js`). The page falls back to running it in place if the worker cannot start.
 - `src/render`: WebGL2 renderer in the Lumen style. Map chunks are painted once into texture arrays (and again when trees come down); each frame lights height, shadows and up to 24 lights. Buildings, the yard, stumps and quarried rock are drawn stage by stage in `buildings.js`.
-- `src/ui`: the page and its game interface (a top bar with the colony's stock and the clock, colonist portraits, open projects, a dock that opens the archive, crews, build and log windows, cards for the person or building you pick and for a building being placed, a menu with saving, music and the controls), the connection to the simulation, saving (this browser, the player's account, a file) and the music (`music.js`).
+- `src/ui`: the page and its game interface (a top bar with the colony's stock and the clock, colonist portraits, open projects, a dock that opens the archive, crews, build and log windows, cards for the person or building you pick and for a building being placed, a menu with saving, music, news settings and the controls), the news (`news.js`: event cards, letters that pause the game, standing alerts and first-time explanations), the connection to the simulation, saving (this browser, the player's account, a file) and the music (`music.js`).
 - `src/bot`: headless bot runner used by `tools/sim.mjs` to balance and test without players.
 - `src/sealed-stub`: stand-ins for texts the player must not read. The real ones live outside this public repository and are never committed.
 
@@ -50,3 +50,15 @@ Generated live with Web Audio, with no audio files: a pad changing chord every t
 7. Click a building, finished or not, for its card: what it is, its five stages, what the current stage still needs and who is working on it.
 8. Dormitories give bunks, the commons a sit-down evening meal that eases strain more than the fire, the clinic beds where the hurt heal twice as fast, and workshops benches for the workshop crew.
 9. Saves are version 3; a milestone 2 colony continues, its shelter becoming the first project of many.
+
+## News
+
+Nothing important waits in the log to be found.
+
+1. **Cards.** Notable events (someone wakes, gets hurt or makes a friend, a building is finished, stalls or goes dark) appear as cards on the right of the map for about twenty seconds, longer while the pointer is on them. Clicking one takes the camera to the person or building.
+2. **Letters.** Big events (a death, a breakdown, the rations running out, the shelter finished, a load test result) open a letter in the middle of the screen and pause the game until it is read. `Enter` or `Esc` closes it and the game carries on at the speed it had. The menu can turn the pausing off.
+3. **Alerts.** Problems that last (nobody chosen to print, rations under ten days, hunger, injuries, breakdowns, strain near breaking point, exhaustion, falling trust, people without a crew, stalled projects, buildings without power, a build crew with nothing to build) stay on screen until they are fixed. Pointing at one says what helps; each click looks at the next person or building it is about.
+4. **First-time explanations.** The first time each kind of event happens, its card or letter also says what it means and what can be done. This browser remembers which ones have been shown; the menu can show them all again.
+
+The simulation tags each log line with its kind, how loud it is and where to look; the page decides how to show it.
+

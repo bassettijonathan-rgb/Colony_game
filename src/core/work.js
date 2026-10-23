@@ -27,9 +27,9 @@ export function seedTick(sim) {
     const p = S.archive[sd.printing.fid]; p.woke = S.tick; sd.printing = null;
     const c = sim.spawn(p, sim.cargoTile, ACT.WAKE); c.timer = HOUR; c.plan = 'wake'; c.job = 'wake';
     remember(sim, c, 'Woke in a new body, on a new world.');
-    sim.log(`${p.name} woke in a new body.`, 'good');
-    if (S.autoCrews) autoCrew(sim, c); else sim.log(`${p.name} is waiting to be put in a crew.`);
-    if (!sd.feed && !sd.queue.length) sim.log('The fabricator has used the last of its feedstock for bodies. It will make modules from salvage when the colony needs them.');
+    sim.log(`${p.name} woke in a new body.`, 'good', { e: 'woke', lvl: 1, who: c.id, title: 'A founder is awake' });
+    if (S.autoCrews) autoCrew(sim, c); else sim.log(`${p.name} is waiting to be put in a crew.`, '', { e: 'nocrew', lvl: 1, who: c.id, title: 'Waiting for a crew' });
+    if (!sd.feed && !sd.queue.length) sim.log('The fabricator has used the last of its feedstock for bodies. It will make modules from salvage when the colony needs them.', '', { e: 'feedstock', lvl: 1, x: sim.W.site.cargo.x + .5, y: sim.W.site.cargo.y + .5, title: 'No more bodies to print' });
   }
   // with no body to print, the fabricator makes modules from salvage, three times slower than a workshop bench
   if (sd.printing || sd.queue.length) return;
@@ -163,7 +163,7 @@ function advance(sim, p) {
   if (p.type === 'test') {
     if (st === 0) { p.stage = 1; p.got = {}; p.need = stageLoads(S, 'test', 1, 1, 1, p.mat); sim.log(`${p.name}: samples are at the rig. Testing them now.`); return; }
     const m = S.mat[p.mat], pct = Math.round((m.f - 1) * 100); m.tested = true; p.done = true; p.gone = true;
-    sim.log(`Load test done: the local ${p.mat} is ${pct === 0 ? 'exactly as strong as' : Math.abs(pct) + '% ' + (pct > 0 ? 'stronger' : 'weaker') + ' than'} the databank's standard. Designs now use it with a measured margin instead of a guess.${p.mat === 'timber' ? ` Timber beams can span ${Math.floor(3 + 3 * m.f)} tiles before they need posts.` : ''}`, 'good');
+    sim.log(`Load test done: the local ${p.mat} is ${pct === 0 ? 'exactly as strong as' : Math.abs(pct) + '% ' + (pct > 0 ? 'stronger' : 'weaker') + ' than'} the databank's standard. Designs now use it with a measured margin instead of a guess.${p.mat === 'timber' ? ` Timber beams can span ${Math.floor(3 + 3 * m.f)} tiles before they need posts.` : ''}`, 'good', { e: 'tested', lvl: 2, x: p.x + .5, y: p.y + .5, title: `What the local ${p.mat} can carry` });
     trustAll(sim, 1, `Saw the Seed test the local ${p.mat} instead of guessing.`);
     return;
   }
@@ -171,7 +171,7 @@ function advance(sim, p) {
   p.stage++; p.got = {};
   if (p.stage >= 5) return finish(sim, p);
   p.need = stageLoads(S, p.type, p.w, p.h, p.stage, p.mat);
-  sim.log(`${p.name}: ${STAGE_NAMES[st].toLowerCase()} done. Next: ${STAGE_NAMES[p.stage].toLowerCase()}.`, 'good');
+  sim.log(`${p.name}: ${STAGE_NAMES[st].toLowerCase()} done. Next: ${STAGE_NAMES[p.stage].toLowerCase()}.`, 'good', { pid: p.id });
   if (p.type === 'shelter') trustAll(sim, 2);
 }
 function finish(sim, p) {
@@ -179,11 +179,11 @@ function finish(sim, p) {
   powerCheck(sim);
   const cap = capOf(p), more = active(S).some(q => q.type !== 'test' && !q.paused);
   if (p.type === 'shelter') {
-    sim.log(`The shelter is finished: twelve bunks, walls and a roof made from the lander.${more ? '' : ' Nothing else is planned yet, so the build crew is free.'}`, 'good');
+    sim.log(`The shelter is finished: twelve bunks, walls and a roof made from the lander.${more ? '' : ' Nothing else is planned yet, so the build crew is free.'}`, 'good', { e: 'shelter', lvl: 2, pid: p.id, title: 'A roof at last' });
     trustAll(sim, 6, 'Slept under a roof again.');
   } else {
     const what = { dorm: `${cap.beds} bunks`, commons: `seats for ${cap.seats}`, workshop: `${cap.benches} bench${cap.benches > 1 ? 'es' : ''}`, clinic: `${cap.beds} beds`, solar: `${cap.panels} panels making ${cap.supply} kW` }[p.type];
-    sim.log(`${p.name} is finished: ${what}.${p.type !== 'solar' && !p.powered ? ` It stays dark until the colony has ${shortOf(S, p)} kW more power.` : ''}`, 'good');
+    sim.log(`${p.name} is finished: ${what}.${p.type !== 'solar' && !p.powered ? ` It stays dark until the colony has ${shortOf(S, p)} kW more power.` : ''}`, 'good', { e: 'built', lvl: 1, pid: p.id, title: 'Finished' });
     trustAll(sim, 2, `Watched ${p.name} go up.`);
   }
   assignHomes(sim);
@@ -221,15 +221,15 @@ export function projectsThink(sim) {
     let w = p.done ? waitReason(sim, p) : why.get(p.id);
     if (!p.done && !w && !taken.has(p.id)) w = crews.length ? 'Queued: the build crews are on other projects' : 'No build crew';
     const stuck = !p.done && !!w && !/^(Paused|Queued|No build crew)/.test(w);
-    if (stuck && !p.stall) { p.stall = 1; sim.log(`${p.name} stalled: ${w[0].toLowerCase() + w.slice(1)}.`, 'bad'); }
-    else if (!stuck && p.stall) { p.stall = 0; if (!p.done && !w) sim.log(`Work on ${p.name} picked up again.`); }
+    if (stuck && !p.stall) { p.stall = 1; sim.log(`${p.name} stalled: ${w[0].toLowerCase() + w.slice(1)}.`, 'bad', { e: 'stalled', lvl: 1, pid: p.id, title: 'A project stalled' }); }
+    else if (!stuck && p.stall) { p.stall = 0; if (!p.done && !w) sim.log(`Work on ${p.name} picked up again.`, '', { pid: p.id }); }
     if (w !== p.wait) { p.wait = w; S.rv++; }
   }
   if (S.tick % HOUR < 120) { for (const p of powerCheck(sim)) powerNote(sim, p); assignHomes(sim); }
 }
 function powerNote(sim, p) {
   if (p.type === 'solar') return;
-  if (p.powered) sim.log(`${p.name} has power.`, 'good'); else sim.log(`${p.name} went dark: the colony needs ${shortOf(sim.S, p)} kW more power.`, 'bad');
+  if (p.powered) sim.log(`${p.name} has power.`, 'good', { pid: p.id }); else sim.log(`${p.name} went dark: the colony needs ${shortOf(sim.S, p)} kW more power.`, 'bad', { e: 'dark', lvl: 1, pid: p.id, title: 'Not enough power' });
 }
 // bunks in the shelter and the dormitories, and seats in the commons, for everyone they hold
 export function assignHomes(sim) {
@@ -338,7 +338,7 @@ export function onArrive(sim, c) {
     case 'plant': c.timer = Math.round(HOUR / 6); break;
     case 'eat':
       if (c.act === ACT.INDOORS) c.where = c.mess;
-      if (c.ate !== sim.day) { c.ate = sim.day; if (S.food >= 1) { S.food--; c.hungry = false; } else { if (!c.hungry) sim.log(`${c.name} went to bed hungry: the rations are gone.`, 'bad'); c.hungry = true; } }
+      if (c.ate !== sim.day) { c.ate = sim.day; if (S.food >= 1) { S.food--; c.hungry = false; S.noFood = false; } else { if (!S.noFood) { S.noFood = true; sim.log('The rations are gone. From tonight people go to bed hungry, and the hungry weaken day by day until they die.', 'bad', { e: 'nofood', lvl: 2, x: sim.W.site.fire.x, y: sim.W.site.fire.y, title: 'The rations are gone' }); } if (!c.hungry) sim.log(`${c.name} went to bed hungry: the rations are gone.`, 'bad', { who: c.id }); c.hungry = true; } }
       break;
     case 'sleep': case 'ward': if (c.act === ACT.INSIDE || c.act === ACT.INDOORS) c.where = c.job === 'ward' ? c.ward : c.home; break;
     case 'wake': break;
@@ -377,13 +377,13 @@ export function onTimer(sim, c) {
     case 'bench': {
       const ws = byId(S, c.ws);
       if (ws) ws.out[c.make] = (ws.out[c.make] || 0) + 1; else S.stores.cargo[c.make]++;
-      if (!S.stats.made++) sim.log(`${c.name} made the colony's first ${MAT_ONE[c.make]} at a workshop bench.`, 'good');
+      if (!S.stats.made++) sim.log(`${c.name} made the colony's first ${MAT_ONE[c.make]} at a workshop bench.`, 'good', { e: 'made', lvl: 1, who: c.id, title: 'Made here, not salvaged' });
       c.carry = ''; c.cn = 0; c.make = ''; c.job = ''; c.where = -1; c.act = ACT.IDLE;
       break;
     }
     case 'plant': {
       const s = { x: c.x, y: c.y, day: sim.day }; S.stakes.push(s); sim.reveal(c.x, c.y, 22); S.rv++;
-      const cr = S.crews[c.crew]; sim.log(`The ${cr ? cr.name : ''} crew planted sensor stake ${S.stakes.length} of ${STAKES_ALL}.`);
+      const cr = S.crews[c.crew], all = S.stakes.length >= STAKES_ALL; sim.log(`The ${cr ? cr.name : ''} crew planted sensor stake ${S.stakes.length} of ${STAKES_ALL}.${all ? ' The Seed now watches the whole ring of stakes.' : ''}`, '', all ? { e: 'stakes', lvl: 1, x: s.x, y: s.y, title: 'Every sensor stake is out' } : { x: s.x, y: s.y });
       c.job = 'survey'; c.act = ACT.SURVEY; break;
     }
     case 'wake': c.act = ACT.IDLE; c.plan = ''; c.job = ''; break;
