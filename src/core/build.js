@@ -9,6 +9,7 @@ import { propsIn } from './world.js';
 export const MAT = {
   stone: ['load of stone', 'loads of stone'], timber: ['load of timber', 'loads of timber'], salvage: ['load of salvage', 'loads of salvage'], biomass: ['load of biomass', 'loads of biomass'],
   module: ['lander module', 'lander modules'], seal: ['airlock seal', 'airlock seals'], pipe: ['pipe run', 'pipe runs'], power: ['power unit', 'power units'], panel: ['solar panel', 'solar panels'],
+  meds: ['batch of medical supplies', 'batches of medical supplies'],
 };
 export const matName = (k, n) => MAT[k] ? `${n} ${MAT[k][n === 1 ? 0 : 1]}` : '';
 export const RAW = ['stone', 'timber', 'biomass'], PRECISE = ['seal', 'pipe', 'power', 'panel'];
@@ -31,7 +32,7 @@ export const TYPES = {
   dorm: { name: 'Dormitory', min: 5, max: 12, size: [6, 8], use: 'Bunks for people who sleep outside' },
   commons: { name: 'Commons', min: 6, max: 14, size: [7, 9], use: 'Evening meals indoors, which ease strain more than the fire does' },
   workshop: { name: 'Workshop', min: 5, max: 10, size: [6, 7], use: 'Makes airlock seals, pipe runs, power units and solar panels from salvage' },
-  clinic: { name: 'Clinic', min: 5, max: 8, size: [5, 6], use: 'The hurt rest here and heal twice as fast' },
+  clinic: { name: 'Clinic', min: 5, max: 8, size: [5, 6], use: 'Beds for the hurt: they heal faster here, medics find and treat more, and operations go far better. Needs power' },
   solar: { name: 'Solar field', min: 3, max: 10, size: [6, 6], open: true, use: "Power, stored in the lander's batteries for the night. Panels make less in the short days of Deep cold" },
   field: { name: 'Field', min: 3, max: 12, size: [8, 6], open: true, use: 'Made soil for the crops in the seed bank: local soil broken up, mixed with biomass and drained' },
   lab: { name: 'Lab', min: 5, max: 8, size: [5, 6], use: 'Benches where a lab crew tests samples of local life, far faster than the Seed’s own analyser' },

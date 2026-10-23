@@ -16,7 +16,11 @@ export const EXPLAIN = {
   woke: 'A founder is awake in a printed body. For the first ten days a new body feels strange: they tire faster and work a little slower. Unless you have taken over the crews, the Seed puts each new founder in one.',
   nocrew: 'Since you took over the crews from the Seed, new founders wait at camp until you put them in one. Open Crews (C) to choose.',
   feedstock: "The fabricator can't print any more people. From here the colony has only the people who are already awake.",
-  hurt: 'Accidents happen most to the exhausted, the reckless and people new to their bodies. The hurt heal in about two days, twice as fast in a clinic with power, and walk and work slower until then.',
+  hurt: 'Accidents happen most to the exhausted, the reckless, the very cold and people new to their bodies, and more in storms. Wounds bleed, hurt and can go bad; the Health tab of a person’s card shows each one and what has been done for it. The hurt are slower until they heal.',
+  badhurt: 'Blood loss, pain and shock add up: someone can die of several wounds that would each be survivable. Someone nearby gives first aid and gets them to a bed; a medic does the rest, far better in a clinic with power.',
+  down: 'Someone who is down can’t get up on their own. The nearest free person comes to stop the bleeding and carry them to a bed, even if it means waking up.',
+  hidden: 'Not every injury shows. A broken bone under a bruise, or bleeding inside, stays hidden until a medic examines them. Skilled medics find more, and find it faster in a clinic.',
+  treated: 'Treatment works better from a skilled medic, in a clinic with power, in daylight, and with supplies. A medic who gets it wrong can try again. Dressings, painkillers, antibiotics and blood substitute come from the fabricator, made from salvage.',
   breakdown: 'When strain peaks, people walk off to be alone for a few hours, and trust in the Seed drops. Strain comes from overwork, bedrolls on open ground, being out after dark, hunger and rivals. Rest, meals together, bunks indoors and friends ease it.',
   friends: 'Friends ease each other’s strain when they work or eat close by. Ties grow between people who work and eat together, and their temperaments decide which way a tie goes.',
   rivals: 'Rivals add to each other’s strain whenever they are near. Putting them in different crews keeps them apart.',
@@ -62,7 +66,11 @@ const ALERTS = {
   locked: ['warn', 'Food only a kitchen can prepare', 'Some of the larder needs leaching or fermenting before it is safe, and nobody is on kitchen work. Set up a kitchen crew in the Crews window (C).'],
   deep: ['bad', '', 'Nothing grows in Deep cold. Fill the larder before it comes: foragers, harvests, and food that keeps.'],
   hungry: ['bad', '', 'They lose health every day without a meal, and die when it runs out.'],
-  hurt: ['warn', '', 'The hurt walk and work slower until they heal. A clinic with power heals them twice as fast.'],
+  down: ['bad', '', 'They can’t get up. Someone nearby comes to give first aid and carry them to a bed.'],
+  bleed: ['bad', '', 'First aid slows the bleeding; closing the wound stops it. Lost blood comes back slowly over days.'],
+  hurt: ['warn', '', 'The hurt are slower until they heal. Their card’s Health tab shows each wound and what has been done for it.'],
+  nomedic: ['info', 'Nobody skilled in medicine', 'Anyone can give first aid and close a wound, but not well. Someone with medicine skill 1.5 or more works as a medic. Treating people and working at a lab bench build the skill.'],
+  meds: ['warn', '', 'The fabricator makes a batch from salvage when it is free. Without dressings wounds go bad more often, and without antibiotics an infection runs its course.'],
   alone: ['warn', '', 'Strain got to be too much. They come back on their own after a few hours, a little calmer.'],
   strain: ['warn', '', 'Strain this high can end in a breakdown. Shorter shifts, bunks indoors, meals at a commons and time with friends bring it down.'],
   tired: ['warn', '', 'The exhausted work slower and have more accidents. The crew rule “Stop when exhausted” sends them to rest.'],
@@ -72,7 +80,7 @@ const ALERTS = {
   stalled: ['warn', '', ''],
   idle: ['info', 'Nothing to build', 'A build crew has nothing on the project list. Plan a building in the Build window (B), or give the crew other work.'],
 };
-const ORDER = ['hungry', 'cold', 'food', 'deep', 'locked', 'nofarm', 'ripe', 'unwell', 'samples', 'print', 'alone', 'hurt', 'strain', 'tired', 'trust', 'nocrew', 'stalled', 'dark', 'idle'];
+const ORDER = ['down', 'bleed', 'hungry', 'cold', 'food', 'deep', 'locked', 'nofarm', 'ripe', 'unwell', 'samples', 'print', 'alone', 'hurt', 'meds', 'nomedic', 'strain', 'tired', 'trust', 'nocrew', 'stalled', 'dark', 'idle'];
 
 export class News {
   constructor(A, api) {
@@ -187,7 +195,12 @@ export class News {
     if ((ids = people(p => p[6] & 64)).length) add('cold', named(ids, 'is dangerously cold', 'people are dangerously cold'), ids.map(i => ({ who: i })));
     if ((ids = people(p => p[6] & 128)).length) add('unwell', named(ids, 'is unwell', 'people are unwell'), ids.map(i => ({ who: i })));
     if ((ids = people(p => p[6] & 4)).length) add('alone', named(ids, 'broke down', 'people broke down'), ids.map(i => ({ who: i })));
-    if ((ids = people(p => p[6] & 2)).length) add('hurt', named(ids, 'is hurt', 'people are hurt'), ids.map(i => ({ who: i })));
+    if ((ids = people(p => p[6] & 512)).length) add('down', named(ids, 'is down', 'people are down'), ids.map(i => ({ who: i })));
+    if ((ids = people(p => p[6] & 256 && !(p[6] & 512))).length) add('bleed', named(ids, 'is bleeding', 'people are bleeding'), ids.map(i => ({ who: i })));
+    if ((ids = people(p => p[6] & 2 && !(p[6] & 768))).length) add('hurt', named(ids, 'is hurt', 'people are hurt'), ids.map(i => ({ who: i })));
+    const hurtN = people(p => p[6] & 2).length, M = U.med;
+    if (hurtN && U.care && !U.care.medics) add('nomedic', ALERTS.nomedic[1], []);
+    if (M) { const out = [M.dress ? '' : 'dressings', M.pk ? '' : 'painkillers', M.abx ? '' : 'antibiotics', M.blood ? '' : 'blood substitute'].filter(Boolean); if (out.length) add('meds', `Out of ${out.join(', ')}`, []); }
     if ((ids = people(p => p[3] >= 70 && !(p[6] & 4))).length) add('strain', named(ids, 'is near breaking point', 'people are near breaking point'), ids.map(i => ({ who: i })));
     if ((ids = people(p => p[2] >= 90)).length) add('tired', named(ids, 'is exhausted', 'people are exhausted'), ids.map(i => ({ who: i })));
     if ((ids = people(p => p[4] < 35)).length) add('trust', named(ids, 'is losing trust in the Seed', 'people are losing trust in the Seed'), ids.map(i => ({ who: i })));

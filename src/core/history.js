@@ -5,7 +5,7 @@ import { MAP } from './consts.js';
 import { mealsInStore } from './food.js';
 import { built } from './build.js';
 
-export const HIST_KEYS = ['day', 'alive', 'deaths', 'meals', 'rations', 'foraged', 'harvests', 'cooked', 'fat', 'str', 'tru', 'hp', 'chill', 'tmin', 'tmax', 'supply', 'draw', 'stone', 'timber', 'known', 'seen', 'tested', 'built', 'hungry', 'unwell'];
+export const HIST_KEYS = ['day', 'alive', 'deaths', 'meals', 'rations', 'foraged', 'harvests', 'cooked', 'fat', 'str', 'tru', 'hp', 'chill', 'tmin', 'tmax', 'supply', 'draw', 'stone', 'timber', 'known', 'seen', 'tested', 'built', 'hungry', 'unwell', 'hurt', 'treated'];
 export const newHist = () => ({ rows: [], acc: null });
 
 // every hour: the day's coldest and warmest, and the colony's coldest average
@@ -27,6 +27,7 @@ export function histRow(sim, day) {
     stone: S.stores.yard.stone, timber: S.stores.yard.timber, known: Math.round(S.knownN / (MAP * MAP) * 1000) / 10,
     seen: F.life.filter(l => l.seen).length, tested: F.life.filter(l => l.tested).length, built: built(S).length,
     hungry: live.filter(c => c.hungry).length, unwell: live.filter(c => c.unwell).length,
+    hurt: live.filter(c => c.bd.w.length).length, treated: st.treated || 0,
   };
   return HIST_KEYS.map(k => row[k]);
 }

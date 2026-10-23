@@ -2,10 +2,12 @@
 // fall for reasons you can trace (fatigue, strain, trust in the Seed), the ties they form, and what breaks.
 import { MAP, HOUR, DAY_TICKS, ACT, SHIFTS, OUTDOOR, hidden } from './consts.js';
 import { rnd, ri, clamp } from './rng.js';
-import { workNext, dropCarry, clinicFor } from './work.js';
+import { workNext, dropCarry } from './work.js';
 import { byId } from './build.js';
 import { lookAround, dietDay } from './food.js';
 import { dayWeather, fireOn } from './year.js';
+import { ailing, bodyTick, laidUp, needs, injure, danger, downed, woundText } from './body.js';
+import { endCare, restFor, goToPatient } from './care.js';
 
 const WORKING = a => a === ACT.BUILD || a === ACT.CARRY || a === ACT.SURVEY || a === ACT.PLANT || a === ACT.QUARRY || a === ACT.FELL || a === ACT.STONE || a === ACT.LOG || a === ACT.TEST || a === ACT.BENCH || a === ACT.GATHER || a === ACT.FARM || a === ACT.COOK || a === ACT.SAMPLE || a === ACT.SACK;
 // a finished building with its lights on
@@ -16,10 +18,14 @@ export const remember = (sim, c, m) => { c.mem.push({ d: sim.day, m }); if (c.me
 // ---------- what someone wants to be doing right now ----------
 export function want(sim, c) {
   const S = sim.S, h = sim.hour, cr = c.crew >= 0 ? S.crews[c.crew] : null, sh = cr ? SHIFTS[cr.shift] : SHIFTS[1];
+  if (c.carried >= 0) return 'carried';
+  if (c.down) return 'down';
+  if (c.care) return 'care';
   if (c.act === ACT.WAKE && c.timer > 0) return 'wake';
   if (c.alone > 0) return 'alone';
+  // the hurt rest in a clinic bed if there is one, or their own; so does anyone waiting to be treated
+  if (c.cap && (laidUp(c) || (S.care && S.care.medics > 0 && needs(c).some(n => TREAT.has(n.k))))) return 'ward';
   if (h >= c.bed || h < sh.a - .7) return 'sleep';
-  if (c.hurt > 0 && c.ward >= 0) return 'ward';   // the hurt rest in the clinic when there is one
   if (cr && cr.work !== 'rest' && h >= sh.a && h < endOf(c, sh)) {
     const off = h >= 16.5 ? 'eat' : 'idle';
     if (c.fat >= 90 && cr.rules.rest) return off;
@@ -30,12 +36,14 @@ export function want(sim, c) {
   }
   return h >= 17 ? 'eat' : 'idle';
 }
+const TREAT = new Set(['close', 'dress', 'set', 'surgery', 'abx']);
 // people who no longer trust the Seed go home at the end of a normal day, whatever the shift says
 const endOf = (c, sh) => c.tru < 35 && sh.b > 18 ? 18 : sh.b;
 
 export function think(sim, c) {
   if (c.dead) return;
   const w = want(sim, c);
+  if (w === 'carried') return;
   if (w === c.plan) {
     // a job that ran out of steps starts its next one
     if (w === 'work' && c.mv === 0 && c.timer <= 0 && !c.job) start(sim, c, w);
@@ -46,16 +54,19 @@ export function think(sim, c) {
 }
 function start(sim, c, w) {
   const S = sim.S, W = sim.W;
+  if (c.care && w !== 'care') endCare(sim, c);
+  if (w === 'care') { c.plan = 'care'; c.timer = 0; c.where = -1; goToPatient(sim, c, S.cols[c.care.who]); return; }
   if (c.job === 'plant') S.seedc.stakes++;   // a stake that never got planted goes back to the lander
   if (c.carry || c.make) dropCarry(sim, c);
   c.plan = w; c.job = ''; c.timer = 0; c.where = -1; c.pj = -1;
   if (w === 'wake') return;
+  if (w === 'down') { c.job = 'down'; c.mv = 0; if (!hidden(c.act) && c.act !== ACT.BED) c.act = ACT.DOWN; return; }
   if (w === 'sleep' || w === 'ward') {
-    const ward = c.hurt > 0 ? usable(S, c.ward) || clinicFor(S, c) : null, home = usable(S, c.home);
-    c.ward = ward ? ward.id : -1;
-    if (w === 'ward' && !ward) { c.plan = 'idle'; idleAt(sim, c); return; }
-    c.job = ward ? 'ward' : 'sleep';
-    if (ward) sim.goTo(c, sim.doorOf(ward), w === 'sleep' ? ACT.INSIDE : ACT.INDOORS, ACT.WALK);
+    // the hurt sleep where they rest: a clinic bed if there is one free
+    const r = w === 'ward' || (c.ward >= 0 && ailing(c.bd)) ? restFor(sim, c) : null, home = usable(S, c.home);
+    c.ward = r && r.ward ? r.p.id : -1;
+    c.job = w === 'ward' ? 'ward' : 'sleep';
+    if (r && r.ward) sim.goTo(c, sim.doorOf(r.p), w === 'sleep' ? ACT.INSIDE : ACT.INDOORS, ACT.WALK);
     else if (home) sim.goTo(c, sim.doorOf(home), ACT.INSIDE, ACT.WALK); else sim.goTo(c, c.slot, ACT.BED, ACT.WALK);
     if (c.mv && w === 'sleep') c.act = ACT.TOBED;
   } else if (w === 'eat') {
@@ -104,7 +115,7 @@ export function mindTick(sim, c) {
   }
   // fatigue: work and walking tire, sleep restores, a bed restores more than the ground
   let f = asleep ? (a === ACT.INSIDE ? -9.5 : -6.5) : a === ACT.QUARRY ? 4 : a === ACT.FELL || a === ACT.BUILD ? 3.6 : a === ACT.CARRY || a === ACT.STONE || a === ACT.LOG ? 3.3 : a === ACT.BENCH ? 2.2 : working ? 2.8 : c.moving ? 2.4 : a === ACT.EAT || a === ACT.INDOORS ? (ward ? -2 : .3) : .8;
-  if (f > 0) { if (c.fresh > 0) f *= 1.6; if (has('patient')) f *= .9; if (c.hurt > 0) f *= 1.2; if (c.hungry) f += 1; if (c.chill > 35) f += 1; if (c.unwell) f += .7; }
+  if (f > 0) { if (c.fresh > 0) f *= 1.6; if (has('patient')) f *= .9; if (c.bd.pain > .2) f *= 1 + c.bd.pain * .4; if (c.hungry) f += 1; if (c.chill > 35) f += 1; if (c.unwell) f += .7; }
   c.fat = clamp(c.fat + f * dt, 0, 100);
   // strain: gains and reliefs per hour
   let g = 0, rel = .15;
@@ -125,7 +136,7 @@ export function mindTick(sim, c) {
     if (Math.abs(o.x - c.x) > 6 || Math.abs(o.y - c.y) > 6) continue;
     if (t.k === 'friend') rel += .5; else if (t.k === 'rival') g += .5;
   }
-  if (c.hungry) g += 2; if (c.hurt > 0) g += .3; if (c.chill > 35) g += .8 + (c.chill - 35) / 40; if (c.unwell) g += .4;
+  if (c.hungry) g += 2; g += Math.min(1.5, c.bd.pain) * 1.1; if (c.chill > 35) g += .8 + (c.chill - 35) / 40; if (c.unwell) g += .4;
   if (outside && !asleep && (wx.rain > .5 || wx.snow > .5) && dCamp > 8) g += .3;               // working in the rain or snow
   if (a === ACT.EAT && S.F && S.F.temp < -5) g += .6;                                       // supper outside at fifteen below
   if (has('anxious')) g *= 1.3; if (has('steady')) g *= .75; if (has('cheerful')) rel *= 1.4;
@@ -140,7 +151,15 @@ export function mindTick(sim, c) {
   }
   // the body
   if (c.fresh > 0) { c.fresh -= 30; if (c.fresh <= 0) remember(sim, c, 'Stopped feeling like a stranger in this body.'); }
-  if (c.hurt > 0) { c.hurt -= ward ? 60 : 30; if (c.hurt <= 0) { c.hurt = 0; if (c.ward >= 0) { c.ward = -1; c.plan = ''; } } }
+  if (ailing(c.bd)) {
+    const rest = asleep || ward || a === ACT.DOWN || c.plan === 'ward';
+    const heal = (rest ? 1.5 : working ? .6 : 1) * (ward ? 1.25 : 1) * (c.hungry ? .4 : 1) * (c.chill > 35 ? .7 : 1) * (c.unwell ? .7 : 1) * (c.fat > 80 ? .8 : 1);
+    const weak = (c.fat > 80 ? 1.3 : 1) * (c.unwell ? 1.25 : 1) * (c.hungry ? 1.3 : 1) * (c.fresh > 0 ? 1.3 : 1);   // a new body has no resistance to anything
+    const why = bodyTick(sim, c, dt, { heal, weak, lying: rest, hungry: c.hungry, chill: c.chill });
+    c.hurt = c.bd.w.length ? 1 : 0;
+    if (why) return die(sim, c, why);
+    if (!c.hurt && c.ward >= 0 && !c.cap) { c.ward = -1; if (c.plan === 'ward') c.plan = ''; }
+  }
   if (c.hungry) { c.hp -= 3 / 24 * dt; if (c.hp <= 0) return die(sim, c, 'starved'); }
   if (c.chill >= 65) { c.hp -= (c.chill >= 99 ? 6 : 1.5) * dt; if (c.hp <= 0) return die(sim, c, 'froze'); }
   if (c.unwell && (c.tox > 8 || c.lack > 20)) { c.hp -= 2 / 24 * dt; if (c.hp <= 0) return die(sim, c, 'diet'); }
@@ -156,16 +175,36 @@ export function mindTick(sim, c) {
   if (a === ACT.COOK) grow(c, 'cooking', .02 * dt);
   if (a === ACT.BENCH && at && at.type === 'lab') { grow(c, 'botany', .015 * dt); grow(c, 'medicine', .008 * dt); }
   if (working && cr && cr.lead === c.id) grow(c, 'leadership', .006 * dt);
-  // accidents: exhausted or careless hands on a building site
-  if (a === ACT.BUILD || a === ACT.QUARRY || a === ACT.FELL) {
-    let p = c.fat > 85 ? .03 : .002; if (has('reckless')) p += .01; if (has('careful')) p *= .3; if (c.fresh > 0) p *= 1.5; if (a === ACT.FELL) p *= 1.5; if (wx.out) p *= 2.5; if (c.chill > 35) p *= 1.5;
+  // accidents: exhausted, careless or clumsy hands at work
+  const hz = c.mv === 0 && HAZ[a];
+  if (hz) {
+    let p = (c.fat > 85 ? .03 : .002) * (hz === 'bench' || hz === 'cook' || hz === 'gather' || hz === 'farm' ? .5 : 1);
+    if (has('reckless')) p += .006; if (has('careful')) p *= .3; if (c.fresh > 0) p *= 1.5; if (a === ACT.FELL) p *= 1.5; if (wx.out) p *= 2.5; if (c.chill > 35) p *= 1.5;
+    if (c.cap) p *= 1 + (1 - c.cap.sight) * 1.5 + (1 - c.cap.manip) * .8;
     if (rnd() < p * dt) {
-      const where = (a === ACT.QUARRY ? 'cutting stone' : a === ACT.FELL ? 'felling a tree' : 'on the building site') + (wx.out ? ' in the storm' : '');
-      c.hurt = 2 * DAY_TICKS; c.hp = Math.max(5, c.hp - 15); c.str = Math.min(100, c.str + 6); S.stats.accidents++;
-      sim.log(`${c.name} was hurt ${where}${c.fat > 85 ? ', working while exhausted' : ''}.`, 'bad', { e: 'hurt', lvl: 1, who: c.id, title: 'An accident' }); remember(sim, c, `Got hurt ${where}.`);
-      const cl = clinicFor(S, c); if (cl) { c.ward = cl.id; c.plan = ''; }   // off to the clinic
+      const s = .15 + Math.pow(rnd(), 1.7) * .75 * (wx.out ? 1.2 : 1) * (c.fat > 85 ? 1.15 : 1);
+      hurtBy(sim, c, hz, s, `${c.name} was hurt ${HAZ_WHERE[hz]}${wx.out ? ' in the storm' : ''}${c.fat > 85 ? ', working while exhausted' : ''}`, `Got hurt ${HAZ_WHERE[hz]}.`, HAZ_WHERE[hz]);
     }
   }
+  if (land && outside && !asleep) {
+    // ice underfoot
+    if (c.moving && S.F.ice > .3 && rnd() < .0025 * S.F.ice * dt) hurtBy(sim, c, 'fall', .2 + rnd() * .6, `${c.name} slipped on the ice and fell`, 'Slipped on the ice and fell hard.', 'slipping on the ice');
+    // frostbite: the very cold, out in the open
+    if (c.chill >= 75 && rnd() < .06 * dt) hurtBy(sim, c, 'frost', .25 + (c.chill - 75) / 50 + rnd() * .2, `${c.name} has frostbite`, 'Got frostbite out in the cold.', 'out in the cold');
+    // lightning: rare, and only out on open ground in a storm
+    if (wx.k === 'storm' && dCamp > 12 && rnd() < .0005 * dt) hurtBy(sim, c, 'lightning', .7 + rnd() * .3, `${c.name} was struck by lightning`, 'Was struck by lightning.', 'struck by lightning');
+  }
+}
+const HAZ = { [ACT.BUILD]: 'build', [ACT.QUARRY]: 'quarry', [ACT.FELL]: 'fell', [ACT.BENCH]: 'bench', [ACT.COOK]: 'cook', [ACT.GATHER]: 'gather', [ACT.SAMPLE]: 'gather', [ACT.FARM]: 'farm' };
+const HAZ_WHERE = { build: 'on the building site', quarry: 'cutting stone', fell: 'felling a tree', bench: 'at a workshop bench', cook: 'cooking', gather: 'gathering', farm: 'working a field' };
+// someone gets hurt: the wounds, the news, and their next thought is to stop
+function hurtBy(sim, c, kind, s, lead, mem, how) {
+  const S = sim.S, ws = injure(sim, c, kind, s, how);
+  S.stats.accidents++; c.str = Math.min(100, c.str + 4 + s * 8);
+  const seen = ws.filter(w => w.kn).map(w => woundText(w).toLowerCase()), bad = danger(c) > .45 || downed(c);
+  sim.log(`${lead}: ${seen.length ? seen.join(', and ') : 'bruised, with nothing broken that anyone can see'}.`, 'bad', { e: bad ? 'badhurt' : 'hurt', lvl: bad ? 2 : 1, who: c.id, title: bad ? `${c.name} is badly hurt` : kind === 'frost' ? 'Frostbite' : kind === 'lightning' ? 'Lightning' : 'An accident' });
+  remember(sim, c, mem);
+  if (c.plan !== 'down') c.plan = '';
 }
 function anyoneNear(S, c, r) { for (const o of S.cols) if (o !== c && !o.dead && !hidden(o.act) && Math.abs(o.x - c.x) < r && Math.abs(o.y - c.y) < r) return true; return false; }
 function countNear(S, c, r) { let n = 0; for (const o of S.cols) if (o !== c && o.act === c.act && (c.act !== ACT.INDOORS || o.where === c.where) && Math.abs(o.x - c.x) < r && Math.abs(o.y - c.y) < r) n++; return n; }
@@ -220,9 +259,11 @@ export function daily(sim, c) {
 export function trustAll(sim, v, why) {
   for (const c of sim.S.cols) if (!c.dead) { c.tru = clamp(c.tru + v * (c.traits.includes('stubborn') ? .6 : 1), 0, 100); if (why) remember(sim, c, why); }
 }
+const DIED = { starved: ' of hunger', froze: ' of the cold', diet: ' after a long sickness from what they ate', bled: ': they lost too much blood', shock: ' of shock from their injuries', infection: ' of an infection that got into their wounds', head: ' of a head injury' };
 function die(sim, c, why) {
-  dropCarry(sim, c); c.dead = true; c.act = ACT.DEAD; c.mv = 0; c.home = c.mess = c.ward = -1; sim.S.stats.deaths++;
-  sim.log(`${c.name} died${why === 'starved' ? ' of hunger' : why === 'froze' ? ' of the cold' : why === 'diet' ? ' after a long sickness from what they ate' : ''}.`, 'bad', { e: 'death', lvl: 2, who: c.id, title: `${c.name} died` });
+  if (c.care) endCare(sim, c);
+  dropCarry(sim, c); c.dead = true; c.act = ACT.DEAD; c.mv = 0; c.home = c.mess = c.ward = -1; c.carried = -1; c.down = false; sim.S.stats.deaths++;
+  sim.log(`${c.name} died${DIED[why] || ''}.`, 'bad', { e: 'death', lvl: 2, who: c.id, title: `${c.name} died` });
   for (const o of sim.S.cols) if (!o.dead) { const t = o.ties[c.id]; o.str = Math.min(100, o.str + (t && t.k === 'friend' ? 25 : 8)); if (t && t.k) remember(sim, o, `Lost ${c.name}.`); }
   const cr = c.crew >= 0 ? sim.S.crews[c.crew] : null;
   if (cr) { cr.members = cr.members.filter(i => i !== c.id); if (cr.lead === c.id) cr.lead = cr.members[0] ?? -1; }
