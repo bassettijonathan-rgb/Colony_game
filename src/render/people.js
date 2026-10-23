@@ -55,9 +55,33 @@ function makeHead(L) {
   return cv;
 }
 
+// a head lying on its side, seen from above: crown up, face to the right, eyes closed
+function makeSideHead(L) {
+  const cv = mk(SP, SP), g = cv.getContext('2d'); g.translate(SP / 2, SP / 2); g.scale(SP * 2, SP * 2);
+  const H = L.hair, skin = q => { const r = g.createRadialGradient(.03, -.02, 0, .02, .01, .16); r.addColorStop(0, css(mix3(L.skin, [255, 255, 255], .12 * q))); r.addColorStop(1, css(mul3(L.skin, .86))); return r; };
+  const hair = () => { const r = g.createRadialGradient(-.05, -.06, 0, -.02, -.02, .17); r.addColorStop(0, css(mix3(H, [255, 255, 255], .2))); r.addColorStop(1, css(mul3(H, .72))); return r; };
+  const st = L.style, hat = st === 'cap' || st === 'beanie' || st === 'helmet' || st === 'bandana';
+  // the skull and face
+  g.fillStyle = skin(1); ell(g, 0, 0, .12, .125); g.fill(); ell(g, .05, .06, .075, .07); g.fill();
+  g.beginPath(); g.moveTo(.11, -.01); g.quadraticCurveTo(.16, .03, .115, .045); g.closePath(); g.fill();   // nose
+  // hair or headgear over the crown and the back of the head
+  if (st !== 'bald') {
+    g.fillStyle = hat ? css(st === 'helmet' ? mix3(L.app, [200, 205, 210], .5) : L.capc) : hair();
+    g.beginPath(); g.ellipse(-.005, -.01, .13, .135, 0, Math.PI * .62, Math.PI * 1.88); g.quadraticCurveTo(.02, -.03, -.06, .1); g.closePath(); g.fill();
+    if (st === 'cap') { g.fillStyle = css(mul3(L.capc, .78)); ell(g, .11, -.08, .06, .025, -.3); g.fill(); }
+    if (st === 'bun' || st === 'pony') { g.fillStyle = hair(); ell(g, -.14, -.02, .05, st === 'pony' ? .07 : .045); g.fill(); }
+    if (st === 'curly') { g.fillStyle = hair(); for (let i = 0; i < 7; i++) { const an = Math.PI * (.65 + i * .17); ell(g, Math.cos(an) * .12, Math.sin(an) * .12 - .01, .045, .045); g.fill(); } }
+  }
+  g.fillStyle = css(mul3(L.skin, .8)); ell(g, -.02, .03, .025, .035); g.fill();   // ear
+  g.strokeStyle = 'rgba(40,24,16,.7)'; g.lineWidth = .009; g.lineCap = 'round';
+  g.beginPath(); g.arc(.075, -.005, .022, .2, Math.PI - .2); g.stroke();   // a closed eye
+  g.beginPath(); g.moveTo(.085, .075); g.quadraticCurveTo(.1, .08, .11, .072); g.stroke();   // mouth
+  return cv;
+}
+
 // what the renderer keeps per person between frames
 export class PersonArt {
-  constructor(c, crew) { this.crew = crew; this.L = lookOf(c, crew); this.body = null; this.head = null; this.walk = Math.random() * 6; }
+  constructor(c, crew) { this.crew = crew; this.L = lookOf(c, crew); this.body = null; this.head = null; this.side = null; this.walk = Math.random() * 6; }
   ensure() { if (!this.body) { this.body = makeBody(this.L); this.head = makeHead(this.L); } }
 }
 
@@ -65,12 +89,24 @@ export class PersonArt {
 // act is what they are doing (ACT in consts.js): each has its own pose.
 export function drawPerson(g, a, x, y, ang, moving, act, t) {
   a.ensure();
-  if (act === 0) {   // asleep in a bedroll under the open sky
-    g.save(); g.translate(x, y); g.rotate(ang + Math.PI / 2);
-    const gr = g.createRadialGradient(0, .15, 0, 0, .15, .5); gr.addColorStop(0, css(mix3(a.L.app, [255, 255, 255], .25))); gr.addColorStop(1, css(mul3(a.L.app, .7)));
-    g.fillStyle = 'rgba(0,0,0,.25)'; ell(g, .03, .2, .3, .5); g.fill(); g.fillStyle = gr; ell(g, 0, .15, .28, .48); g.fill();
-    g.strokeStyle = 'rgba(255,255,255,.15)'; g.lineWidth = .02; g.beginPath(); g.moveTo(-.22, -.05); g.lineTo(.22, -.05); g.stroke();
-    g.translate(0, -.3); g.scale(1.45, 1.45); g.drawImage(a.head, -.5, -.5, 1, 1); g.restore(); return;
+  if (act === 0) {   // asleep in a bedroll under the open sky, curled on one side
+    if (!a.side) a.side = makeSideHead(a.L);
+    g.save(); g.translate(x, y); g.rotate(ang + Math.PI / 2); g.scale(1.6, 1.6);
+    const L = a.L, br = 1 + .012 * Math.sin(t * 1.3 + a.walk);   // slow breathing
+    g.fillStyle = 'rgba(0,0,0,.25)'; rrect(g, -.3, -.47, .66, 1.12, .12); g.fill();
+    g.fillStyle = '#5d6168'; rrect(g, -.33, -.5, .66, 1.12, .12); g.fill(); g.strokeStyle = 'rgba(255,255,255,.12)'; g.lineWidth = .015; rrect(g, -.31, -.48, .62, 1.08, .1); g.stroke();   // the bedroll's mat
+    g.fillStyle = 'rgba(232,228,214,.95)'; rrect(g, -.2, -.44, .4, .2, .08); g.fill();   // pillow
+    // the body under the blanket, seen from above: back on the left, knees drawn up toward the face on the right
+    const P = [[-.06, -.25], [-.13, -.12], [-.1, .06], [-.14, .22], [-.11, .4], [-.07, .56], [.03, .58], [.05, .46], [.17, .4], [.14, .26], [.06, .2], [.1, .06], [.12, -.08], [.06, -.22]].map(([px, py]) => [px * 1.6, py]);
+    const path = () => { g.beginPath(); const m = (i, j) => [(P[i][0] + P[j][0]) / 2, (P[i][1] + P[j][1]) / 2]; let q = m(P.length - 1, 0); g.moveTo(q[0], q[1]); for (let i = 0; i < P.length; i++) { const n = m(i, (i + 1) % P.length); g.quadraticCurveTo(P[i][0], P[i][1], n[0], n[1]); } g.closePath(); };
+    g.save(); g.scale(br, 1);
+    const gr = g.createLinearGradient(-.24, 0, .28, 0); gr.addColorStop(0, css(mix3(L.app, [255, 255, 255], .3))); gr.addColorStop(.45, css(L.app)); gr.addColorStop(1, css(mul3(L.app, .62)));
+    g.fillStyle = gr; path(); g.fill(); g.strokeStyle = css(mul3(L.app, .45), .8); g.lineWidth = .012; g.stroke();
+    g.strokeStyle = css(mix3(L.app, [255, 255, 255], .4), .45); g.lineWidth = .014; g.beginPath(); g.moveTo(-.16, -.1); g.quadraticCurveTo(-.1, .08, -.16, .22); g.stroke();   // the light along the flank
+    g.strokeStyle = css(mul3(L.app, .5), .55); g.lineWidth = .012; g.beginPath(); g.moveTo(-.19, -.06); g.quadraticCurveTo(0, -.01, .18, -.05); g.stroke();   // the blanket's edge
+    g.fillStyle = css(mul3(L.app, .82)); ell(g, .13, -.12, .05, .07); g.fill(); g.fillStyle = css(L.skin); ell(g, .15, -.19, .04, .04); g.fill();   // an arm over the blanket
+    g.restore();
+    g.drawImage(a.side, -.34, -.66, .68, .68); g.restore(); return;
   }
   const still = !moving, ph = a.walk, bob = moving ? Math.abs(Math.sin(ph)) * .018 : 0, sw = moving ? Math.sin(ph) : 0;
   let sc = 1.75;
@@ -146,4 +182,47 @@ export function makeSeed() {
   g.strokeStyle = 'rgba(120,230,255,.85)'; g.lineWidth = .05; ell(g, 0, 0, .58, .58); g.stroke();
   g.fillStyle = 'rgba(255,255,255,.35)'; ell(g, -.25, -.3, .18, .1, -.6); g.fill();
   return { cv, size: S / SP };
+}
+
+// a portrait for the colonist bar and the person's card: head and shoulders, facing us, on a plate in their crew's colour
+const PORTRAITS = new Map();
+export function portrait(c, crew) {
+  const key = c.look + ':' + crew; let u = PORTRAITS.get(key); if (u) return u;
+  const L = lookOf(c, crew), S = 96, cv = mk(S, S), g = cv.getContext('2d');
+  const bg = g.createRadialGradient(S * .5, S * .35, 4, S * .5, S * .5, S * .75); bg.addColorStop(0, css(mix3(L.app, [255, 255, 255], .15))); bg.addColorStop(1, css(mul3(L.app, .28)));
+  g.fillStyle = bg; g.fillRect(0, 0, S, S);
+  g.scale(S, S); g.lineCap = 'round';
+  const H = L.hair, hairG = () => { const q = g.createLinearGradient(0, .12, 0, .62); q.addColorStop(0, css(mix3(H, [255, 255, 255], .2))); q.addColorStop(1, css(mul3(H, .7))); return q; };
+  const st = L.style, sk = L.skin;
+  // shoulders in the work suit
+  const sg = g.createLinearGradient(0, .72, 0, 1); sg.addColorStop(0, css(mix3(L.app, [255, 255, 255], .15))); sg.addColorStop(1, css(mul3(L.app, .7)));
+  g.fillStyle = sg; g.beginPath(); g.moveTo(.1, 1.02); g.quadraticCurveTo(.12, .76, .34, .73); g.lineTo(.66, .73); g.quadraticCurveTo(.88, .76, .9, 1.02); g.closePath(); g.fill();
+  g.strokeStyle = css(L.app2, .7); g.lineWidth = .02; g.beginPath(); g.moveTo(.4, .74); g.lineTo(.5, .84); g.lineTo(.6, .74); g.stroke();   // collar
+  // hair that falls behind the head
+  if (st === 'bob' || st === 'curly' || st === 'pony') { g.fillStyle = hairG(); g.beginPath(); g.ellipse(.5, .45, st === 'curly' ? .25 : .22, st === 'bob' ? .27 : .24, 0, 0, Math.PI * 2); g.fill(); }
+  // neck and face
+  g.fillStyle = css(mul3(sk, .82)); g.fillRect(.43, .6, .14, .15);
+  const fg = g.createRadialGradient(.46, .4, .02, .5, .46, .24); fg.addColorStop(0, css(mix3(sk, [255, 255, 255], .14))); fg.addColorStop(1, css(mul3(sk, .84)));
+  g.fillStyle = fg; g.beginPath(); g.ellipse(.5, .46, .17, .21, 0, 0, Math.PI * 2); g.fill();
+  g.fillStyle = css(mul3(sk, .86)); ell(g, .33, .48, .03, .045); g.fill(); ell(g, .67, .48, .03, .045); g.fill();   // ears
+  // eyes, brows, nose, mouth
+  g.fillStyle = 'rgba(30,22,18,.9)'; ell(g, .43, .47, .018, .02); g.fill(); ell(g, .57, .47, .018, .02); g.fill();
+  g.strokeStyle = css(mul3(H, .8), .85); g.lineWidth = .016; g.beginPath(); g.moveTo(.39, .42); g.lineTo(.47, .415); g.moveTo(.53, .415); g.lineTo(.61, .42); g.stroke();
+  g.strokeStyle = css(mul3(sk, .68)); g.lineWidth = .012; g.beginPath(); g.moveTo(.5, .49); g.lineTo(.49, .54); g.lineTo(.51, .545); g.stroke();
+  g.strokeStyle = 'rgba(110,50,40,.65)'; g.lineWidth = .014; g.beginPath(); g.moveTo(.45, .6); g.quadraticCurveTo(.5, .615, .55, .6); g.stroke();
+  // hair or headgear on top
+  const cap = (col, rim) => { g.fillStyle = col; g.beginPath(); g.ellipse(.5, .36, .19, .15, 0, Math.PI, 0); g.lineTo(.69, .38); g.lineTo(.31, .38); g.closePath(); g.fill(); if (rim) { g.fillStyle = rim; g.fillRect(.29, .36, .42, .05); } };
+  switch (st) {
+    case 'bob': case 'short': case 'bun': case 'pony': case 'curly':
+      g.fillStyle = hairG(); g.beginPath(); g.ellipse(.5, .37, .185, .14, 0, Math.PI, 0); g.quadraticCurveTo(.6, .34, .5, .33); g.quadraticCurveTo(.4, .36, .315, .4); g.closePath(); g.fill();
+      if (st === 'bob') { g.beginPath(); g.ellipse(.33, .5, .045, .13, 0, 0, Math.PI * 2); g.fill(); g.beginPath(); g.ellipse(.67, .5, .045, .13, 0, 0, Math.PI * 2); g.fill(); }
+      if (st === 'bun') { ell(g, .5, .17, .07, .06); g.fill(); }
+      if (st === 'curly') for (let k = 0; k < 9; k++) { const an = Math.PI * (1 + k / 8); ell(g, .5 + Math.cos(an) * .19, .38 + Math.sin(an) * .15, .05, .05); g.fill(); }
+      break;
+    case 'cap': cap(css(L.capc)); g.fillStyle = css(mul3(L.capc, .75)); g.beginPath(); g.ellipse(.5, .37, .22, .04, 0, 0, Math.PI); g.fill(); break;
+    case 'beanie': cap(css(L.capc), css(mul3(L.capc, .8))); break;
+    case 'bandana': g.fillStyle = hairG(); g.beginPath(); g.ellipse(.5, .37, .18, .13, 0, Math.PI, 0); g.closePath(); g.fill(); g.fillStyle = css(L.capc); g.fillRect(.31, .33, .38, .06); break;
+    case 'helmet': { const k = mix3(L.app, [200, 205, 210], .5); cap(css(k), css(mul3(k, .7))); g.fillStyle = 'rgba(255,255,255,.25)'; ell(g, .44, .27, .05, .025); g.fill(); break; }
+  }
+  u = cv.toDataURL(); PORTRAITS.set(key, u); return u;
 }

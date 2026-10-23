@@ -1,13 +1,13 @@
-// The panels around the map: the orbital survey before the landing, then the colony strip, the archive (who
-// the fabricator prints), the crews (what people do and by what rules), building (stock, power, load tests,
-// blueprints and the project list), the log, the card of the person you picked, and the card for a building
-// being placed. They only show what the simulation reports and send commands back; they decide nothing.
+// The panels around the map: the orbital survey before the landing, then the top bar's readouts, the colonist
+// portraits, the open projects, the window the dock opens (the archive of who the fabricator prints, the crews
+// and their rules, building with stock, power, load tests, blueprints and the project list, and the log), the
+// card of the person you picked, the card of the building you picked, and the card for a building being placed. They only show what the simulation reports and send commands back; they decide nothing.
 import { ACT, ACT_NAME, SHIFTS, WORKS, RULES, SKILLS, SKILL_NAME, DAY_TICKS, HOUR, MAP } from '../core/consts.js';
 import { TRAITS, suggestFirst } from '../core/founders.js';
 import { PRINT_TICKS } from '../core/work.js';
 import { TYPES, PLANNABLE, STAGE_NAMES, TEST_STAGES, matName, LANDER_KW } from '../core/build.js';
 import { progress } from '../render/buildings.js';
-import { crewColour } from '../render/people.js';
+import { crewColour, portrait } from '../render/people.js';
 import { LETTERS } from '../render/view.js';
 
 const $ = id => document.getElementById(id);
@@ -18,6 +18,9 @@ const when = t => { const d = Math.floor(t / DAY_TICKS) + 1, h = (t % DAY_TICKS)
 const cap1 = s => s.charAt(0).toUpperCase() + s.slice(1);
 const SIDE = ['north', 'east', 'south', 'west'];
 const pct = f => Math.round(f * 100) + '%';
+const icon = (id, cls = 'ic') => `<svg class="${cls}"><use href="#i-${id}"/></svg>`;
+const TICON = { shelter: 'seed', dorm: 'dorm', commons: 'commons', workshop: 'tool', clinic: 'clinic', solar: 'solar', test: 'test' };
+const TAB = { archive: ['Archive', 'archive'], crews: ['Crews', 'crews'], build: ['Build', 'build'], log: ['Log', 'log'] };
 // what a building holds, in a few words
 const holds = (type, c) => ({ shelter: `${c.beds} bunks`, dorm: `${c.beds} bunks`, commons: `seats for ${c.seats}`, workshop: `${c.benches} bench${c.benches > 1 ? 'es' : ''}`, clinic: `${c.beds} beds`, solar: `${c.panels} panels, ${c.supply} kW` })[type] || '';
 const loads = L => Object.entries(L).filter(([k, n]) => n > 0 && k !== 'mark' && k !== 'test').map(([k, n]) => matName(k, n)).join(', ');const SHIFT_TXT = SHIFTS.map(s => `${s.name} ${s.a}–${s.b}`);
@@ -31,8 +34,12 @@ export class Panels {
     this.A = A; this.api = api; this.tab = 'archive'; this.chosen = new Set(); this.touched = false; this.sig = ''; this.cardSig = ''; this.moveSig = '';
     this.logSeen = 0; this.busy = false; this.min = false; this.confirm = -1; this.planSig = '';
     const side = $('side'), body = $('sideBody');
-    side.querySelectorAll('.tabs [data-tab]').forEach(b => b.onclick = () => this.setTab(b.dataset.tab));
-    $('sideMin').onclick = () => this.fold();
+    document.querySelectorAll('#dock [data-tab]').forEach(b => b.onclick = () => this.toggleTab(b.dataset.tab));
+    $('sideMin').onclick = () => this.fold(true);
+    $('kBuild').onclick = e => { const b = e.target.closest('[data-proj]'); if (b) this.api.showProject(+b.dataset.proj); };
+    const bar = $('bar');
+    bar.onclick = e => { const b = e.target.closest('[data-i]'); if (b) this.api.select(+b.dataset.i); };
+    bar.ondblclick = e => { const b = e.target.closest('[data-i]'); if (b) this.api.select(+b.dataset.i, true); };
     side.addEventListener('pointerdown', () => { this.busy = true; });
     window.addEventListener('pointerup', () => { if (this.busy) { this.busy = false; setTimeout(() => this.update(), 0); } });
     body.addEventListener('click', e => this.onClick(e));
@@ -48,25 +55,30 @@ export class Panels {
   orbit(sites, sel) {
     const el = $('orbit'); if (!sites) { el.hidden = true; return; }
     const unknown = { 'Lake shore': 'how high the lake rises', 'River meadow': 'how far the river floods', 'Woodland clearing': 'what lives under the trees', 'Under the ridge': 'whether the slope is stable', 'Marsh edge': 'how sound the ground is', 'Open plain': 'how hard the wind blows' };
-    el.innerHTML = `<h2>Orbital survey</h2><p>The Seed has found three places it could come down. It can only land once, and it won't lift again.</p>` +
+    el.innerHTML = `<div class="wt">${icon('orbit')}<b>Orbital survey</b></div><div class="in" style="padding-top:12px"><p>The Seed has found three places it could come down. It can only land once, and it won't lift again.</p>` +
       sites.map((s, i) => `<div class="site${i === sel ? ' on' : ''}" data-site="${i}"><h3><b>${LETTERS[i]}</b>${esc(s.tag)}</h3>
         <div class="facts"><div>Open ground <em>${s.open}%</em></div><div>Woodland <em>${s.wood}%</em></div><div>Stone <em>${s.stone}%</em></div><div>Marsh <em>${s.marsh}%</em></div>
         <div>Water <em>${s.water == null ? 'none seen' : s.water < 30 ? 'at hand' : s.water + ' m'}</em></div><div>Open water <em>${s.wet}%</em></div></div>
         <div class="unk">Not known from orbit: the soil, the weather, what lives here, and ${unknown[s.tag] || 'what is under the surface'}.</div></div>`).join('') +
       `<div class="acts"><button class="go" data-land="${sel}">Land at ${LETTERS[sel]}: ${esc(sites[sel].tag)}</button></div>
-      <p style="margin-top:10px">The survey covers ground about 1.2 km across. Each site's figures are for the ground within 80 m of it.</p>`;
+      <p style="margin-top:10px">The survey covers ground about 1.2 km across. Each site's figures are for the ground within 80 m of it.</p></div>`;
     el.hidden = false;
   }
 
   // ---------- the colony ----------
-  show(on) { $('side').hidden = !on; $('colony').hidden = !on; if (!on) $('card').hidden = true; }
+  show(on) {
+    this.on = on; $('side').hidden = !on || this.min; $('colony').hidden = !on; $('dock').hidden = !on; $('track').hidden = !on;
+    if (!on) { $('card').hidden = true; $('bar').hidden = true; $('bcard').hidden = true; }
+    this.dock();
+  }
   setTab(t) {
     this.tab = t; this.sig = '';
-    document.querySelectorAll('#side .tabs [data-tab]').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
-    if (this.min) this.fold(false);
+    $('sideTitle').textContent = TAB[t][0]; $('sideIc').innerHTML = `<use href="#i-${TAB[t][1]}"/>`;
+    if (this.min) this.fold(false); else this.dock();
     this.update();
   }
-  fold(on = !this.min) { this.min = on; $('side').classList.toggle('min', on); }
+  fold(on = !this.min) { this.min = on; $('side').hidden = on || !this.on; this.dock(); }
+  dock() { document.querySelectorAll('#dock [data-tab]').forEach(b => b.classList.toggle('on', !this.min && b.dataset.tab === this.tab)); }
   toggleTab(t) { if (this.tab === t && !this.min) this.fold(true); else this.setTab(t); }
   update() {
     const A = this.A, U = A.ui; if (!U) return;
@@ -80,21 +92,19 @@ export class Panels {
       if (sig !== this.sig && !holding) { const top = body.scrollTop; body.innerHTML = html(); body.scrollTop = top; this.sig = sig; }
       if (this.tab === 'archive') this.archiveLive(U);
     }
-    this.card();
+    this.card(); this.bcard();
   }
   strip(U) {
     const awake = U.alive, left = U.seed.feed + U.seed.queue.length;
-    $('kPeople').textContent = U.mode === 'stress' ? `${awake} awake` : `${awake} awake · ${this.A.archive.filter(p => p.woke == null).length} stored`;
+    $('kPeople').innerHTML = U.mode === 'stress' ? `${awake}<small>awake</small>` : `${awake}<small>+${this.A.archive.filter(p => p.woke == null).length} stored</small>`;
     const eaters = awake + U.seed.queue.length + (U.seed.printing ? 1 : 0), days = eaters ? U.food / eaters : 0, kf = $('kFood');
-    kf.textContent = U.mode === 'stress' ? 'not counted' : eaters ? `${Math.floor(U.food)} meals · ${Math.floor(days)} days` : `${Math.floor(U.food)} meals`;
+    kf.innerHTML = U.mode === 'stress' ? '<small>not counted</small>' : eaters ? `${Math.floor(days)}<small>days · ${Math.floor(U.food)} meals</small>` : `${Math.floor(U.food)}<small>meals</small>`;
     kf.className = U.mode !== 'stress' && eaters && days < 10 ? (days < 3 ? 'bad' : 'warn') : '';
-    const open = U.projects.filter(p => !p.done && p.type !== 'test'), first = open.find(p => !p.paused), kb = $('kBuild');
-    kb.textContent = first ? `${first.name} · ${STAGE_NAMES[first.stage].toLowerCase()}${open.length > 1 ? ` · ${open.length - 1} more` : ''}` : `${U.projects.filter(p => p.done).length} built · nothing planned`;
-    kb.className = open.some(p => p.stall) ? 'warn' : '';
-    const pw = U.power, kp = $('kPower'), dark = U.projects.filter(p => p.done && p.type !== 'solar' && !p.powered).length;
-    kp.textContent = `${pw.draw} of ${pw.supply} kW${dark ? ` · ${dark} dark` : ''}`; kp.className = dark ? 'warn' : '';
-    const y = U.stores.yard; $('kStock').textContent = `${y.stone} stone · ${y.timber} timber · ${y.salvage} salvage`;
-    $('kKnown').textContent = `${(U.known / (MAP * MAP) * 100).toFixed(1)}% · ${U.stakes.length} of 10 stakes`;
+    const pw = U.power, dark = U.projects.filter(p => p.done && p.type !== 'solar' && !p.powered).length;
+    $('kPower').innerHTML = `${pw.draw}/${pw.supply}<small>kW${dark ? ` · ${dark} dark` : ''}</small>`; $('rPower').classList.toggle('warn', !!dark);
+    const y = U.stores.yard; $('kStone').textContent = y.stone; $('kTimber').textContent = y.timber; $('kSalvage').textContent = y.salvage;
+    $('kKnown').innerHTML = `${(U.known / (MAP * MAP) * 100).toFixed(1)}%`; $('kKnown').parentNode.title = `Ground surveyed: ${(U.known / (MAP * MAP) * 100).toFixed(1)}%. Sensor stakes planted: ${U.stakes.length} of 10`;
+    this.tracker(U); this.colbar(U);
     void left;
   }
 
@@ -189,7 +199,7 @@ export class Panels {
         <div class="note" style="margin:6px 0 0">The lander makes ${LANDER_KW} kW${pw.supply > LANDER_KW ? ` and the solar fields ${+(pw.supply - LANDER_KW).toFixed(1)} kW` : ''}. Finished buildings take power in list order; any that don't fit stay dark and unused.${dark.length ? ` Dark now: ${dark.map(p => esc(p.name)).join(', ')}.` : ''}</div></div>`;
       const cg = st.cargo, pr = st.precise;
       h += `<div class="box"><b>Stock</b><div class="stock"><span>Stone <em>${st.yard.stone}</em></span><span>Timber <em>${st.yard.timber}</em></span><span>Salvage <em>${st.yard.salvage}</em></span><span>Lander modules <em>${cg.module}</em></span><span>Airlock seals <em>${pr.seal}</em></span><span>Pipe runs <em>${pr.pipe}</em></span><span>Power units <em>${pr.power}</em></span><span>Solar panels <em>${pr.panel}</em></span></div>
-        <div class="note" style="margin:6px 0 0">${U.seed.fab ? `The fabricator is making ${matName(U.seed.fab.k, 1).replace(/^1 /, 'a ')} from salvage. ` : ''}Stone and timber come from the land; seals, pipes, power units and panels are made from salvage at workshop benches, or slowly by the fabricator.</div></div>`;
+        <div class="note" style="margin:6px 0 0">${U.seed.fab ? `The fabricator is making ${matName(U.seed.fab.k, 1).replace(/^1 (.)/, (m, c) => ('aeiou'.includes(c) ? 'an ' : 'a ') + c)} from salvage. ` : ''}Stone and timber come from the land; seals, pipes, power units and panels are made from salvage at workshop benches, or slowly by the fabricator.</div></div>`;
       // the local materials and their load tests
       h += `<div class="sec">Local materials</div>`;
       for (const m of ['stone', 'timber']) {
@@ -200,7 +210,7 @@ export class Panels {
         h += `<div class="mat"><div class="grow"><b>${m === 'stone' ? 'Stone' : 'Timber'}</b><div class="note" style="margin:2px 0 0">${what}</div></div>${M.tested || test ? '' : `<button class="btn" data-act="test" data-mat="${m}">Test it</button>`}</div>`;
       }
       // planning
-      h += `<div class="sec">Plan a building</div><div class="types">${PLANNABLE.map(t => `<button data-act="plan" data-type="${t}"><b>${TYPES[t].name}</b><span>${esc(TYPES[t].use)}</span></button>`).join('')}</div>
+      h += `<div class="sec">Plan a building</div><div class="types">${PLANNABLE.map(t => `<button data-act="plan" data-type="${t}"><i class="bi">${icon(TICON[t])}</i><b>${TYPES[t].name}</b><span>${esc(TYPES[t].use)}</span></button>`).join('')}</div>
         <div class="note">Pick one, then drag on the map to draw it. The Seed lays out the inside and works out what it needs.</div>`;
       if (U.blueprints.length) h += `<div class="sec">Blueprints</div>` + U.blueprints.map((b, i) => `<div class="q"><span>${esc(b.name)} <em class="dim">${TYPES[b.type].name.toLowerCase()} · ${b.w} × ${b.h}</em></span><button class="btn" data-act="bp" data-i="${i}">Place</button><button data-act="bpDel" data-i="${i}" title="Forget this blueprint">Forget</button></div>`).join('');
       // the list
@@ -233,7 +243,7 @@ export class Panels {
     const sig = JSON.stringify([P.type, P.x, P.y, P.w, P.h, P.side, P.check.ok, P.check.why]); if (sig === this.planSig) { el.hidden = false; return; }
     this.planSig = sig;
     const c = P.check, T = TYPES[P.type];
-    $('plName').textContent = T.name;
+    $('plName').textContent = T.name; $('plPic').innerHTML = icon(TICON[P.type] || 'build');
     $('plMeta').textContent = `${P.w} × ${P.h} tiles${T.open ? '' : ` · door on the ${SIDE[P.side]} side`}`;
     let h = '';
     if (!c.ok) h += `<div class="pw bad">${esc(c.why)}</div>`;
@@ -304,13 +314,41 @@ export class Panels {
     else if (act === 'lead') { this.api.cmd('crewSet', { crew, lead: +el.value }); el.blur(); }
   }
 
+  // open projects, top left: click one for its card
+  tracker(U) {
+    const open = U.projects.filter(p => !p.done), sig = JSON.stringify([open.map(p => [p.id, p.name, p.stage, Math.round(progress(p) * 50), p.paused, p.stall, p.wait, p.crews]), this.A.projSel]);
+    if (sig === this.trackSig) return; this.trackSig = sig;
+    $('trackN').textContent = open.length ? open.length : '';
+    $('kBuild').innerHTML = open.length ? open.slice(0, 5).map(p => {
+      const names = p.type === 'test' ? TEST_STAGES : STAGE_NAMES, all = (p.stage + progress(p)) / names.length;
+      return `<button class="tk${p.stall ? ' stuck' : ''}${this.A.projSel === p.id ? ' on' : ''}" data-proj="${p.id}"><div class="row2"><b class="grow">${esc(p.name)}</b><em>${pct(all)}</em></div>
+        <div class="ps">${p.paused ? 'Paused · ' : ''}${esc(names[p.stage])}${p.stall ? ' · stalled' : !p.crews.length && !p.paused ? ' · waiting' : ''}</div><div class="bar"><u style="width:${pct(all)}"></u></div></button>`;
+    }).join('') + (open.length > 5 ? `<div class="tk idle">${open.length - 5} more in the build list</div>` : '') : `<div class="tk idle">Nothing being built. Press B to plan a building.</div>`;
+  }
+  // the colonists along the top, like a game's party bar
+  colbar(U) {
+    const A = this.A, el = $('bar');
+    if (U.mode === 'stress' || !A.people.length || A.place) { el.hidden = true; this.barSig = ''; return; }
+    const who = A.people.map((p, i) => i).filter(i => U.p[i] && !(U.p[i][6] & 16));
+    const row = i => { const r = U.p[i]; return [i, r[1], Math.round(Math.min(100 - r[2], 100 - r[3], r[5]) / 5), r[0], r[6]]; };
+    const sig = JSON.stringify([who.map(row), A.sel]); if (sig === this.barSig) { el.hidden = false; return; }
+    this.barSig = sig;
+    el.innerHTML = who.map(i => {
+      const p = A.people[i], r = U.p[i], cond = Math.min(100 - r[2], 100 - r[3], r[5]), f = r[6], act = r[0];
+      const asleep = act === ACT.BED || act === ACT.INSIDE, st = f & 2 ? ['+', 'hurt', 'Hurt'] : f & 8 ? ['!', 'hungry', 'Hungry'] : asleep ? ['z', '', 'Asleep'] : null;
+      const tip = `${p.name} · ${DOING[act] || ACT_NAME[act] || ''}${st && st[2] !== 'Asleep' ? ' · ' + st[2].toLowerCase() : ''}\nFatigue ${r[2]} · strain ${r[3]} · trust ${r[4]} · health ${r[5]}\nDouble-click to look at them`;
+      return `<button class="pc${A.sel === i ? ' on' : ''}${act === ACT.INSIDE || act === ACT.INDOORS || act === ACT.BENCH ? ' out' : ''}" data-i="${i}" title="${esc(tip)}"><img src="${portrait(p, r[1])}" alt="">${st ? `<em class="${st[1]}">${st[0]}</em>` : ''}<span>${esc(p.name.split(' ')[0])}</span><u><i style="width:${cond}%;background:${meterCol(cond, true)}"></i></u></button>`;
+    }).join('');
+    el.hidden = false;
+  }
+
   // ---------- the person you picked ----------
   card() {
     const A = this.A, U = A.ui, i = A.sel, card = $('card');
     if (i < 0 || !U || !U.p[i] || !A.people[i]) { card.hidden = true; return; }
     const p = A.people[i], r = U.p[i], d = U.detail && U.detail.id === i ? U.detail : null, crew = r[1] >= 0 ? U.crews[r[1]] : null;
     const flags = r[6], extra = [flags & 16 ? 'dead' : '', flags & 1 ? 'getting used to a new body' : '', flags & 2 ? 'hurt' : '', flags & 8 ? 'hungry' : ''].filter(Boolean);
-    $('cName').textContent = p.name;
+    $('cName').textContent = p.name; const pic = portrait(p, r[1]); if ($('cPic').getAttribute('src') !== pic) $('cPic').src = pic;
     $('cMeta').textContent = `${p.age} · former ${p.trade.toLowerCase()}`;
     $('cSw').style.background = rgb(crewColour(r[1]));
     $('cCrew').textContent = crew ? `${crew.name} crew${crew.lead === i ? ', lead' : ''} · ${WORKS[crew.work].toLowerCase()} · ${SHIFT_TXT[crew.shift].toLowerCase()}` : 'Not in a crew';
@@ -338,5 +376,37 @@ export class Panels {
     }
     ms.disabled = !!(flags & 16);
     card.hidden = false;
+  }
+
+  // ---------- the building you picked on the map (or in the list) ----------
+  bcard() {
+    const A = this.A, U = A.ui, el = $('bcard'), p = U && A.projSel >= 0 ? U.projects.find(q => q.id === A.projSel) : null;
+    if (!p || A.phase !== 'colony') { el.hidden = true; this.bSig = ''; return; }
+    const sig = JSON.stringify([p, this.confirm === p.id]); if (sig === this.bSig) { el.hidden = false; return; }
+    this.bSig = sig;
+    const T = TYPES[p.type], test = p.type === 'test', names = test ? TEST_STAGES : STAGE_NAMES, n = names.length;
+    const f = progress(p), all = p.done ? 1 : (p.stage + f) / n;
+    $('bName').textContent = p.name; $('bPic').innerHTML = icon(TICON[p.type] || 'build');
+    $('bMeta').textContent = test ? `At the rig in the yard` : `${T.name} · ${p.w} × ${p.h} tiles${T.open ? '' : ` · door on the ${SIDE[p.side]} side`}`;
+    $('bJob').textContent = p.done ? (p.type === 'solar' ? `Finished · making ${p.cap.supply} kW` : `Finished · ${p.powered ? 'has power' : 'dark: not enough power'}`)
+      : p.paused ? `Paused at ${names[p.stage].toLowerCase()}` : p.stall ? 'Stalled' : p.crews.length ? `Being built · ${names[p.stage].toLowerCase()}` : `Waiting · ${names[p.stage].toLowerCase()}`;
+    $('bDot').className = 'dot' + (p.done ? (p.powered || p.type === 'solar' ? ' ok' : ' off') : p.paused || p.stall || !p.crews.length ? ' off' : '');
+    let h = '';
+    if (!test) h += `<div class="note" style="margin:8px 0 0">${esc(T.use || 'Twelve bunks in the lander\'s own modules, the first roof on this world')}. It holds ${esc(holds(p.type, p.cap))}${p.type === 'solar' ? '' : ` and draws ${p.cap.kw} kW`}.</div>`;
+    if (!p.done) {
+      h += `<div class="sec">Progress · ${pct(all)}</div><div class="bar"><u style="width:${pct(all)}"></u></div>`;
+      h += `<div class="stg">` + names.map((nm, i) => {
+        const st = i < p.stage ? 'done' : i === p.stage ? 'now' : '';
+        return `<div class="${st}"><i>${i < p.stage ? '✓' : i + 1}</i><span>${nm}</span><em>${i < p.stage ? 'done' : i === p.stage ? pct(f) : ''}</em></div>`;
+      }).join('') + `</div>`;
+      const rows = Object.entries(p.need).filter(([k, q]) => q > 0 && k !== 'mark' && k !== 'test');
+      if (rows.length) h += `<div class="sec">This stage takes</div><div class="bill">` + rows.map(([k, q]) => { const g = Math.min(q, p.got[k] || 0); return `<div><em>${esc(cap1(matName(k, 2).replace(/^2 /, '')))}</em>${g} of ${q} in place</div>`; }).join('') + `</div>`;
+      else if (p.stage === 0 && !test) h += `<div class="note" style="margin-top:6px">Marking out needs only pegs and string; the crew walks the plot and clears what stands on it.</div>`;
+      if (p.wait) h += `<div class="pw">${esc(p.wait)}</div>`;
+      else if (p.crews.length) h += `<div class="ps" style="margin-top:6px">${esc(p.crews.join(', '))} crew${p.crews.length > 1 ? 's are' : ' is'} on it.</div>`;
+    } else if (p.wait) h += `<div class="pw">${esc(p.wait)}</div>`;
+    $('bBody').innerHTML = h;
+    const pause = $('bPause'); pause.hidden = p.done || p.type === 'shelter'; pause.textContent = p.paused ? 'Resume' : 'Pause';
+    el.hidden = false;
   }
 }
