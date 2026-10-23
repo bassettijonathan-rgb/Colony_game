@@ -11,6 +11,8 @@ import { progress } from '../render/buildings.js';
 import { crewColour, portrait } from '../render/people.js';
 import { LETTERS } from '../render/view.js';
 import { thingCard } from './things.js';
+import { healthTab } from './health.js';
+import { TRIAGE } from '../core/care.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -27,7 +29,7 @@ const TAB = { archive: ['Archive', 'archive'], crews: ['Crews', 'crews'], build:
 const holds = (type, c) => ({ shelter: `${c.beds} bunks`, dorm: `${c.beds} bunks`, commons: `seats for ${c.seats}`, workshop: `${c.benches} bench${c.benches > 1 ? 'es' : ''}`, clinic: `${c.beds} beds`, solar: `${c.panels} panels, ${c.supply} kW`, field: `${c.tiles} tiles of beds`, lab: `${c.benches} lab bench${c.benches > 1 ? 'es' : ''}` })[type] || '';
 const loads = L => Object.entries(L).filter(([k, n]) => n > 0 && k !== 'mark' && k !== 'test').map(([k, n]) => matName(k, n)).join(', ');const SHIFT_TXT = SHIFTS.map(s => `${s.name} ${s.a}–${s.b}`);
 // what a crew's members are doing, in a word each
-const DOING = { [ACT.BED]: 'asleep', [ACT.INSIDE]: 'asleep', [ACT.WALK]: 'walking', [ACT.HOME]: 'walking back', [ACT.TOBED]: 'turning in', [ACT.SURVEY]: 'surveying', [ACT.PLANT]: 'planting a stake', [ACT.CARRY]: 'carrying', [ACT.BUILD]: 'building', [ACT.EAT]: 'eating', [ACT.IDLE]: 'at camp', [ACT.ALONE]: 'off alone', [ACT.WAKE]: 'waking', [ACT.QUARRY]: 'cutting stone', [ACT.FELL]: 'felling', [ACT.STONE]: 'carrying stone', [ACT.LOG]: 'carrying logs', [ACT.TEST]: 'testing', [ACT.INDOORS]: 'indoors', [ACT.BENCH]: 'at a bench', [ACT.DEAD]: 'dead' };
+const DOING = { [ACT.BED]: 'asleep', [ACT.INSIDE]: 'asleep', [ACT.WALK]: 'walking', [ACT.HOME]: 'walking back', [ACT.TOBED]: 'turning in', [ACT.SURVEY]: 'surveying', [ACT.PLANT]: 'planting a stake', [ACT.CARRY]: 'carrying', [ACT.BUILD]: 'building', [ACT.EAT]: 'eating', [ACT.IDLE]: 'at camp', [ACT.ALONE]: 'off alone', [ACT.WAKE]: 'waking', [ACT.QUARRY]: 'cutting stone', [ACT.FELL]: 'felling', [ACT.STONE]: 'carrying stone', [ACT.LOG]: 'carrying logs', [ACT.TEST]: 'testing', [ACT.INDOORS]: 'indoors', [ACT.BENCH]: 'at a bench', [ACT.DEAD]: 'dead', [ACT.DOWN]: 'down', [ACT.TEND]: 'tending someone', [ACT.DRAG]: 'carrying someone' };
 const meterCol = (v, goodHigh) => { const x = goodHigh ? 100 - v : v; return x > 70 ? 'var(--bad)' : x > 45 ? 'var(--mid)' : 'var(--good)'; };
 const topSkills = (sk, n = 3) => SKILLS.map(k => [k, sk[k]]).sort((a, b) => b[1] - a[1]).slice(0, n);
 
@@ -60,6 +62,8 @@ export class Panels {
     side.addEventListener('pointerdown', () => { this.busy = true; });
     window.addEventListener('pointerup', () => { if (this.busy) { this.busy = false; setTimeout(() => this.update(), 0); } });
     body.addEventListener('click', e => this.onClick(e));
+    this.ctab = 'about';
+    $('cBody').addEventListener('click', e => { const b = e.target.closest('[data-ctab]'); if (b) { this.ctab = b.dataset.ctab; this.cardSig = ''; this.card(); } });
     $('bBody').addEventListener('click', e => this.onClick(e));
     body.addEventListener('change', e => this.onChange(e));
     $('cMove').onchange = e => { const v = +e.target.value; this.api.cmd('move', { person: this.A.sel, crew: v }); };
@@ -377,6 +381,7 @@ export class Panels {
       case 'bpDel': this.api.cmd('bpDel', { i: +el.dataset.i }); break;
       case 'test': this.api.cmd('test', { mat: el.dataset.mat }); this.api.toast(`The ${el.dataset.mat} test is first on the project list.`); break;
       case 'pGo': this.api.showProject(+el.dataset.id); break;
+      case 'triage': this.api.cmd('triage', { v: el.dataset.v }); break;
       case 'crop': this.api.cmd('crop', { id: +el.dataset.id, k: el.dataset.v }); break;
       case 'analyse': this.api.cmd('analyse', { o: +el.dataset.o }); break;
       case 'unanalyse': this.api.cmd('unanalyse', { o: +el.dataset.o }); break;
@@ -413,9 +418,9 @@ export class Panels {
     this.barSig = sig;
     el.innerHTML = who.map(i => {
       const p = A.people[i], r = U.p[i], cond = Math.min(100 - r[2], 100 - r[3], r[5]), f = r[6], act = r[0];
-      const asleep = act === ACT.BED || act === ACT.INSIDE, st = f & 2 ? ['+', 'hurt', 'Hurt'] : f & 8 ? ['!', 'hungry', 'Hungry'] : asleep ? ['z', '', 'Asleep'] : null;
+      const asleep = act === ACT.BED || act === ACT.INSIDE, st = f & 512 ? ['!', 'down', 'Down'] : f & 256 ? ['+', 'bleed', 'Bleeding'] : f & 2 ? ['+', 'hurt', f & 2048 ? 'Hurt, getting worse' : 'Hurt'] : f & 8 ? ['!', 'hungry', 'Hungry'] : asleep ? ['z', '', 'Asleep'] : null;
       const tip = `${p.name} · ${DOING[act] || ACT_NAME[act] || ''}${st && st[2] !== 'Asleep' ? ' · ' + st[2].toLowerCase() : ''}\nFatigue ${r[2]} · strain ${r[3]} · trust ${r[4]} · health ${r[5]}\nDouble-click to look at them`;
-      return `<button class="pc${A.sel === i ? ' on' : ''}${act === ACT.INSIDE || act === ACT.INDOORS || act === ACT.BENCH ? ' out' : ''}" data-i="${i}" title="${esc(tip)}"><img src="${portrait(p, r[1])}" alt="">${st ? `<em class="${st[1]}">${st[0]}</em>` : ''}<span>${esc(p.name.split(' ')[0])}</span><u><i style="width:${cond}%;background:${meterCol(cond, true)}"></i></u></button>`;
+      return `<button class="pc${A.sel === i ? ' on' : ''}${f & 1024 ? ' care' : ''}${act === ACT.INSIDE || act === ACT.INDOORS || act === ACT.BENCH ? ' out' : ''}" data-i="${i}" title="${esc(tip)}"><img src="${portrait(p, r[1])}" alt="">${st ? `<em class="${st[1]}">${st[0]}</em>` : ''}<span>${esc(p.name.split(' ')[0])}</span><u><i style="width:${cond}%;background:${meterCol(cond, true)}"></i></u></button>`;
     }).join('');
     el.hidden = false;
   }
@@ -425,15 +430,19 @@ export class Panels {
     const A = this.A, U = A.ui, i = A.sel, card = $('card');
     if (i < 0 || !U || !U.p[i] || !A.people[i]) { card.hidden = true; return; }
     const p = A.people[i], r = U.p[i], d = U.detail && U.detail.id === i ? U.detail : null, crew = r[1] >= 0 ? U.crews[r[1]] : null;
-    const flags = r[6], extra = [flags & 16 ? 'dead' : '', flags & 1 ? 'getting used to a new body' : '', flags & 2 ? 'hurt' : '', flags & 8 ? 'hungry' : '', flags & 64 ? 'cold' : '', flags & 128 ? 'unwell' : ''].filter(Boolean);
+    const flags = r[6], extra = [flags & 16 ? 'dead' : '', flags & 1 ? 'getting used to a new body' : '', flags & 512 && r[0] !== ACT.DOWN ? 'down' : '', flags & 256 ? 'bleeding' : flags & 2 ? 'hurt' : '', flags & 2048 ? 'getting worse' : '', flags & 1024 && !(flags & 512) ? 'in care' : '', flags & 8 ? 'hungry' : '', flags & 64 ? 'cold' : '', flags & 128 ? 'unwell' : ''].filter(Boolean);
     $('cName').textContent = p.name; const pic = portrait(p, r[1]); if ($('cPic').getAttribute('src') !== pic) $('cPic').src = pic;
     $('cMeta').textContent = `${p.age} · former ${p.trade.toLowerCase()}`;
     $('cSw').style.background = rgb(crewColour(r[1]));
     $('cCrew').textContent = crew ? `${crew.name} crew${crew.lead === i ? ', lead' : ''} · ${WORKS[crew.work].toLowerCase()} · ${SHIFT_TXT[crew.shift].toLowerCase()}` : 'Not in a crew';
     $('cJob').textContent = (flags & 16 ? 'Dead' : ACT_NAME[r[0]] || '') + (extra.length && !(flags & 16) ? ' · ' + extra.join(', ') : '');
-    const sig = JSON.stringify([i, r, d, A.names.length]);
+    const sig = JSON.stringify([i, r, d, A.names.length, this.ctab]);
     if (sig !== this.cardSig) {
       this.cardSig = sig;
+      const B = d && d.body, dg = B ? B.danger : 0, dot = B && (B.w.length || B.inner.length || B.unexplained || dg > .2) ? `<i style="background:${dg >= .45 ? 'var(--bad)' : dg >= .2 ? 'var(--mid)' : 'var(--good)'}"></i>` : '';
+      const tabs = `<div class="ctabs"><button data-ctab="about" class="${this.ctab === 'about' ? 'on' : ''}">About</button><button data-ctab="health" class="${this.ctab === 'health' ? 'on' : ''}">Health${dot}</button></div>`;
+      if (this.ctab === 'health') { $('cBody').innerHTML = tabs + (d ? healthTab(B, p.name.split(' ')[0], !!(flags & 16)) : ''); }
+      else {
       const meter = (lbl, v, goodHigh, tip) => `<span title="${tip}">${lbl}</span><b><u style="width:${v}%;background:${meterCol(v, goodHigh)}"></u></b><em>${v}</em>`;
       let h = `<div class="meters">${meter('Fatigue', r[2], false, 'Tired from work and walking; sleep brings it down')}${meter('Strain', r[3], false, 'Worry, hardship and loneliness; company and rest bring it down')}${meter('Trust', r[4], true, 'Trust in the Seed: falls with long shifts, nights outside and hunger')}${meter('Health', r[5], true, 'Injuries, hunger, cold and a poor diet')}${meter('Cold', r[7] || 0, false, 'Cold soaks in outdoors, worst at night and in wind and rain; a roof and a warm bed take it away. Above 65 it starts to do harm')}</div>`;
       h += `<div class="chips" style="margin-top:10px">${p.traits.map(t => `<span class="chip t" title="${esc(TRAITS[t])}">${cap1(t)}: ${esc(TRAITS[t].toLowerCase())}</span>`).join('')}</div>`;
@@ -446,7 +455,8 @@ export class Panels {
         if (ties.length) h += `<div class="sec">People</div><div class="chips">${ties.map(t => `<span class="chip ${t.k === 'rival' ? 'b' : 'g'}">${t.k === 'friend' ? 'Friend' : t.k === 'rival' ? 'Rival' : cap1(t.k)}: ${esc(A.names[t.id] || '')}</span>`).join('')}</div>`;
         h += `<div class="sec">Memories</div>${d.mem.slice().reverse().map(m => `<div class="mm2"><em>${m.d ? 'Day ' + m.d : 'Before'}</em>${esc(m.m)}</div>`).join('')}`;
       }
-      $('cBody').innerHTML = h;
+      $('cBody').innerHTML = tabs + h;
+      }
     }
     const ms = $('cMove'), mSig = JSON.stringify([U.crews.map(c => [c.id, c.name, c.gone]), r[1]]);
     if (mSig !== this.moveSig && document.activeElement !== ms) {
@@ -463,7 +473,7 @@ export class Panels {
     const A = this.A, U = A.ui, el = $('bcard'), p = U && A.projSel >= 0 ? U.projects.find(q => q.id === A.projSel) : null;
     if (!p && A.thing && U && A.phase === 'colony') return this.tcard(A.thing);
     if (!p || A.phase !== 'colony') { el.hidden = true; this.bSig = ''; return; }
-    const sig = JSON.stringify([p, this.confirm === p.id]); if (sig === this.bSig) { el.hidden = false; return; }
+    const sig = JSON.stringify([p, this.confirm === p.id, p.type === 'clinic' && [U.care, U.med]]); if (sig === this.bSig) { el.hidden = false; return; }
     this.bSig = sig;
     const T = TYPES[p.type], test = p.type === 'test', names = stagesOf(p.type), n = names.length;
     const f = progress(p), all = p.done ? 1 : (p.stage + f) / n;
@@ -474,6 +484,13 @@ export class Panels {
     $('bDot').className = 'dot' + (p.done ? (p.powered || p.type === 'solar' ? ' ok' : ' off') : p.paused || p.stall || !p.crews.length ? ' off' : '');
     let h = '';
     if (!test) h += `<div class="note" style="margin:8px 0 0">${esc(T.use || 'Twelve bunks in the lander\'s own modules, the first roof on this world')}. It holds ${esc(holds(p.type, p.cap))}${p.type === 'solar' || !p.cap.kw ? '' : ` and draws ${p.cap.kw} kW`}.</div>`;
+    if (p.type === 'clinic' && p.done && U.care) {
+      const C = U.care, M = U.med, here = C.ward.filter(q => q[1] === p.id).map(q => q[0]);
+      h += `<div class="sec">Patients</div>${here.length ? `<div class="chips">${here.map(id => `<button class="chip" data-act="person" data-id="${id}">${esc(A.people[id] ? A.people[id].name : '')}</button>`).join('')}</div>` : '<div class="note" style="margin:0">No one is in here.</div>'}`;
+      h += `<div class="note" style="margin:6px 0 0">${C.medics ? `${C.medics} ${C.medics === 1 ? 'person is' : 'people are'} skilled enough to work as a medic.` : 'Nobody is skilled in medicine yet: others will do what they can, worse.'} A crew set to clinic work stays close by.</div>`;
+      h += `<div class="sec">When there are more patients than medics</div><div class="seg sm wrap">${Object.entries(TRIAGE).map(([k, t]) => `<button data-act="triage" data-v="${k}" class="${C.triage === k ? 'on' : ''}">${t}</button>`).join('')}</div>`;
+      if (M) h += `<div class="note" style="margin:6px 0 0">Supplies: ${M.dress} dressings, ${M.pk} painkillers, ${M.abx} antibiotic courses, ${M.blood} units of blood substitute.</div>`;
+    }
     if (p.type === 'field' && p.done) { const [state, sel] = fieldBits(p); h += `<div class="sec">Crop</div><div class="note" style="margin:0 0 6px">${state}</div>${sel}`; }
     if (!p.done) {
       h += `<div class="sec">Progress · ${pct(all)}</div><div class="bar"><u style="width:${pct(all)}"></u></div>`;

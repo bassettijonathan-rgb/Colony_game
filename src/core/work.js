@@ -12,8 +12,11 @@ import {
 } from './build.js';
 import { eat, analyse, labHour, kitchenJob, cookMeals, foodOf, add, patchLeft, takePatch, inSeason, cropPlan, sowUnits, harvestLoads, keyOf, isCrop, mealsInStore, hasKitchen, SAMPLES, PROC_DAYS, CROPS, CROP_KEYS } from './food.js';
 import { dayWeather, untilDeep } from './year.js';
+import { careArrive, careTimer, MED_KIT, MED_MADE, TRIAGE } from './care.js';
+import { capOf as bodyCap } from './body.js';
 
 export const PRINT_TICKS = 4 * HOUR;
+const MEDS_SALVAGE = 2, MEDS_H = 3;   // a batch of medical supplies: salvage, and hours at a workshop's pace
 const TPH = 95;          // tiles an unhurried person covers in an hour, for planning trips
 const STAKES_ALL = 10, PICK = 100, NO_WORK = Math.round(HOUR / 2);
 const FIT_JOBS = new Set(['fetch', 'pick', 'cut', 'fit']);
@@ -38,8 +41,15 @@ export function seedTick(sim) {
   if (sd.printing || sd.queue.length) return;
   const f = S.fab;
   if (f.job) {
-    if (--f.job.left <= 0) { S.stores.cargo[f.job.k]++; sim.log(`The fabricator finished ${matName(f.job.k, 1).replace(/^1 /, 'a ')}.`); f.job = null; S.rv++; }
+    if (--f.job.left <= 0) {
+      if (f.job.k === 'meds') { for (const k in MED_MADE) S.med[k] += MED_MADE[k]; sim.log('The fabricator finished a batch of medical supplies: dressings, painkillers, antibiotics and blood substitute.'); }
+      else { S.stores.cargo[f.job.k]++; sim.log(`The fabricator finished ${matName(f.job.k, 1).replace(/^1 /, 'a ')}.`); }
+      f.job = null; S.rv++;
+    }
   } else if (S.tick % 60 === 0) {
+    // medical supplies come before parts when they run low
+    const M = S.med;
+    if (M && (M.dress < MED_KIT.dress / 3 || M.abx < 3 || M.blood < 2 || M.pk < 4) && S.stores.yard.salvage >= MEDS_SALVAGE) { S.stores.yard.salvage -= MEDS_SALVAGE; f.job = { k: 'meds', left: Math.round(MEDS_H * HOUR * FAB_SLOW) }; S.rv++; return; }
     const k = nextOrder(sim);
     if (k && S.stores.yard.salvage >= RECIPE[k].salvage) { S.stores.yard.salvage -= RECIPE[k].salvage; f.job = { k, left: Math.round(RECIPE[k].h * HOUR * FAB_SLOW) }; S.rv++; }
   }
@@ -71,6 +81,7 @@ export function workNext(sim, c) {
     case 'farm': return farmNext(sim, c);
     case 'kitchen': return kitchenNext(sim, c);
     case 'lab': return labNext(sim, c);
+    case 'clinic': return clinicNext(sim, c);
   }
   return false;
 }
@@ -223,6 +234,13 @@ function labNext(sim, c) {
   return false;
 }
 
+// ---------- the clinic: medics wait there, ready, when nobody needs them ----------
+function clinicNext(sim, c) {
+  const p = built(sim.S).find(q => q.type === 'clinic' && q.powered);
+  if (!p) return false;
+  c.job = 'tend'; c.ws = p.id; sim.goTo(c, sim.doorOf(p), ACT.INDOORS); return true;
+}
+
 // whatever someone was carrying when called away goes back to the stores
 export function dropCarry(sim, c) {
   const S = sim.S;
@@ -235,11 +253,15 @@ function eff(sim, c, kind = 'build') {
   const S = sim.S, cr = c.crew >= 0 ? S.crews[c.crew] : null, lead = cr && cr.lead >= 0 ? S.cols[cr.lead] : null, sk = c.skills;
   let e = kind === 'bench' ? .4 + sk.engineering * .07 : kind === 'cut' ? .55 + sk.building * .03 + sk.fieldcraft * .03 : kind === 'farm' ? .5 + sk.botany * .05 + sk.fieldcraft * .01
     : kind === 'cook' ? .5 + sk.cooking * .05 : kind === 'forage' ? .55 + sk.fieldcraft * .04 + sk.botany * .02 : kind === 'lab' ? .4 + sk.botany * .045 + sk.medicine * .03 : .45 + sk.building * .05 + sk.engineering * .025;
-  if (c.fat > 75) e *= .7; if (c.chill > 35) e *= .85; if (c.unwell) e *= .85; if (c.fresh > 0) e *= .75; if (c.hurt > 0) e *= .8; if (c.str > 65) e *= .85;
+  if (c.fat > 75) e *= .7; if (c.chill > 35) e *= .85; if (c.unwell) e *= .85; if (c.fresh > 0) e *= .75; if (c.str > 65) e *= .85;
+  if (c.cap) { const w = CAPW[kind] || CAPW.build; let f = 0; for (const k in w) f += w[k] * bodyCap(c, k); e *= f; }   // what the body can do
   if (c.traits.includes('reckless')) e *= 1.1; if (c.traits.includes('careful')) e *= .92;
   if (lead) e *= .85 + lead.skills.leadership * .03;
   return Math.max(.2, e);
 }
+
+// which capacities each kind of work leans on
+const CAPW = { build: { manip: .5, carry: .3, move: .2 }, cut: { carry: .6, manip: .4 }, bench: { manip: .8, sight: .2 }, farm: { manip: .5, move: .5 }, cook: { manip: .8, sight: .2 }, forage: { move: .6, sight: .4 }, lab: { manip: .6, sight: .4 } };
 
 // ---------- the projects: stages, crews, waiting, power, beds ----------
 function fitted(sim, c) {
@@ -459,7 +481,9 @@ export function onArrive(sim, c) {
         else { if (!S.noFood) { S.noFood = true; sim.log('There is nothing left to eat. From tonight people go to bed hungry, and the hungry weaken day by day until they die.', 'bad', { e: 'nofood', lvl: 2, x: sim.W.site.fire.x, y: sim.W.site.fire.y, title: 'Nothing left to eat' }); } if (!c.hungry) sim.log(`${c.name} went to bed hungry: there is nothing left to eat.`, 'bad', { who: c.id }); c.hungry = true; c.meal = ''; }
       }
       break;
-    case 'sleep': case 'ward': if (c.act === ACT.INSIDE || c.act === ACT.INDOORS) c.where = c.job === 'ward' ? c.ward : c.home; break;
+    case 'sleep': case 'ward': if (c.act === ACT.INSIDE || c.act === ACT.INDOORS) c.where = c.ward >= 0 ? c.ward : c.home; break;
+    case 'aid': case 'treat': case 'carry': careArrive(sim, c); break;
+    case 'tend': c.where = c.ws; c.timer = HOUR; break;
     case 'wake': break;
   }
 }
@@ -577,6 +601,8 @@ export function onTimer(sim, c) {
       c.job = ''; c.vat = 0; c.act = ACT.IDLE; break;
     }
     case 'lab': labHour(sim, eff(sim, c, 'lab')); c.job = ''; c.where = -1; c.ws = -1; c.act = ACT.IDLE; break;
+    case 'aid': case 'treat': careTimer(sim, c); break;
+    case 'tend': c.job = ''; c.where = -1; c.ws = -1; break;
   }
 }
 const MAT_ONE = { seal: 'airlock seal', pipe: 'pipe run', power: 'power unit', panel: 'solar panel' };
@@ -657,6 +683,7 @@ export function command(sim, m) {
     // ---- food ----
     case 'analyse': return analyse(sim, m.o);
     case 'unanalyse': { const F = S.F, L = F.life[m.o]; if (L && L.queued && F.lab.cur !== m.o) { F.lab.queue = F.lab.queue.filter(o => o !== m.o); L.queued = false; S.rv++; } break; }
+    case 'triage': if (TRIAGE[m.v]) { S.care.triage = m.v; S.rv++; } break;
     case 'crop': if (p && p.crop && (m.k === 'auto' || m.k === 'fallow' || CROPS[m.k])) { p.crop.want = m.k; if (p.crop.st === 'bare') p.crop.todo = null; S.rv++; } break;
     case 'bpDel': if (S.blueprints[m.i]) { S.blueprints.splice(m.i, 1); S.rv++; } break;
   }

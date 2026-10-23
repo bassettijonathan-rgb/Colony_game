@@ -188,7 +188,7 @@ export class View {
     this.stats.people = order.length;
     if (near) {
       order.sort((a, b) => pos[a * 4 + 1] - pos[b * 4 + 1]);
-      for (const i of order) { const o = i * 4, f = pos[o + 3], act = f >> 1, mv = f & 1; drawPerson(dc, arts[i], pos[o], pos[o + 1], pos[o + 2], mv, act, F.time); if (act !== ACT.BED) hDisc(pos[o], pos[o + 1], .28, act === ACT.EAT || act === ACT.ALONE || act === ACT.PLANT || act === ACT.QUARRY ? .8 : 1.2); else hDisc(pos[o], pos[o + 1], .3, .3); }
+      for (const i of order) { const o = i * 4, f = pos[o + 3], act = f >> 1, mv = f & 1; drawPerson(dc, arts[i], pos[o], pos[o + 1], pos[o + 2], mv, act, F.time); if (act !== ACT.BED && act !== ACT.DOWN) hDisc(pos[o], pos[o + 1], .28, act === ACT.EAT || act === ACT.ALONE || act === ACT.PLANT || act === ACT.QUARRY ? .8 : 1.2); else hDisc(pos[o], pos[o + 1], .3, .3); }
     } else {
       const r = Math.max(.35, 2.2 / k);
       for (const i of order) drawDot(dc, arts[i], pos[i * 4], pos[i * 4 + 1], r);

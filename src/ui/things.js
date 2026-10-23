@@ -69,6 +69,7 @@ export function thingCard(A, th) {
       if (sd.queue.length) h += row('Next in line', sd.queue.length);
       if (sd.fab) h += row('Making from salvage', esc(matName(sd.fab.k, 1)));
       if (F) { h += sec('Analyser'); h += cur ? row(`Testing ${esc(cur.name.toLowerCase())}`, pct(lab.work / TEST_H)) : note('Idle. Samples of local life go here to be tested before anyone eats them.', 0); if (lab.queue.length) h += row('Waiting to be tested', lab.queue.length); }
+      if (U.med) { const M = U.med; h += sec('Medical supplies') + row('Dressings', M.dress) + row('Painkillers', M.pk) + row('Antibiotic courses', M.abx) + row('Blood substitute', `${M.blood} unit${M.blood === 1 ? '' : 's'}`) + note('The fabricator makes more from salvage when they run low.', 0); }
       h += sec('Supplies') + row('Lander power', `${LANDER_KW} kW`) + (U.mode === 'stress' ? '' : row('Lander rations', `${Math.floor(U.food)} meals`)) + row('Sensor stakes not yet planted', sd.stakes);
       return { name: 'The Seed', icon: 'seed', meta: 'The lander and its mind', job: sd.printing ? 'Printing a body' : cur ? 'Testing samples' : 'Watching over the colony', dot: 'ok', body: h, btn: { label: 'Open the archive', tab: 'archive' } };
     }

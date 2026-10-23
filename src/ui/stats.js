@@ -14,7 +14,7 @@ const RANGES = [['20', 'Last 20 days'], ['80', 'Last year'], ['all', 'Everything
 
 // what each chart shows: per-day amounts come from running totals
 const CHARTS = [
-  { id: 'people', title: 'People', unit: 'people', series: [['Awake', r => r[K.alive]], ['Hungry', r => r[K.hungry]], ['Unwell', r => r[K.unwell]]], int: true },
+  { id: 'people', title: 'People', unit: 'people', series: [['Awake', r => r[K.alive]], ['Hungry', r => r[K.hungry]], ['Unwell', r => r[K.unwell]], ['Hurt', r => r[K.hurt] ?? 0]], int: true },
   { id: 'food', title: 'Food in store', unit: 'meals', series: [['Lander rations', r => r[K.rations]], ['Food from this world', r => Math.max(0, r[K.meals] - r[K.rations])]], int: true },
   { id: 'fdays', title: 'Days of food', unit: 'days', series: [['Days of food', r => r[K.alive] ? r[K.meals] / r[K.alive] : 0]], warn: 10 },
   { id: 'gather', title: 'Food brought in, per day', unit: 'loads', bars: true, series: [['Loads foraged', (r, p) => r[K.foraged] - (p ? p[K.foraged] : 0)], ['Harvests', (r, p) => r[K.harvests] - (p ? p[K.harvests] : 0)]], int: true },
@@ -27,7 +27,7 @@ const CHARTS = [
   { id: 'known', title: 'Ground surveyed', unit: '% of the map', series: [['Surveyed', r => r[K.known]]], fmt: v => `${v.toFixed(1)}%` },
   { id: 'life', title: 'Local life', unit: 'kinds', series: [['Found', r => r[K.seen]], ['Tested', r => r[K.tested]]], int: true },
 ];
-const TOTALS = [['meals', 'Meals cooked'], ['foraged', 'Loads foraged'], ['harvests', 'Harvests'], ['felled', 'Trees felled'], ['quarried', 'Stone cut'], ['made', 'Parts made'], ['friends', 'Friendships'], ['rivals', 'Rivalries'], ['breakdowns', 'Breakdowns'], ['accidents', 'Accidents'], ['cold', 'Dangerously cold'], ['deaths', 'Deaths']];
+const TOTALS = [['meals', 'Meals cooked'], ['foraged', 'Loads foraged'], ['harvests', 'Harvests'], ['felled', 'Trees felled'], ['quarried', 'Stone cut'], ['made', 'Parts made'], ['friends', 'Friendships'], ['rivals', 'Rivalries'], ['breakdowns', 'Breakdowns'], ['accidents', 'Accidents'], ['treated', 'Treatments'], ['cold', 'Dangerously cold'], ['deaths', 'Deaths']];
 
 // a round step for the y-axis (whole numbers for counts), and the axis ends on whole steps
 function axis(lo0, hi0, whole) {
