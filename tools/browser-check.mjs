@@ -78,7 +78,7 @@ await wait(3000); await shot('11-continued');
 
 // a colony the bot has built up for nine days, loaded into the page
 const grown = landColony(4242); for (let i = 0; i < 9 * DAY_TICKS; i++) { grown.sim.tick(); if (grown.sim.S.tick % DAY_TICKS === Math.round(6 * HOUR)) botBuild(grown.sim); }
-const loadSave = async d => { await page.evaluate(d => localStorage.setItem('colony-run', JSON.stringify({ savedAt: Date.now() + 1e6, data: { v: 3, day: 1, count: d.cols.length, sim: d } })), d); await page.reload(); return until(() => window.__colony && window.__colony.state.ready, 120000); };
+const loadSave = async d => { await page.evaluate(d => localStorage.setItem('colony-run', JSON.stringify({ savedAt: Date.now() + 1e6, data: { v: 4, day: 1, count: d.cols.length, sim: d } })), d); await page.reload(); return until(() => window.__colony && window.__colony.state.ready, 120000); };
 ok = await loadSave(grown.sim.serialize());
 s = await st(); console.log('grown colony:', ok, { day: s.clock.abs, projects: s.ui.projects.map(p => `${p.name} ${p.done ? (p.powered || p.type === 'solar' ? 'done' : 'dark') : 'stage ' + (p.stage + 1)}${p.wait ? ' (' + p.wait + ')' : ''}`), power: s.ui.power, yard: s.ui.stores.yard });
 await page.evaluate(() => window.__colony.setSpeed(0));
@@ -86,6 +86,10 @@ const mid = await page.evaluate(() => { const ps = window.__colony.state.ui.proj
 await page.evaluate(m => window.__colony.look(m[0], m[1], 15), mid); await wait(3500); await shot('12-buildings');
 await page.evaluate(() => window.__colony.goHome()); await page.evaluate(() => { const V = window.__colony; V.look(V.state.cam.x, V.state.cam.y, 30); }); await wait(3000); await shot('13-yard');
 await page.evaluate(() => window.__colony.tab('build')); await wait(800); await shot('14-build-tab');
+await page.evaluate(() => window.__colony.tab('life')); await wait(800); await shot('14b-life-tab');
+const field = await page.evaluate(() => { const f = window.__colony.state.ui.projects.find(p => p.type === 'field'); if (f) window.__colony.showProject(f.id); return f && f.id; });
+if (field != null) { await wait(2500); await shot('14c-field-card'); }
+s = await st(); console.log('food and year:', { year: s.ui.year, F: s.ui.F, field });
 // draw a dormitory on the nearest good plot, through the same steps a player takes
 const plot = await page.evaluate(async () => {
   const C = window.__colony, L = C.panels().A.W.land;

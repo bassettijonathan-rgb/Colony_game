@@ -51,6 +51,17 @@ Generated live with Web Audio, with no audio files: a pad changing chord every t
 8. Dormitories give bunks, the commons a sit-down evening meal that eases strain more than the fire, the clinic beds where the hurt heal twice as fast, and workshops benches for the workshop crew.
 9. Saves are version 3; a milestone 2 colony continues, its shelter becoming the first project of many.
 
+## Food and the year (milestone 4, part 1)
+
+1. The year is 80 days in four seasons of 20. Temperature follows the season and the hour, the weather is drawn day by day (clear, cloud, rain, fog, wind, storms, snow), and the sun rises and sets later or earlier through the year. Deep cold is the fourth season: nothing grows, water freezes, snow lies, and anyone outdoors at night chills fast. The chip next to the clock shows today's weather and temperature; pointing at it gives sunrise, sunset and the days left until Deep cold.
+2. The lander's rations run out, so the colony has to live off this world. People notice the local life near where they work; each kind becomes a card in the Life window (`G`) with where it grows and when.
+3. Nothing found is known to be safe. Foraging crews take samples, and the Seed's analyser (or a lab with a lab crew, much faster) tests them one kind at a time. Results say whether it can be eaten and how: raw, cooked, leached or fermented in the vats. Some foods do slow harm or aren't enough on their own; the Seed plans meals so no one eats too much of one.
+4. Foragers gather tested food while the larder is low, more when Deep cold is near. Picked patches take a while to grow back. A kitchen crew cooks at the fire and runs the vats; food that must be leached or fermented is useless without one.
+5. Fields are built like any other building (marked out, dug, made soil, drains, raised beds) and worked by a farm crew. The seed bank holds potatoes, kale and beans; the Seed picks what has time to ripen before the frost, or the player chooses per field in the Life window or the field's card. Frost kills a crop that isn't in.
+6. People get cold outdoors, worse at night, in wind and rain; the person card shows how cold, what they last ate and whether the diet is telling on them. Cold above 65 does harm, and the dangerously cold can freeze. The larder in the Life window and the food readout at the top count only food that can actually be eaten.
+7. The bot runs three food policies for balancing (`seed`, `lean` with one forager, `nofood`); a careful colony gets through two years, a careless one starves in the second.
+8. Saves are version 4; version 2 and 3 saves continue.
+
 ## News
 
 Nothing important waits in the log to be found.

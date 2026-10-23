@@ -8,6 +8,7 @@ import { Panels } from './ui/panels.js';
 import { News } from './ui/news.js';
 import { Music, moodFor } from './ui/music.js';
 import { SEASONS, MAP, NCH, ACT, DAY_TICKS, hidden } from './core/consts.js';
+import { WX } from './core/year.js';
 import { TYPES, facing } from './core/build.js';
 import { LAYERS } from './render/terrain.js';
 import { Store, initStorage, saveLocal, loadLocal, saveAccount, loadAccount, exportFile, importFile } from './ui/storage.js';
@@ -45,7 +46,7 @@ function onSim(m) {
 function ask(msg) { const id = ++A.saveId; return withTimeout(new Promise(r => { A.waiting.set(id, r); A.sim.send({ ...msg, id }); }), 4000, null); }
 const requestSave = () => ask({ t: 'save' });
 function cmd(op, args = {}) { return ask({ t: 'cmd', op, ...args }); }
-const wrap = sim => ({ v: 3, day: Math.floor(sim.tick / DAY_TICKS) + 1, count: sim.cols.length, sim });
+const wrap = sim => ({ v: 4, day: Math.floor(sim.tick / DAY_TICKS) + 1, count: sim.cols.length, sim });
 function ensureView(W) {
   if (!A.view) {
     A.view = new View(app, W);
@@ -69,7 +70,7 @@ function onSurvey(m) {
   $('sub').textContent = `Choosing where to land · seed ${m.seed}`;
   const V = A.view; V.cam.x = MAP / 2; V.cam.y = MAP / 2; V.cam.z = 1; V.clampCam();
   speedButtons();
-  saveLocal({ v: 3, orbit: m.seed });   // a reload comes back to the same planet
+  saveLocal({ v: 4, orbit: m.seed });   // a reload comes back to the same planet
   if (A.oldSave) { A.oldSave = false; setTimeout(() => toast('The colony from milestone 1 cannot continue in this version, so this is a new landing.'), 1500); }
 }
 function siteSelect(i) {
@@ -148,7 +149,7 @@ function frame(now) {
   if (keys.has('KeyW') || keys.has('ArrowUp')) pan(0, -sp); if (keys.has('KeyS') || keys.has('ArrowDown')) pan(0, sp);
   if (A.follow && A.sel >= 0 && A.sel < A.n) { c.x += (A.pos[A.sel * 4] - c.x) * Math.min(1, dt * 6); c.y += (A.pos[A.sel * 4 + 1] - c.y) * Math.min(1, dt * 6); }
   V.clampCam();
-  const colony = A.phase === 'colony' && A.ui ? { seed: A.ui.seed, stakes: A.ui.stakes, crews: A.ui.crews, projects: A.ui.projects, stores: A.ui.stores } : null;
+  const colony = A.phase === 'colony' && A.ui ? { seed: A.ui.seed, stakes: A.ui.stakes, crews: A.ui.crews, projects: A.ui.projects, stores: A.ui.stores, year: A.ui.year, F: A.ui.F, spots: A.ui.spots, day: A.clock ? A.clock.abs : 1 } : null;
   const hour = A.clock && A.phase === 'colony' ? A.clock.hour : 10.5;
   V.frame({ n: A.n, pos: A.pos, arts: A.arts, names: A.names, leads: A.leads, hour, time: now / 1000, sel: A.sel, hover: A.hover, budget: A.frames.length > 30 && avgMs() > 22 ? 1 : 2, colony, orbit: A.phase === 'orbit' ? { sites: A.sites, sel: A.siteSel } : null, pickAt: A.pickCrew >= 0 ? A.pickAt : null, place: A.place, projSel: A.projSel });
   if (A.hold && A.phase === 'colony' && !V.landing) { A.hold = false; setSpeed(A.speed || 1); if (V.anim) toast('The Seed is down. Choose who the fabricator prints first.'); }
@@ -181,7 +182,8 @@ function hud() {
     const h = Math.floor(ck.hour), mi = Math.floor((ck.hour - h) * 60);
     $('time').textContent = `${pad(h)}:${pad(mi)}`;
     $('date').innerHTML = `<b>Day ${((ck.day - 1) % 20) + 1} of ${SEASONS[ck.season]}</b>Year ${ck.year} · day ${ck.abs} since landing`;
-  } else { $('time').textContent = '--:--'; $('date').innerHTML = '<b>In orbit</b>Before landing'; }
+    weather(A.ui && A.ui.year);
+  } else { $('time').textContent = '--:--'; $('date').innerHTML = '<b>In orbit</b>Before landing'; $('wx').hidden = true; }
   const f = A.frames.slice(-30), ms = f.reduce((a, b) => a + b, 0) / Math.max(1, f.length), fps = ms ? 1000 / ms : 0, cls = fps >= 55 ? 'g' : fps >= 30 ? 'y' : 'x';
   for (const id of ['fps', 'fps2']) { const el = $(id); el.textContent = fps ? Math.round(fps) : '--'; el.className = cls; }
   if ($('perf').hidden) return;
@@ -196,6 +198,20 @@ function hud() {
   $('pZoom').textContent = `${V.cam.z.toFixed(1)} px per tile`;
   $('pSaved').textContent = A.savedNote;
   spark();
+}
+// the weather chip: the temperature now and the day's weather, with the day's light and the cold to come
+const WX_ICON = { clear: 'sun', cloud: 'cloud', fog: 'fog', rain: 'rain', storm: 'storm', snow: 'snow', blizzard: 'snow' };
+const hhmm = h => `${pad(Math.floor(h))}:${pad(Math.floor((h % 1) * 60))}`;
+function weather(Y) {
+  const el = $('wx'); if (!Y || A.ui.mode === 'stress') { el.hidden = true; return; }
+  el.hidden = false;
+  const w = WX[Y.wx], hot = Math.round(Y.temp);
+  const h = A.clock ? A.clock.hour : 12, dark = h < Y.dawn || h > Y.dusk, ic = WX_ICON[Y.wx] || 'sun';
+  el.querySelector('use').setAttribute('href', '#i-' + (ic === 'sun' && dark ? 'moon' : ic));
+  $('wxT').textContent = `${hot}°`; $('wxN').textContent = w.name + (Y.snap ? ' · cold snap' : '');
+  el.className = w.out === 2 || Y.temp < -15 ? 'bad' : Y.temp < 0 ? 'cold' : '';
+  el.title = `${w.name}, ${hot}°C${Y.snap ? ', a cold snap' : ''}. ${w.out === 2 ? 'Nobody works outside today. ' : w.out ? 'Work outside is risky today. ' : ''}Light from ${hhmm(Y.dawn)} to ${hhmm(Y.dusk)}. ` +
+    (Y.season === 3 ? 'Deep cold: nothing grows.' : `Deep cold in ${Y.deepIn} day${Y.deepIn === 1 ? '' : 's'}.`) + (Y.snow > .1 ? ` Snow on the ground.` : '') + (Y.ice > .2 ? ' The water is freezing over.' : '');
 }
 function spark() {
   const cv = $('spark'), g = cv.getContext('2d'), W = cv.width, H = cv.height, f = A.frames; g.clearRect(0, 0, W, H);
@@ -292,7 +308,7 @@ async function autosave(now) {
 }
 function newest(a, b) { if (!a) return b; if (!b) return a; return (a.savedAt || 0) >= (b.savedAt || 0) ? a : b; }
 // milestone 2 colonies (version 2) carry on: their shelter becomes the first project of many
-const isSave = d => d && (d.v === 2 || d.v === 3) && d.sim && (d.sim.v === 2 || d.sim.v === 3) && Array.isArray(d.sim.cols);
+const isSave = d => d && d.v >= 2 && d.v <= 4 && d.sim && d.sim.v >= 2 && d.sim.v <= 4 && Array.isArray(d.sim.cols);
 function startColony(opts) {
   A.phase = 'boot'; A.hold = false; endPick(); if (A.place) endPlace(); A.projSel = -1;
   if (A.panels) { A.panels.show(false); A.panels.orbit(null); }
@@ -349,6 +365,7 @@ function hookInput() {
     else if (e.code === 'KeyQ' && colony) A.panels.toggleTab('archive');
     else if (e.code === 'KeyC' && colony) A.panels.toggleTab('crews');
     else if (e.code === 'KeyL' && colony) A.panels.toggleTab('log');
+    else if (e.code === 'KeyG' && colony) A.panels.toggleTab('life');
     else if (e.code === 'KeyB' && colony) A.panels.toggleTab('build');
     else if (e.code === 'KeyR' && A.place) turnDoor();
     else if (e.code === 'KeyM') musicToggle();
@@ -440,7 +457,7 @@ window.addEventListener('visibilitychange', async () => {
 window.__colony = {
   get state() {
     const V = A.view;
-    return { phase: A.phase, ready: A.phase === 'colony' && !!V && V.terrain.ready && !A.hold, painted: !!V && V.terrain.ready, n: A.n, clock: A.clock, perf: A.perf, thread: A.thread, fps: A.frames.length ? 1000 / avgMs() : 0, cam: V && { ...V.cam }, chunks: V && V.terrain.cached, paint: V && V.terrain.stats, lights: V && V.stats, timing: A.timing, sel: A.sel, saved: A.savedNote, sites: A.sites, ui: A.ui && { alive: A.ui.alive, seed: A.ui.seed, shelter: A.ui.shelter, food: A.ui.food, known: A.ui.known, stakes: A.ui.stakes.length, crews: A.ui.crews.map(c => ({ name: c.name, work: c.work, members: c.members.length, target: c.target, proj: c.proj })), stats: A.ui.stats, projects: A.ui.projects.map(p => ({ id: p.id, name: p.name, type: p.type, stage: p.stage, done: p.done, powered: p.powered, wait: p.wait })), stores: A.ui.stores, power: A.ui.power, mat: A.ui.mat }, place: A.place && { type: A.place.type, x: A.place.x, y: A.place.y, w: A.place.w, h: A.place.h, ok: A.place.check && A.place.check.ok, why: A.place.check && A.place.check.why }, log: A.log.slice(-6).map(e => e.m) };
+    return { phase: A.phase, ready: A.phase === 'colony' && !!V && V.terrain.ready && !A.hold, painted: !!V && V.terrain.ready, n: A.n, clock: A.clock, perf: A.perf, thread: A.thread, fps: A.frames.length ? 1000 / avgMs() : 0, cam: V && { ...V.cam }, chunks: V && V.terrain.cached, paint: V && V.terrain.stats, lights: V && V.stats, timing: A.timing, sel: A.sel, saved: A.savedNote, sites: A.sites, ui: A.ui && { alive: A.ui.alive, seed: A.ui.seed, shelter: A.ui.shelter, food: A.ui.food, known: A.ui.known, stakes: A.ui.stakes.length, crews: A.ui.crews.map(c => ({ name: c.name, work: c.work, members: c.members.length, target: c.target, proj: c.proj })), stats: A.ui.stats, projects: A.ui.projects.map(p => ({ id: p.id, name: p.name, type: p.type, stage: p.stage, done: p.done, powered: p.powered, wait: p.wait })), stores: A.ui.stores, power: A.ui.power, mat: A.ui.mat, year: A.ui.year, F: A.ui.F && { total: A.ui.F.total, usable: A.ui.F.usable, seen: A.ui.F.life.filter(Boolean).length, tested: A.ui.F.life.filter(l => l && l.tested).length } }, place: A.place && { type: A.place.type, x: A.place.x, y: A.place.y, w: A.place.w, h: A.place.h, ok: A.place.check && A.place.check.ok, why: A.place.check && A.place.check.why }, log: A.log.slice(-6).map(e => e.m) };
   },
   setSpeed, select, goHome, requestSave, startColony, siteSelect, land, cmd, toast, startPlace, placeRect, confirmPlace, endPlace, showProject, get music() { return A.music.state; }, musicToggle,
   tab: t => A.panels.setTab(t), panels: () => A.panels, news: () => A.news,

@@ -28,13 +28,39 @@ export const EXPLAIN = {
   dark: 'A building without power can’t be used. Build a solar field, or move what matters most up the project list so it gets power first.',
   made: 'Workshop benches turn salvage into airlock seals, pipe runs, power units and solar panels, three times faster than the fabricator can.',
   stakes: 'The sensor stakes let the Seed watch the ground around each of them. Survey crews keep mapping beyond them on foot.',
-  nofood: 'The colony has no other food yet. Hungry people tire faster and strain more, and each day without a meal costs health until they die.',
+  nofood: 'Hungry people tire faster and strain more, and each day without a meal costs health until they die. Foragers bring in wild food fastest; fields take longer but feed far more.',
+  found: 'People notice the local life around them as they work outside. Nobody knows yet whether it is food, poison or neither: only a test tells. Survey crews and foragers take samples as they pass; three samples make a test. The Life window (G) lists everything found.',
+  samples: 'Three samples are enough for a test. Queue it in the Life window (G). The Seed’s own analyser works slowly; a lab with people at its benches is much faster.',
+  lifetest: 'A test is always right. Food that only needs cooking can be eaten as soon as it is gathered. Some food has to be leached or fermented first, and only a kitchen crew does that. Some has a slow harm, and some isn’t enough on its own: the Seed plans meals around both, as long as there is something else to eat.',
+  field: 'A finished field grows the crops in the Seed’s seed bank. A farm crew sows, harvests and clears it, and the Seed picks the crop that can ripen before the frost unless you choose one on the field’s card.',
+  sown: 'Crops grow faster the warmer it is, stop in the cold and die in frost. Each crop has its own limits: the field’s card shows when it should ripen.',
+  ripe: 'Ripe crops wait about a week, then start to spoil in the field. A farm crew brings them into the larder.',
+  harvest: 'The first harvest. Harvested crops keep for a while in the larder, and much longer once it freezes. Potatoes and beans keep best; kale spoils fast.',
+  frost: 'Frost kills crops that can’t stand it. Sowing waits for the last usual frost, but an unusually cold night can still catch a field.',
+  rations: 'The lander’s rations are gone. From now on every meal has to come from the larder.',
+  season0: 'A planetary year is eighty days: Thaw, Long light, Storm and Deep cold, twenty days each. Thaw is when the ground opens up: the first chance to sow and to forage.',
+  season1: 'Long light is the warm season. Crops grow fastest, the days are long, and the solar fields make the most power.',
+  season2: 'The storm season brings wind and lightning. Storms flatten crops and keep survey crews in camp, and the first frosts end it. Whatever is ripe needs bringing in, and the larder needs to be full before Deep cold.',
+  season3: 'In Deep cold nothing grows and little can be gathered. Work outside chills people to the bone, blizzards keep everyone in camp, and the solar fields make half as much. The larder and bunks indoors carry the colony through.',
+  deepwarn: 'The weeks before Deep cold are for filling the larder: foragers bring in what keeps, and fields bring in their last harvest. Food that keeps well matters most.',
+  storm: 'In a storm people have more accidents outside, crops can be flattened, and survey crews stay in camp.',
+  blizzard: 'Nobody works outside in a blizzard. Crews wait it out in camp, and the day’s outside work waits too.',
+  snap: 'A cold snap lasts a few days. People outside get cold far faster, and crops left in the fields freeze.',
+  cold: 'People get cold outside below freezing, faster in the wind. Indoors, or by the lit fire, they warm up again. The very cold work slower, strain more and have accidents, and someone left dangerously cold too long can die.',
+  unwell: 'A narrow diet shows over time. Food with a slow harm builds up in the body, and food that isn’t enough on its own leaves people short of what they need. More kinds of food, and fewer meals of the troublesome ones, put it right over some days.',
 };
 
 // problems that last: what to look at and what helps
 const ALERTS = {
   print: ['info', 'Choose who to print', 'The fabricator has feedstock and nobody in line. Open the Archive (Q) to pick who wakes next.'],
-  food: ['warn', '', 'Every meal comes out of the lander’s rations, and nothing replaces them yet.'],
+  food: ['warn', '', 'Foragers bring in wild food the Life window (G) shows is safe; fields feed more once they are made and sown.'],
+  cold: ['bad', '', 'They need to get indoors or to the fire. The very cold work slower and have accidents, and can die if it lasts.'],
+  unwell: ['warn', '', 'Something in their diet. More kinds of food in the larder put it right over some days.'],
+  ripe: ['info', '', 'Ripe crops start to spoil after about a week in the field. A farm crew brings them in.'],
+  nofarm: ['warn', 'No farm crew', 'Fields need a farm crew to sow and harvest them. Set one up in the Crews window (C).'],
+  samples: ['info', '', 'Queue the test in the Life window (G).'],
+  locked: ['warn', 'Food only a kitchen can prepare', 'Some of the larder needs leaching or fermenting before it is safe, and nobody is on kitchen work. Set up a kitchen crew in the Crews window (C).'],
+  deep: ['bad', '', 'Nothing grows in Deep cold. Fill the larder before it comes: foragers, harvests, and food that keeps.'],
   hungry: ['bad', '', 'They lose health every day without a meal, and die when it runs out.'],
   hurt: ['warn', '', 'The hurt walk and work slower until they heal. A clinic with power heals them twice as fast.'],
   alone: ['warn', '', 'Strain got to be too much. They come back on their own after a few hours, a little calmer.'],
@@ -46,7 +72,7 @@ const ALERTS = {
   stalled: ['warn', '', ''],
   idle: ['info', 'Nothing to build', 'A build crew has nothing on the project list. Plan a building in the Build window (B), or give the crew other work.'],
 };
-const ORDER = ['hungry', 'food', 'print', 'alone', 'hurt', 'strain', 'tired', 'trust', 'nocrew', 'stalled', 'dark', 'idle'];
+const ORDER = ['hungry', 'cold', 'food', 'deep', 'locked', 'nofarm', 'ripe', 'unwell', 'samples', 'print', 'alone', 'hurt', 'strain', 'tired', 'trust', 'nocrew', 'stalled', 'dark', 'idle'];
 
 export class News {
   constructor(A, api) {
@@ -146,9 +172,20 @@ export class News {
     const add = (key, title, aims, detail) => list.push({ key, title, aims, detail });
     const eaters = U.alive + U.seed.queue.length + (U.seed.printing ? 1 : 0), days = eaters ? U.food / eaters : 99;
     if (U.seed.feed > 0 && !U.seed.queue.length && !U.seed.printing) add('print', ALERTS.print[1], [{ tab: 'archive' }]);
-    if (eaters && days < 10) add('food', U.food < 1 ? 'No rations left' : `Rations for ${Math.max(1, Math.floor(days))} day${Math.floor(days) === 1 ? '' : 's'}`, [{ x: A.W.site.fire.x, y: A.W.site.fire.y }], U.food < 1 ? 'Nobody has had a meal since the rations ran out.' : '');
+    const F = U.F, Y = U.year, usable = F ? F.usable : U.food, fdays = eaters ? usable / eaters : 99;
+    if (eaters && fdays < 10) add('food', usable < 1 ? 'Nothing left to eat' : `Food for ${Math.max(1, Math.floor(fdays))} day${Math.floor(fdays) === 1 ? '' : 's'}`, [{ tab: 'life' }], usable < 1 ? 'Nobody has had a meal since the food ran out.' : U.food >= 1 ? `${Math.floor(U.food)} meals of it are the lander’s rations.` : '');
+    if (Y && eaters && Y.deepIn > 0 && Y.deepIn <= 15 && fdays < Y.deepIn + 20) add('deep', `Deep cold in ${Y.deepIn} day${Y.deepIn === 1 ? '' : 's'}, food for ${Math.floor(fdays)}`, [{ tab: 'life' }], `It lasts twenty days, so the colony needs about ${(Y.deepIn + 20) * eaters} meals and has ${Math.floor(usable)}.`);
+    if (F && F.locked > 0 && !U.crews.some(c => !c.gone && c.work === 'kitchen' && c.members.length)) add('locked', ALERTS.locked[1], [{ tab: 'crews' }], `${Math.floor(F.locked)} meals’ worth is waiting.`);
+    const fields = U.projects.filter(p => p.type === 'field' && p.done);
+    if (fields.length && !U.crews.some(c => !c.gone && c.work === 'farm' && c.members.length)) add('nofarm', ALERTS.nofarm[1], [{ tab: 'crews' }]);
+    const ripe = fields.filter(p => p.crop && p.crop.st === 'ripe');
+    if (ripe.length) add('ripe', ripe.length === 1 ? `${ripe[0].name} is ready to harvest` : `${ripe.length} fields are ready to harvest`, ripe.map(p => ({ pid: p.id })));
+    const ready = F ? F.life.filter(l => l && !l.tested && !l.queued && l.samples >= 3) : [];
+    if (ready.length) add('samples', ready.length === 1 ? `${ready[0].name}: samples ready to test` : `${ready.length} sets of samples ready to test`, [{ tab: 'life' }]);
     let ids;
     if ((ids = people(p => p[6] & 8)).length) add('hungry', named(ids, 'is hungry', 'people are hungry'), ids.map(i => ({ who: i })));
+    if ((ids = people(p => p[6] & 64)).length) add('cold', named(ids, 'is dangerously cold', 'people are dangerously cold'), ids.map(i => ({ who: i })));
+    if ((ids = people(p => p[6] & 128)).length) add('unwell', named(ids, 'is unwell', 'people are unwell'), ids.map(i => ({ who: i })));
     if ((ids = people(p => p[6] & 4)).length) add('alone', named(ids, 'broke down', 'people broke down'), ids.map(i => ({ who: i })));
     if ((ids = people(p => p[6] & 2)).length) add('hurt', named(ids, 'is hurt', 'people are hurt'), ids.map(i => ({ who: i })));
     if ((ids = people(p => p[3] >= 70 && !(p[6] & 4))).length) add('strain', named(ids, 'is near breaking point', 'people are near breaking point'), ids.map(i => ({ who: i })));
@@ -167,7 +204,7 @@ export class News {
     if (sig === this.sig) return;
     this.sig = sig;
     $('alerts').innerHTML = list.map(a => {
-      const [lvl, , help] = ALERTS[a.key], sev = a.key === 'food' && days < 3 ? 'bad' : lvl;
+      const [lvl, , help] = ALERTS[a.key], sev = a.key === 'food' && fdays < 3 ? 'bad' : lvl;
       return `<button class="al ${sev}" data-a="${a.key}"><i></i><span><b>${esc(a.title)}</b><small>${esc([a.detail, help].filter(Boolean).join(' '))}</small></span>${a.aims.length > 1 ? `<em>${a.aims.length}</em>` : ''}</button>`;
     }).join('');
   }

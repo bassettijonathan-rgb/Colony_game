@@ -85,3 +85,11 @@ export function untilDeep(day) { const doy = doyOf(day), start = DEEP * SEASON_D
 export const daysLeftInSeason = day => SEASON_DAYS - (doyOf(day) % SEASON_DAYS);
 // how brightly the cook fire burns at this hour: lit for breakfast, roaring through the evening, embers overnight
 export function fireOn(h) { return Math.max(sstep(5.3, 5.8, h) * (1 - sstep(7.2, 8, h)) * .6, sstep(16.8, 17.6, h) * (1 - sstep(22.5, 23.8, h))); }
+// the sky as the page draws it: the day's weather, easing in from yesterday's over the small hours, and the
+// ground still wet after rain
+export function skyAt(seed, day, hour) {
+  const a = dayWeather(seed, Math.max(1, day - 1)), b = dayWeather(seed, day), t = sstep(0, 3, hour), mix = k => (a[k] || 0) + ((b[k] || 0) - (a[k] || 0)) * t;
+  const out = { k: t > .5 ? b.k : a.k, cloud: mix('cloud'), rain: mix('rain'), snow: mix('snow'), wind: mix('wind'), fog: mix('fog'), storm: (a.k === 'storm' ? 1 - t : 0) + (b.k === 'storm' ? t : 0) };
+  out.wet = Math.max(out.rain, a.rain * clamp(1 - hour / 14, 0, 1) * .8);
+  return out;
+}

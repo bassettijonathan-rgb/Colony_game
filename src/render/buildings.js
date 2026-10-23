@@ -15,12 +15,14 @@ const STYLE = {
   dorm: { slab: '#8d877b', joint: 'rgba(50,44,36,.32)', post: '#6f5136', beam: '#7d5d3e', wall: '#a39a8b', roof: ['#9a7650', '#6b5036'], done: ['#a8825a', '#86643f', '#5f4630'], seam: 'rgba(40,28,18,.4)' },
   commons: { slab: '#8d877b', joint: 'rgba(50,44,36,.32)', post: '#6f5136', beam: '#7d5d3e', wall: '#a8a090', roof: ['#a07a4c', '#704f30'], done: ['#b38a58', '#8f6a42', '#664a2e'], seam: 'rgba(40,28,18,.4)' },
   workshop: { slab: '#8a8680', joint: 'rgba(40,40,40,.3)', post: '#5f554b', beam: '#6c5f50', wall: '#98928a', roof: ['#8d949c', '#646b73'], done: ['#a6adb5', '#7f878f', '#5c636b'], seam: 'rgba(30,34,40,.5)' },
+  lab: { slab: '#8f8b84', joint: 'rgba(50,48,44,.3)', post: '#5f554b', beam: '#6c5f50', wall: '#aab4b4', roof: ['#b9c6c8', '#86969a'], done: ['#c9d6d8', '#9eb0b4', '#74878c'], seam: 'rgba(40,56,60,.4)' },
   clinic: { slab: '#8f8b84', joint: 'rgba(50,48,44,.3)', post: '#6f5a44', beam: '#7a6450', wall: '#b4b0a6', roof: ['#d2d8d8', '#a5b0b2'], done: ['#e4e9ea', '#c3cccd', '#9aa6a8'], seam: 'rgba(50,60,64,.35)' },
 };
 
-export function drawBuilding(g, hRect, p, E) {
+export function drawBuilding(g, hRect, p, E, t) {
   if (p.type === 'test') return;
   if (p.type === 'solar') return drawSolar(g, hRect, p);
+  if (p.type === 'field') return drawField(g, hRect, p, t || 0);
   const st = STYLE[p.type] || STYLE.dorm, stage = p.done ? 5 : p.stage, f = progress(p);
   const x = p.x, y = p.y, w = p.w, h = p.h, long = w >= h;
   const along = (fr, fn) => { const n = long ? w : h; for (let i = 0; i < n * fr; i++) fn(long ? x + i : x, long ? y : y + i, long ? 1 : w, long ? h : 1); };
@@ -74,6 +76,7 @@ export function drawBuilding(g, hRect, p, E) {
   else if (p.type === 'commons') { g.fillStyle = lit ? 'rgba(255,214,140,.85)' : '#2b4258'; g.fillRect(cx - (long ? 1.2 : .6), cy - (long ? .6 : 1.2), long ? 2.4 : 1.2, long ? 1.2 : 2.4); g.fillStyle = '#5a5048'; g.fillRect(x + w - 1.2, y + .5, .5, .5); hRect(x + w - 1.2, y + .5, .5, .5, 2.2); }
   else if (p.type === 'workshop') { for (const k of [.3, .7]) { const a = long ? x + w * k : cx, b = long ? cy : y + h * k; g.fillStyle = '#454b52'; g.beginPath(); g.arc(a, b, .32, 0, 6.3); g.fill(); g.fillStyle = '#2a2f35'; g.beginPath(); g.arc(a, b, .18, 0, 6.3); g.fill(); hRect(a - .3, b - .3, .6, .6, 2); } }
   else if (p.type === 'clinic') { g.fillStyle = '#5fc7c0'; if (long) g.fillRect(x + .2, cy - .25, w - .4, .5); else g.fillRect(cx - .25, y + .2, .5, h - .4); }
+  else if (p.type === 'lab') { const n2 = Math.max(1, Math.min(3, Math.round(w * h / 6))); for (let i = 0; i < n2; i++) { const k = (i + .5) / n2, a = long ? x + w * k : cx, b = long ? cy : y + h * k; g.fillStyle = '#56636a'; g.fillRect(a - .3, b - .22, .6, .44); g.fillStyle = 'rgba(120,230,200,.55)'; g.fillRect(a - .2, b - .1, .14, .2); hRect(a - .3, b - .22, .6, .44, 1.9); } }
   else if (p.type === 'dorm') { g.fillStyle = '#4c4038'; g.fillRect(x + .6, y + .5, .35, .35); hRect(x + .6, y + .5, .35, .35, 2.1); }
   if (!p.powered && p.type !== 'shelter') { g.fillStyle = 'rgba(8,12,18,.22)'; g.beginPath(); g.roundRect(x, y, w, h, .25); g.fill(); }
   // the door, on the side the plan gave it
@@ -84,6 +87,71 @@ export function drawBuilding(g, hRect, p, E) {
   hRect(x, y, w, h, 1.7);
   // the workshop's finished modules wait in crates by its door
   if (p.type === 'workshop' && d) { let k = 0; for (const m in p.out) for (let i = 0; i < Math.min(p.out[m], 3) && k < 6; i++, k++) crate(g, hRect, d.x + .5 + (ny ? (k - 2.5) * .45 : nx * .2), d.y + .5 + (nx ? (k - 2.5) * .45 : ny * .2), m); }
+}
+// a field: marked out, the ground broken in rows, made soil spread over it, drains dug round and across, then
+// raised beds framed in timber; finished, it shows what grows in it and how far along it is
+const CROPLOOK = { potato: { a: '#4f7a3a', b: '#3a5c2c', ripe: '#9a9a4a', dead: '#6b5a3c' }, kale: { a: '#5f8a86', b: '#3f6a68', ripe: '#6f9a92', dead: '#6a6050' }, beans: { a: '#5a8a3c', b: '#3c6a2c', ripe: '#b8b070', dead: '#6e5e40' } };
+function drawField(g, hRect, p, t) {
+  const stage = p.done ? 5 : p.stage, f = progress(p), x = p.x, y = p.y, w = p.w, h = p.h, long = w >= h, L = long ? w : h, S = long ? h : w;
+  const at = (u, v, a, b) => long ? [x + u, y + v, a, b] : [x + v, y + u, b, a];
+  const rect = (u, v, a, b, col) => { const [rx, ry, rw, rh] = at(u, v, a, b); g.fillStyle = col; g.fillRect(rx, ry, rw, rh); };
+  if (stage < 5) plot(g, hRect, x, y, w, h, stage, f);
+  const beds = Math.max(1, Math.floor((S - .3) / 1.25)), bw = (S - .3) / beds;
+  // broken ground: furrows turned row by row
+  if (stage >= 1) {
+    const fr = stage === 1 ? f : 1;
+    rect(0, 0, L * fr, S, stage >= 2 ? 'rgba(74,56,38,.55)' : 'rgba(96,74,50,.5)');
+    g.strokeStyle = 'rgba(52,38,26,.5)'; g.lineWidth = .05;
+    for (let j = 0; j < S * 3; j++) { const v = (j + .5) / 3; const [a, b] = at(0, v, 0, 0), [c, d] = at(L * fr, v, 0, 0); g.beginPath(); g.moveTo(a, b); g.lineTo(c, d); g.stroke(); }
+  }
+  // made soil: dark and rich, spreading from one end
+  if (stage >= 2) {
+    const fr = stage === 2 ? f : 1;
+    rect(0, 0, L * fr, S, 'rgba(48,36,26,.7)');
+    for (let i = 0; i < L * S * 4 * fr; i++) { const u = hash(i, 1, p.id) * L * fr, v = hash(i, 2, p.id) * S; const [a, b] = at(u, v, 0, 0); g.fillStyle = i % 3 ? 'rgba(110,90,60,.5)' : 'rgba(80,100,60,.45)'; g.fillRect(a, b, .06, .06); }
+  }
+  // drains round the edge and between the beds
+  if (stage >= 3) {
+    const fr = stage === 3 ? f : 1; g.strokeStyle = '#4a5a60'; g.lineWidth = .12; g.lineCap = 'butt';
+    const line = (u0, v0, u1, v1) => { const [a, b] = at(u0, v0, 0, 0), [c, d] = at(u1, v1, 0, 0); g.beginPath(); g.moveTo(a, b); g.lineTo(c, d); g.stroke(); };
+    line(0, .06, L * fr, .06); line(0, S - .06, L * fr, S - .06);
+    for (let j = 1; j < beds; j++) line(0, .15 + j * bw, L * fr, .15 + j * bw);
+    g.strokeStyle = 'rgba(150,190,210,.35)'; g.lineWidth = .04; line(0, .06, L * fr, .06); line(0, S - .06, L * fr, S - .06);
+  }
+  // raised beds in timber frames
+  if (stage >= 4) {
+    const fr = stage === 4 ? f : 1;
+    for (let j = 0; j < beds; j++) {
+      const v = .15 + j * bw + .1, bh = bw - .2, [a, b, c, d] = at(.2, v, (L - .4) * fr, bh);
+      g.fillStyle = '#3a2a1e'; g.fillRect(a, b, c, d); g.strokeStyle = '#7d5d3e'; g.lineWidth = .07; g.strokeRect(a, b, c, d); hRect(a, b, c, d, .22);
+    }
+  }
+  if (stage < 5 || !p.crop) return;
+  // the crop
+  const cr = p.crop, k = cr.k, look = CROPLOOK[k];
+  if (!look || cr.st === 'bare') return;
+  const gr = cr.st === 'ripe' ? 1 : cr.st === 'dead' ? .7 : Math.max(.08, cr.g), hp = cr.h == null ? 1 : cr.h;
+  const col = cr.st === 'dead' ? look.dead : cr.st === 'ripe' ? look.ripe : look.a;
+  const step = k === 'beans' ? .6 : .65;
+  for (let j = 0; j < beds; j++) for (let u = .45; u < L - .3; u += step) {
+    if (hash(u * 10 | 0, j, p.id + 7) > .25 + hp * .75) continue;   // gaps where the frost or a storm took plants
+    const v = .15 + j * bw + bw / 2, [px, py] = at(u, v, 0, 0), r = (k === 'kale' ? .3 : k === 'beans' ? .22 : .28) * (.35 + gr * .75);
+    const sway = cr.st === 'dead' ? 0 : Math.sin(t * 1.2 + u + j) * .02;
+    if (k === 'beans') {   // poles with vines up them
+      g.fillStyle = '#7d5d3e'; g.fillRect(px - .03, py - .03, .06, .06);
+      g.fillStyle = col; g.beginPath(); g.arc(px + sway, py, r, 0, 6.3); g.fill();
+      if (cr.st === 'ripe') { g.fillStyle = '#d8cf90'; for (let q = 0; q < 3; q++) g.fillRect(px - .1 + q * .08, py + .05, .03, .1); }
+      hRect(px - r, py - r, r * 2, r * 2, .2 + gr * .9);
+    } else if (k === 'kale') {
+      for (let q = 0; q < 5; q++) { const a = q * 1.26 + u; g.fillStyle = q % 2 ? col : look.b; g.beginPath(); g.ellipse(px + Math.cos(a) * r * .4 + sway, py + Math.sin(a) * r * .4, r * .55, r * .3, a, 0, 6.3); g.fill(); }
+      hRect(px - r, py - r, r * 2, r * 2, .1 + gr * .3);
+    } else {
+      g.fillStyle = look.b; g.beginPath(); g.arc(px + .03, py + .03, r, 0, 6.3); g.fill(); g.fillStyle = col; g.beginPath(); g.arc(px + sway, py, r * .85, 0, 6.3); g.fill();
+      hRect(px - r, py - r, r * 2, r * 2, .1 + gr * .35);
+    }
+  }
+  // harvested rows go back to bare soil as the crew works along the field
+  if (cr.st === 'ripe' && cr.total) { const done = 1 - (cr.left || 0) / cr.total; if (done > 0) rect(.2, 0, (L - .4) * done, S, 'rgba(48,36,26,.85)'); }
 }
 // the plot, pegged and strung before anything is built on it
 function plot(g, hRect, x, y, w, h, stage, f) {
@@ -218,7 +286,7 @@ function chips(g, cx, cy, n, x, y) {
 export function buildingLights(out, projects, on, mul3) {
   for (const p of projects) {
     if (p.type === 'test') continue;
-    if (p.done && p.powered && p.type !== 'solar') {
+    if (p.done && p.powered && p.type !== 'solar' && p.type !== 'field') {
       if (p.door) out.push({ x: p.door.x + .5, y: p.door.y + .5, z: 1.2, r: 5, c: mul3([1, .78, .5], 1.6 * on), g: .25 });
       const long = p.w >= p.h; for (const k of [.3, .7]) out.push({ x: long ? p.x + p.w * k : p.x - .6, y: long ? p.y - .6 : p.y + p.h * k, z: 1, r: 4, c: mul3([1, .8, .55], 1.1 * on), g: .1 }), out.push({ x: long ? p.x + p.w * k : p.x + p.w + .6, y: long ? p.y + p.h + .6 : p.y + p.h * k, z: 1, r: 4, c: mul3([1, .8, .55], 1.1 * on), g: .1 });
     } else if (!p.done && p.stage > 0 && !p.paused) out.push({ x: p.x + p.w / 2, y: p.y + p.h / 2, z: 2.2, r: 6, c: mul3([1, .88, .7], .6 * on), g: .1 });

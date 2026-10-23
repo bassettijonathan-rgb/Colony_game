@@ -435,7 +435,7 @@ export class Sim {
     const S = this.S, sd = S.seedc, sh = S.projects[0];
     const c = watch >= 0 ? S.cols[watch] : null;
     return {
-      rv: S.rv, mode: S.mode, logN: S.logN,
+      rv: S.rv, mode: S.mode, logN: S.logN, spots: { cook: this.cookTile, vat: this.vatTile },
       p: S.cols.map(c => [c.act, c.crew, Math.round(c.fat), Math.round(c.str), Math.round(c.tru), Math.round(c.hp), (c.fresh > 0 ? 1 : 0) | (c.hurt > 0 ? 2 : 0) | (c.alone > 0 ? 4 : 0) | (c.hungry ? 8 : 0) | (c.dead ? 16 : 0) | (c.carry && c.mv ? 32 : 0) | (c.chill > 50 ? 64 : 0) | (c.unwell ? 128 : 0), Math.round(c.chill)]),
       crews: S.crews.map(cr => ({ id: cr.id, name: cr.name, gone: cr.gone, lead: cr.lead, members: cr.members, work: cr.work, shift: cr.shift, rules: cr.rules, target: cr.target, dest: cr.dest, recalled: cr.recalled, proj: cr.proj })),
       seed: { feed: sd.feed, queue: sd.queue, printing: sd.printing && { fid: sd.printing.fid, left: sd.printing.left }, stakes: sd.stakes, fab: S.fab.job && { k: S.fab.job.k, left: S.fab.job.left } },
@@ -458,7 +458,7 @@ export class Sim {
       lab: { queue: F.lab.queue, cur: F.lab.cur, work: +F.lab.work.toFixed(1) },
       raw: r1(Ld.raw), prep: r1(Ld.prep), meals: r1(Ld.meals), vats: F.vats.map(v => ({ src: v.src, n: v.n, left: Math.max(0, v.ready - S.tick), proc: v.proc })),
       names: Object.fromEntries([...new Set([...Object.keys(Ld.raw), ...Object.keys(Ld.prep), ...Object.keys(Ld.meals), ...F.vats.map(v => v.src)])].map(k => [k, (foodOf(this, k) || { name: k }).name])),
-      total: Math.round(mealsInStore(this)), gone: Object.keys(F.patch).filter(i => patchLeft(this, +i) <= 0).map(Number),
+      total: Math.round(mealsInStore(this)), usable: Math.round(mealsInStore(this, true)), locked: Math.round(mealsInStore(this) - mealsInStore(this, true)), gone: Object.keys(F.patch).filter(i => patchLeft(this, +i) <= 0).map(Number),
     };
   }
   logSince(n) { return this.S.log.filter(e => e.n > n); }
