@@ -7,6 +7,7 @@ import { PersonArt } from './render/people.js';
 import { Panels } from './ui/panels.js';
 import { News } from './ui/news.js';
 import { thingAt } from './ui/things.js';
+import { Stats } from './ui/stats.js';
 import { Music, moodFor } from './ui/music.js';
 import { SEASONS, MAP, NCH, ACT, DAY_TICKS, hidden } from './core/consts.js';
 import { WX } from './core/year.js';
@@ -53,6 +54,7 @@ function ensureView(W) {
     A.view = new View(app, W);
     if (!A.view.G || !A.view.ok) { loader('This needs a browser with WebGL 2. ' + (A.view.G ? 'A shader did not compile.' : ''), 1); $('ldmsg').id = 'nogl'; return false; }
     A.panels = new Panels(A, { cmd, select, toast, pickArea, land, siteSelect, startPlace, showProject });
+    A.stats = new Stats(A);
     A.news = new News(A, { select, showProject, setSpeed, toast, when, flyTo: (x, y) => { A.view.flyTo(x, y, Math.max(A.view.cam.z, 18)); A.follow = false; }, tab: t => A.panels.setTab(t) });
     hookInput();
   } else A.view.setWorld(W);
@@ -96,7 +98,7 @@ function onReady(m) {
   A.W = W; A.mode = m.mode; A.tag = m.tag; A.timing = { ...(A.timing || {}), ...m.timing };
   if (landing) A.view.land(W, m.patch);
   else { resetPeople(); if (!ensureView(W)) return; }
-  setRoster(m.roster); A.ui = m.ui; A.log = m.log.slice(); A.panels.logSeen = landing ? 0 : m.ui.logN;
+  setRoster(m.roster); A.ui = m.ui; A.log = m.log.slice(); A.hist = (m.hist || []).slice(); A.panels.logSeen = landing ? 0 : m.ui.logN;
   A.cur = { pos: m.pos, t: performance.now() }; A.prev = null; A.pos = new Float32Array(m.pos.length); A.pos.set(m.pos);
   A.clock = m.clock; A.phase = 'colony';
   for (const [k, d] of A.pendingWear) A.view.terrain.setWear(k, d); for (const [k, d] of A.pendingKnown) A.view.setKnown(k, d); A.pendingWear = []; A.pendingKnown = [];
@@ -127,8 +129,9 @@ function onState(m) {
   if (A.phase !== 'colony') return;
   if (m.roster) setRoster(m.roster);
   A.ui = m.ui;
+  if (m.hist) A.hist.push(...m.hist);
   if (m.log.length) { A.log.push(...m.log); if (A.log.length > 300) A.log.splice(0, A.log.length - 300); A.news.add(m.log); }
-  recolour(); A.panels.update(); A.news.alerts(A.ui);
+  recolour(); A.panels.update(); A.news.alerts(A.ui); A.stats.update();
   if (A.projSel >= 0 && !A.ui.projects.some(p => p.id === A.projSel)) A.projSel = -1;
 }
 
@@ -374,11 +377,12 @@ function hookInput() {
     else if (e.code === 'KeyC' && colony) A.panels.toggleTab('crews');
     else if (e.code === 'KeyL' && colony) A.panels.toggleTab('log');
     else if (e.code === 'KeyG' && colony) A.panels.toggleTab('life');
+    else if (e.code === 'KeyT' && colony) A.stats.show();
     else if (e.code === 'KeyB' && colony) A.panels.toggleTab('build');
     else if (e.code === 'KeyR' && A.place) turnDoor();
     else if (e.code === 'KeyM') musicToggle();
     else if ((e.code === 'Escape' || e.code === 'Enter') && A.news && A.news.open) { e.preventDefault(); A.news.closeLetter(); }
-    else if (e.code === 'Escape') { if (A.place) endPlace(); else if (A.pickCrew >= 0) endPick(); else if (!$('newdlg').hidden) $('newdlg').hidden = true; else if (!$('menu').hidden) menu(false); else if (A.projSel >= 0) closeProject(); else if (A.thing) closeThing(); else if (A.sel >= 0) select(-1); else if (A.panels && !A.panels.min) A.panels.fold(true); }
+    else if (e.code === 'Escape') { if (A.stats && A.stats.open) A.stats.show(false); else if (A.place) endPlace(); else if (A.pickCrew >= 0) endPick(); else if (!$('newdlg').hidden) $('newdlg').hidden = true; else if (!$('menu').hidden) menu(false); else if (A.projSel >= 0) closeProject(); else if (A.thing) closeThing(); else if (A.sel >= 0) select(-1); else if (A.panels && !A.panels.min) A.panels.fold(true); }
     else if (e.code === 'Equal' || e.code === 'NumpadAdd') V.zoomAt(1.25, V.VW / 2, V.VH / 2);
     else if (e.code === 'Minus' || e.code === 'NumpadSubtract') V.zoomAt(.8, V.VW / 2, V.VH / 2);
   });
@@ -395,6 +399,7 @@ function hookInput() {
   $('placeCancel').onclick = endPlace; $('plCancel').onclick = endPlace; $('placeTurn').onclick = turnDoor; $('plTurn').onclick = turnDoor; $('plGo').onclick = confirmPlace;
   $('plName2').oninput = e => { delete e.target.dataset.auto; $('plKeep').checked = true; };
   $('cClose').onclick = () => select(-1);
+  $('bStats').onclick = () => A.stats.show();
   $('bClose').onclick = () => { if (A.thing) closeThing(); else closeProject(); };
   $('bList').onclick = () => { if (A.thing) { const c = A.panels.thingInfo; if (c && c.btn) A.panels.setTab(c.btn.tab); return; } const id = A.projSel; A.panels.setTab('build'); showProject(id); };
   $('bPause').onclick = () => { const p = A.ui && A.ui.projects.find(q => q.id === A.projSel); if (p) cmd('projPause', { id: p.id, on: !p.paused }); };

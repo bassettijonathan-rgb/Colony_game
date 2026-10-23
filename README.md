@@ -62,6 +62,10 @@ Generated live with Web Audio, with no audio files: a pad changing chord every t
 7. The bot runs three food policies for balancing (`seed`, `lean` with one forager, `nofood`); a careful colony gets through two years, a careless one starves in the second.
 8. Saves are version 4; version 2 and 3 saves continue.
 
+## Stats
+
+The Stats window (`T`) is the colony's record. Headline numbers sit on top, then twelve charts of the record day by day: people (awake, hungry, unwell), food in store, days of food, food brought in, meals cooked, average fatigue, strain, trust and health, low and high temperature, the worst cold, stone and timber in the yard, power, ground surveyed and local life. Seasons are shaded behind each chart, hovering shows that day's values, and the range can be the last 20 days, the last year or everything. Totals since landing and a table of every day are below. The simulation adds one row at each midnight (`src/core/history.js`, saved with the colony); today so far is the last point, drawn dashed.
+
 ## News
 
 Nothing important waits in the log to be found.

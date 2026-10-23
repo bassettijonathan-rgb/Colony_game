@@ -11,6 +11,7 @@ import { think, mindTick, daily, remember } from './life.js';
 import { crewThink, seedTick, onArrive, onTimer, command, projectsThink, dropCarry } from './work.js';
 import { shelterProject, strength, powerCheck, capOf, byId, stockOf, built, PRECISE, SALVAGE, KIT, CARGO, LANDER_KW } from './build.js';
 import { drawLife, placeLife, newFood, labHour, fieldHour, spoil, mealsInStore, patchLeft, inSeason, cropPlan, daysToRipen, foodOf, CROPS, SEED_LAB, verdict, PROC_NAME } from './food.js';
+import { newHist, histHour, histDay, histRow } from './history.js';
 import { daylight, doyOf, seasonOf, dayWeather, tempAt, untilDeep, DEEP } from './year.js';
 
 export const CREW_NAMES = ['Basalt', 'Kestrel', 'Cedar', 'Drift', 'Ember', 'Fern', 'Gale', 'Heron', 'Iris', 'Juniper', 'Lichen', 'Moss', 'Nettle', 'Onyx', 'Pike', 'Quartz', 'Rowan', 'Sedge', 'Thistle', 'Umber', 'Vetch', 'Willow', 'Yarrow', 'Zinc', 'Alder', 'Bramble', 'Cobalt', 'Dune', 'Flint', 'Garnet', 'Hazel', 'Ivy', 'Jasper', 'Kelp', 'Larch', 'Marl'];
@@ -80,7 +81,7 @@ export class Sim {
       stakes: [], food: mode === 'stress' ? 1e9 : FOOD_DAYS * FIRST_BODIES,
       log: [], logN: 0, chunkLast: new Array(NCH * NCH).fill(0), rr: 0, walked: 0, knownN: 0, rv: 1,
       stats: { breakdowns: 0, accidents: 0, fits: 0, trips: 0, darkReturns: 0, friends: 0, rivals: 0, deaths: 0, felled: 0, quarried: 0, made: 0, harvests: 0, meals: 0, cold: 0 },
-      F: newFood(this.kinds.length),
+      F: newFood(this.kinds.length), hist: newHist(),
     };
     this.S.F.sun = sunFactor(0); this.S.F.seasonSaid = 0; this.S.F.temp = tempAt(W.seed, 1, 6);
     this.resetGround();
@@ -242,6 +243,8 @@ export class Sim {
     F.temp = t;
     if (t < 1 && wx.snow) F.snow = Math.min(1, F.snow + wx.snow * .045); else if (t > 1.5) F.snow = Math.max(0, F.snow - (t - 1.5) * .007 - wx.rain * .02);
     if (t < -3) F.ice = Math.min(1, F.ice + (-3 - t) * .0025); else if (t > 0) F.ice = Math.max(0, F.ice - t * .004);
+    if (h === 0 && d > 1) histDay(this, d - 1);
+    histHour(this, t);
     if (S.mode !== 'landfall') return;
     for (const p of built(S)) if (p.type === 'field' && p.crop) fieldHour(this, p, t, h);
     labHour(this, SEED_LAB);
@@ -443,7 +446,7 @@ export class Sim {
       projects: S.projects.filter(p => !p.gone).map(p => ({ crop: p.crop && { ...p.crop, plan: p.crop.st === 'bare' ? cropPlan(this, p) : null, eta: p.crop.st === 'grow' ? daysToRipen(this, p.crop.k, p.crop.g) : null }, id: p.id, type: p.type, name: p.name, x: p.x, y: p.y, w: p.w, h: p.h, side: p.side, door: p.door, stage: p.stage, need: p.need, got: p.got, done: p.done, powered: p.powered, paused: p.paused, wait: p.wait, stall: p.stall, mat: p.mat, cap: capOf(p), crews: S.crews.filter(cr => !cr.gone && cr.work === 'build' && cr.proj === p.id).map(cr => cr.name), out: p.out })),
       stores: { yard: S.stores.yard, cargo: S.stores.cargo, precise: Object.fromEntries(PRECISE.map(k => [k, stockOf(S, k)])) }, power: S.power, blueprints: S.blueprints,
       mat: { stone: { tested: S.mat.stone.tested, f: S.mat.stone.tested ? S.mat.stone.f : null }, timber: { tested: S.mat.timber.tested, f: S.mat.timber.tested ? S.mat.timber.f : null } },
-      food: S.food, alive: S.cols.filter(c => !c.dead).length, year: this.yearUI(), F: this.foodUI(), known: S.knownN, stakes: S.stakes, auto: S.autoCrews, stats: S.stats,
+      food: S.food, alive: S.cols.filter(c => !c.dead).length, year: this.yearUI(), F: this.foodUI(), known: S.knownN, stakes: S.stakes, auto: S.autoCrews, stats: S.stats, today: histRow(this, this.day),
       detail: c && { id: c.id, meal: c.meal, tox: +c.tox.toFixed(1), lack: c.lack, skills: c.skills, mem: c.mem.slice(-6), ties: Object.entries(c.ties).filter(([, t]) => t.k).map(([id, t]) => ({ id: +id, k: t.k, f: Math.round(t.f), a: Math.round(t.a) })), worked: c.worked, fresh: c.fresh, hurt: c.hurt, plan: c.plan, home: c.home >= 0 && byId(S, c.home) ? byId(S, c.home).name : '', carry: c.carry },
     };
   }
@@ -474,6 +477,7 @@ export class Sim {
     const old = this.S.v === 2;
     if (old) this.migrate2();
     if (this.S.v === 3) this.migrate3();
+    if (!this.S.hist) this.S.hist = newHist();
     this.resetGround(); this.gnew = []; this.qnew = [];
     if (old) projectsThink(this); // give the migrated crews their project now, not at the next check
     this.wear.set(unrle(wear, MAP * MAP)); this.known.set(unrle(known, MAP * MAP)); this.dirty.clear(); this.kdirty.clear();

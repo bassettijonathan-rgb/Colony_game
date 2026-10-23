@@ -11,7 +11,7 @@ import { TPS, SPEEDS } from '../core/consts.js';
 const now = () => performance.now();
 
 export function createSimCore(post) {
-  let W = null, P = null, sim = null, sites = null, speed = 1, last = 0, acc = 0, timer = null, lastWear = 0, lastState = 0, watch = -1, sentLog = 0, sentRv = -1;
+  let W = null, P = null, sim = null, sites = null, speed = 1, last = 0, acc = 0, timer = null, lastWear = 0, lastState = 0, watch = -1, sentLog = 0, sentRv = -1, sentHist = 0;
   const perf = { ticks: 0, tickMs: 0, tps: 0, window: now(), worst: 0 };
 
   function step() {
@@ -42,6 +42,7 @@ export function createSimCore(post) {
   function state() {
     const S = sim.S, m = { t: 'state', ui: sim.ui(watch), log: sim.logSince(sentLog) };
     sentLog = S.logN;
+    if (S.hist.rows.length !== sentHist) { m.hist = S.hist.rows.slice(sentHist); sentHist = S.hist.rows.length; }
     if (S.rv !== sentRv) { sentRv = S.rv; m.roster = sim.roster(); }
     post(m);
   }
@@ -55,11 +56,11 @@ export function createSimCore(post) {
     const patch = landAt(W, site); W.siteId = site.id;
     const t2 = now(); P = new Pathfinder(W); const t3 = now(); sim = new Sim(W, P); const t4 = now();
     if (save) sim.load(save); else sim.newGame(mode, count);
-    const S = sim.S; sentLog = 0; sentRv = S.rv;
+    const S = sim.S; sentLog = 0; sentRv = S.rv; sentHist = S.hist.rows.length;
     post({
       t: 'ready', seed: W.seed, land: W.land, site: W.site, siteId: site.id, tag: sites && sites[site.id] ? sites[site.id].tag : '', patch, rock: W.rock, mode: S.mode,
       world: { type: W.type, elev: W.elev, moist: W.moist },
-      roster: sim.roster(), ui: sim.ui(-1), log: sim.logSince(0), gone: S.gone, quarry: S.quarry,
+      roster: sim.roster(), ui: sim.ui(-1), log: sim.logSince(0), gone: S.gone, quarry: S.quarry, hist: S.hist.rows,
       pos: sim.snapshot(new Float32Array(S.cols.length * 4)), clock: sim.clock(),
       timing: { world: t1 - t0, land: t2 - t1, graph: t3 - t2, field: t4 - t3, nodes: P.nodes.length }
     });

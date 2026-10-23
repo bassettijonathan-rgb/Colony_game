@@ -351,6 +351,27 @@ select{font:600 12px var(--f-ui);color:var(--txt);background:rgba(0,0,0,.35);bor
 .why{margin-top:7px;padding:7px 9px;border-radius:3px;background:rgba(143,224,255,.08);border:1px solid rgba(143,224,255,.22);font-size:11.5px;line-height:1.5;color:#cfe9f5}
 .why i{font:700 9.5px var(--f-hd);letter-spacing:.14em;text-transform:uppercase;color:var(--seed);font-style:normal;margin-right:7px}
 @keyframes ncIn{from{opacity:0;transform:translateX(14px)}to{opacity:1;transform:none}}
+#stats{left:50%;transform:translateX(-50%);top:calc(var(--tb) + var(--top) + 8px);bottom:calc(var(--bot) + 76px);width:min(1060px,calc(100% - 24px));display:flex;flex-direction:column;overflow:hidden;z-index:7}
+#stats .wt b{flex:1}#stRange{flex:none;margin-right:6px}#stRange button{padding:0 10px;flex:none}
+#stats .body{flex:1;overflow:auto;padding:12px 14px 16px;overscroll-behavior:contain}
+.sttiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:12px}
+.stt{background:rgba(0,0,0,.25);border:1px solid var(--line);border-radius:3px;padding:9px 11px}
+.stt em{display:block;font:600 10.5px var(--f-hd);letter-spacing:.1em;text-transform:uppercase;color:var(--mut);font-style:normal}
+.stt b{display:block;font:700 24px/1.2 var(--f-hd);margin-top:3px;font-variant-numeric:tabular-nums}.stt span{font-size:11.5px;color:var(--mut)}
+.stgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}
+.stc{background:rgba(0,0,0,.22);border:1px solid var(--line);border-radius:3px;padding:9px 10px 6px}
+.sth{display:flex;align-items:baseline;gap:8px}.sth b{flex:1;font:700 12.5px var(--f-hd);letter-spacing:.04em}.sth em{font-size:11px;color:var(--dim);font-style:normal}
+.stleg{display:flex;flex-wrap:wrap;gap:4px 12px;margin:4px 0 2px;font-size:11.5px;color:var(--mut)}.stleg i{display:inline-block;width:10px;height:3px;border-radius:2px;margin-right:5px;vertical-align:middle}
+.stc canvas{display:block;width:100%;height:150px;margin-top:4px;cursor:crosshair}
+.sttot{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:2px 14px}
+.sttot div{display:flex;justify-content:space-between;font-size:12.5px;padding:5px 0;border-bottom:1px solid var(--line)}.sttot span{color:var(--mut)}.sttot b{font:600 12.5px var(--f-num)}
+.sttab{margin-top:14px;font-size:12px}.sttab summary{cursor:pointer;color:var(--mut);font-weight:600}
+.sttw{overflow:auto;max-height:340px;margin-top:8px}.sttw table{border-collapse:collapse;font:500 11px var(--f-num);white-space:nowrap}
+.sttw th{position:sticky;top:0;background:#151b25;color:var(--mut);font:600 10.5px var(--f-ui);text-align:right;padding:4px 7px}.sttw td{text-align:right;padding:3px 7px;border-bottom:1px solid var(--line)}
+.sttw th:first-child,.sttw td:first-child{text-align:left}
+#stTip{position:absolute;pointer-events:none;background:rgba(10,14,20,.96);border:1px solid var(--edge);border-radius:3px;padding:7px 9px;font-size:12px;min-width:150px;box-shadow:0 8px 20px rgba(0,0,0,.5);z-index:2}
+#stTip b{display:block;font:700 11.5px var(--f-hd);letter-spacing:.04em;margin-bottom:4px}
+#stTip div{display:flex;align-items:center;gap:6px;margin-top:2px}#stTip i{width:8px;height:8px;border-radius:50%;flex:none}#stTip span{flex:1;color:var(--mut)}#stTip em{font:600 11.5px var(--f-num);font-style:normal}
 #letter{left:50%;top:46%;transform:translate(-50%,-50%);width:440px;max-width:calc(100% - 32px);box-sizing:border-box;z-index:8;border-top:2px solid var(--seed)}
 #letter.bad{border-top-color:var(--bad)}#letter.good{border-top-color:var(--good)}
 #letter .wt em{font:500 11px var(--f-num);color:var(--mut);font-style:normal;padding-right:8px}
@@ -432,6 +453,7 @@ select{font:600 12px var(--f-ui);color:var(--txt);background:rgba(0,0,0,.35);bor
   <symbol id="i-life" viewBox="0 0 16 16"><path d="M3 13C3 7 7 3 13 3c0 6-4 10-10 10z"/><path d="M3 13l6.5-6.5"/></symbol>
   <symbol id="i-sun" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.75"/><path d="M8 1.5v1.75M8 12.75v1.75M1.5 8h1.75M12.75 8h1.75M3.4 3.4l1.25 1.25M11.35 11.35l1.25 1.25M3.4 12.6l1.25-1.25M11.35 4.65l1.25-1.25"/></symbol>
   <symbol id="i-fire" viewBox="0 0 16 16"><path d="M8 1.75c.4 2.2 3.75 3.9 3.75 7.4A3.75 3.75 0 0 1 4.25 9.15c0-1.6.85-2.6 1.6-3.4.2 1.2.8 2 1.65 2.35C7.2 6 7.4 3.8 8 1.75z"/><path d="M3 14.25h10"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 16 16"><path d="M2 2v12h12"/><path d="M4.5 10.5l3-3.5 2.5 2 4-5"/></symbol>
   <symbol id="i-moon" viewBox="0 0 16 16"><path d="M12.5 10.2A5 5 0 0 1 5.8 3.5a5 5 0 1 0 6.7 6.7z"/></symbol>
   <symbol id="i-cloud" viewBox="0 0 16 16"><path d="M4.5 12.5h7a2.75 2.75 0 0 0 .3-5.48A4 4 0 0 0 4.1 7.6 2.5 2.5 0 0 0 4.5 12.5z"/></symbol>
   <symbol id="i-rain" viewBox="0 0 16 16"><path d="M4.5 9.5h7a2.5 2.5 0 0 0 .3-5A3.75 3.75 0 0 0 4.4 5 2.25 2.25 0 0 0 4.5 9.5z"/><path d="M5.5 11.5l-.75 2M8.25 11.5l-.75 2M11 11.5l-.75 2"/></symbol>
@@ -531,6 +553,11 @@ select{font:600 12px var(--f-ui);color:var(--txt);background:rgba(0,0,0,.35);bor
         <div class="foot"><button class="pill" id="cFollow">Follow</button><select id="cMove" aria-label="Move to crew"></select></div>
       </div>
     </div>
+    <div class="glass" id="stats" hidden>
+      <div class="wt"><svg class="ic"><use href="#i-chart"/></svg><b>Colony record</b><div class="seg sm" id="stRange"><button data-r="20">Last 20 days</button><button data-r="80">Last year</button><button data-r="all" class="on">Everything</button></div><button class="x" id="stX" title="Close (Esc)" aria-label="Close the record"><svg class="ic"><use href="#i-close"/></svg></button></div>
+      <div class="body" id="stBody"></div>
+      <div id="stTip" hidden></div>
+    </div>
     <div class="glass" id="bcard" hidden>
       <div class="hd"><div class="pic" id="bPic"></div><div class="t"><div class="nm" id="bName"></div><div class="meta" id="bMeta"></div></div><button class="x" id="bClose" aria-label="Close"><svg class="ic"><use href="#i-close"/></svg></button></div>
       <div class="in">
@@ -555,6 +582,7 @@ select{font:600 12px var(--f-ui);color:var(--txt);background:rgba(0,0,0,.35);bor
       <button data-tab="crews" title="Crews (C)"><kbd>C</kbd><svg class="ic"><use href="#i-crews"/></svg>Crews</button>
       <button data-tab="build" title="Build (B)"><kbd>B</kbd><svg class="ic"><use href="#i-build"/></svg>Build</button>
       <button data-tab="life" title="Food and local life (G)"><kbd>G</kbd><svg class="ic"><use href="#i-life"/></svg>Life</button>
+      <button id="bStats" title="Colony record and charts (T)"><kbd>T</kbd><svg class="ic"><use href="#i-chart"/></svg>Stats</button>
       <button data-tab="log" title="Log (L)"><kbd>L</kbd><svg class="ic"><use href="#i-log"/></svg>Log<span class="badge" id="logNew" hidden></span></button>
     </nav>
     <div class="glass mmw"><div class="wt"><svg class="ic"><use href="#i-map"/></svg><b id="mmc">Surface</b><em>600 × 600</em></div><canvas id="mm" aria-label="Minimap: click to look there"></canvas></div>
