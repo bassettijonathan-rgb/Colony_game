@@ -205,6 +205,7 @@ function musicToggle(on) { const v = A.music.toggle(on); musicButton(); toast(v 
 function musicButton() { const on = A.music.on; $('bMusic').classList.toggle('off', !on); $('bMusic').setAttribute('aria-pressed', on); $('musicTxt').textContent = on ? 'Music' : 'Music off'; }
 function select(i, fly) {
   A.sel = i; A.follow = false; $('cFollow').textContent = 'Follow';
+  if (i >= 0 && A.projSel >= 0) closeProject();
   if (A.sim) A.sim.send({ t: 'watch', id: i });
   if (A.panels) A.panels.card();
   if (fly && i >= 0 && i < A.n && A.view) { const act = A.pos[i * 4 + 3] >> 1; if (!hidden(act)) A.view.flyTo(A.pos[i * 4], A.pos[i * 4 + 1], Math.max(A.view.cam.z, 22)); else toast(act === ACT.DEAD ? `${A.names[i]} is dead.` : `${A.names[i]} is indoors.`); }
@@ -264,6 +265,7 @@ function showProject(id) {
   A.projSel = id; A.panels.sig = ''; A.panels.update();
   A.view.flyTo(p.x + p.w / 2, p.y + p.h / 2, Math.max(A.view.cam.z, 16)); A.follow = false;
 }
+function closeProject() { A.projSel = -1; if (A.panels) { A.panels.sig = ''; A.panels.update(); } }
 function projectAt(wx, wy) {
   if (!A.ui) return null;
   for (const p of A.ui.projects) if (p.type !== 'test' && wx >= p.x - .3 && wx < p.x + p.w + .3 && wy >= p.y - .3 && wy < p.y + p.h + .3) return p;
@@ -345,7 +347,7 @@ function hookInput() {
     else if (e.code === 'KeyB' && colony) A.panels.toggleTab('build');
     else if (e.code === 'KeyR' && A.place) turnDoor();
     else if (e.code === 'KeyM') musicToggle();
-    else if (e.code === 'Escape') { if (A.place) endPlace(); else if (A.pickCrew >= 0) endPick(); else if (!$('newdlg').hidden) $('newdlg').hidden = true; else select(-1); }
+    else if (e.code === 'Escape') { if (A.place) endPlace(); else if (A.pickCrew >= 0) endPick(); else if (!$('newdlg').hidden) $('newdlg').hidden = true; else if (A.projSel >= 0) closeProject(); else select(-1); }
     else if (e.code === 'Equal' || e.code === 'NumpadAdd') V.zoomAt(1.25, V.VW / 2, V.VH / 2);
     else if (e.code === 'Minus' || e.code === 'NumpadSubtract') V.zoomAt(.8, V.VW / 2, V.VH / 2);
   });
@@ -361,6 +363,9 @@ function hookInput() {
   $('placeCancel').onclick = endPlace; $('plCancel').onclick = endPlace; $('placeTurn').onclick = turnDoor; $('plTurn').onclick = turnDoor; $('plGo').onclick = confirmPlace;
   $('plName2').oninput = e => { delete e.target.dataset.auto; $('plKeep').checked = true; };
   $('cClose').onclick = () => select(-1);
+  $('bClose').onclick = closeProject;
+  $('bList').onclick = () => { const id = A.projSel; A.panels.setTab('build'); showProject(id); };
+  $('bPause').onclick = () => { const p = A.ui && A.ui.projects.find(q => q.id === A.projSel); if (p) cmd('projPause', { id: p.id, on: !p.paused }); };
   $('cFollow').onclick = () => { A.follow = !A.follow; $('cFollow').textContent = A.follow ? 'Stop following' : 'Follow'; };
   const mm = $('mm');
   const mmGo = e => { const r = mm.getBoundingClientRect(); V.fly = null; V.cam.x = (e.clientX - r.left) / r.width * MAP; V.cam.y = (e.clientY - r.top) / r.height * MAP; A.follow = false; V.clampCam(); };
@@ -399,8 +404,8 @@ function click(sx, sy) {
     return;
   }
   const who = pick(sx, sy);
-  if (who < 0) { const [wx, wy] = V.toWorld(sx, sy), p = projectAt(wx, wy); if (p) { A.projSel = p.id; A.panels.setTab('build'); select(-1); return; } }
-  if (A.projSel >= 0) { A.projSel = -1; A.panels.sig = ''; }
+  if (who < 0) { const [wx, wy] = V.toWorld(sx, sy), p = projectAt(wx, wy); if (p) { select(-1); A.projSel = p.id; A.panels.sig = ''; A.panels.update(); return; } }
+  if (A.projSel >= 0) closeProject();
   select(who);
 }
 function pick(sx, sy) {

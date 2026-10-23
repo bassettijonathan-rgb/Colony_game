@@ -80,7 +80,7 @@ export class Panels {
       if (sig !== this.sig && !holding) { const top = body.scrollTop; body.innerHTML = html(); body.scrollTop = top; this.sig = sig; }
       if (this.tab === 'archive') this.archiveLive(U);
     }
-    this.card();
+    this.card(); this.bcard();
   }
   strip(U) {
     const awake = U.alive, left = U.seed.feed + U.seed.queue.length;
@@ -338,5 +338,37 @@ export class Panels {
     }
     ms.disabled = !!(flags & 16);
     card.hidden = false;
+  }
+
+  // ---------- the building you picked on the map (or in the list) ----------
+  bcard() {
+    const A = this.A, U = A.ui, el = $('bcard'), p = U && A.projSel >= 0 ? U.projects.find(q => q.id === A.projSel) : null;
+    if (!p || A.phase !== 'colony') { el.hidden = true; this.bSig = ''; return; }
+    const sig = JSON.stringify([p, this.confirm === p.id]); if (sig === this.bSig) { el.hidden = false; return; }
+    this.bSig = sig;
+    const T = TYPES[p.type], test = p.type === 'test', names = test ? TEST_STAGES : STAGE_NAMES, n = names.length;
+    const f = progress(p), all = p.done ? 1 : (p.stage + f) / n;
+    $('bName').textContent = p.name;
+    $('bMeta').textContent = test ? `At the rig in the yard` : `${T.name} · ${p.w} × ${p.h} tiles${T.open ? '' : ` · door on the ${SIDE[p.side]} side`}`;
+    $('bJob').textContent = p.done ? (p.type === 'solar' ? `Finished · making ${p.cap.supply} kW` : `Finished · ${p.powered ? 'has power' : 'dark: not enough power'}`)
+      : p.paused ? `Paused at ${names[p.stage].toLowerCase()}` : p.stall ? 'Stalled' : p.crews.length ? `Being built · ${names[p.stage].toLowerCase()}` : `Waiting · ${names[p.stage].toLowerCase()}`;
+    $('bDot').className = 'dot' + (p.done ? (p.powered || p.type === 'solar' ? ' ok' : ' off') : p.paused || p.stall || !p.crews.length ? ' off' : '');
+    let h = '';
+    if (!test) h += `<div class="note" style="margin:8px 0 0">${esc(T.use || 'Twelve bunks in the lander\'s own modules, the first roof on this world')}. It holds ${esc(holds(p.type, p.cap))}${p.type === 'solar' ? '' : ` and draws ${p.cap.kw} kW`}.</div>`;
+    if (!p.done) {
+      h += `<div class="sec">Progress · ${pct(all)}</div><div class="bar"><u style="width:${pct(all)}"></u></div>`;
+      h += `<div class="stg">` + names.map((nm, i) => {
+        const st = i < p.stage ? 'done' : i === p.stage ? 'now' : '';
+        return `<div class="${st}"><i>${i < p.stage ? '✓' : i + 1}</i><span>${nm}</span><em>${i < p.stage ? 'done' : i === p.stage ? pct(f) : ''}</em></div>`;
+      }).join('') + `</div>`;
+      const rows = Object.entries(p.need).filter(([k, q]) => q > 0 && k !== 'mark' && k !== 'test');
+      if (rows.length) h += `<div class="sec">This stage takes</div><div class="bill">` + rows.map(([k, q]) => { const g = Math.min(q, p.got[k] || 0); return `<div><em>${esc(cap1(matName(k, 2).replace(/^2 /, '')))}</em>${g} of ${q} in place</div>`; }).join('') + `</div>`;
+      else if (p.stage === 0 && !test) h += `<div class="note" style="margin-top:6px">Marking out needs only pegs and string; the crew walks the plot and clears what stands on it.</div>`;
+      if (p.wait) h += `<div class="pw">${esc(p.wait)}</div>`;
+      else if (p.crews.length) h += `<div class="ps" style="margin-top:6px">${esc(p.crews.join(', '))} crew${p.crews.length > 1 ? 's are' : ' is'} on it.</div>`;
+    } else if (p.wait) h += `<div class="pw">${esc(p.wait)}</div>`;
+    $('bBody').innerHTML = h;
+    const pause = $('bPause'); pause.hidden = p.done || p.type === 'shelter'; pause.textContent = p.paused ? 'Resume' : 'Pause';
+    el.hidden = false;
   }
 }
