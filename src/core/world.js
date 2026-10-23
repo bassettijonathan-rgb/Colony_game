@@ -11,9 +11,12 @@ function quantile(f, q) {
   s.sort((a, b) => a - b); return s[Math.floor(clamp(q, 0, 1) * (s.length - 1))];
 }
 
-export function generateWorld(seed) {
-  const s = seed | 0;
-  const elev = new Float32Array(N), moist = new Float32Array(N), river = new Float32Array(N);
+// Version 2 has one or two rivers and a few lakes; version 1 (colonies landed before it) had many of both, and
+// a saved colony keeps the land it landed on.
+export const WORLD_V = 2;
+export function generateWorld(seed, wv = WORLD_V) {
+  const s = seed | 0, v1 = wv < 2;
+  const elev = new Float32Array(N), moist = new Float32Array(N), river = new Float32Array(N), basin = new Float32Array(N);
   for (let y = 0; y < MAP; y++) for (let x = 0; x < MAP; x++) {
     const i = y * MAP + x;
     const wx = x + (vnoise(x / 60, y / 60, s + 11) - .5) * 40, wy = y + (vnoise(x / 60, y / 60, s + 12) - .5) * 40;
@@ -21,9 +24,12 @@ export function generateWorld(seed) {
     const r = 1 - Math.abs(2 * fbm(wx / 95, wy / 95, s + 2, 4) - 1);       // ridges become ranges
     elev[i] = base * .62 + r * r * .5 * (.4 + base);
     moist[i] = fbm(x / 120, y / 120, s + 3, 4) * .8 + vnoise(x / 18, y / 18, s + 4) * .2;
-    river[i] = Math.abs(fbm(wx / 150, wy / 150, s + 5, 3) - .5);
+    // one or two long rivers rather than a web of them: the contour of a broad, smooth field
+    river[i] = v1 ? Math.abs(fbm(wx / 150, wy / 150, s + 5, 3) - .5) : Math.abs(fbm(wx / 330, wy / 330, s + 5, 2) - .5);
+    // lakes sit in a few broad basins, not in every dip of the ground
+    basin[i] = v1 ? elev[i] : fbm(wx / 210, wy / 210, s + 9, 2) * .7 + base * .3;
   }
-  const eRock = quantile(elev, .9), eScree = quantile(elev, .875), eLake = quantile(elev, .035), eShore = quantile(elev, .055), eSand = quantile(elev, .07), eLow = quantile(elev, .22);
+  const eRock = quantile(elev, .9), eScree = quantile(elev, .875), bLake = quantile(basin, v1 ? .035 : .012), bShore = quantile(basin, v1 ? .055 : .02), bSand = quantile(basin, v1 ? .07 : .027), eLow = quantile(elev, .22);
   const mWet = quantile(moist, .7), mWood = quantile(moist, .55), mDry = quantile(moist, .12);
   const type = new Uint8Array(N);
   for (let y = 0; y < MAP; y++) for (let x = 0; x < MAP; x++) {
@@ -32,14 +38,15 @@ export function generateWorld(seed) {
     if (m > mWood) t = T.FOREST;
     if (m < mDry) t = T.DIRT;
     if (m > mWet && e < eLow) t = T.MARSH;
-    const rw = .006 + .006 * vnoise(x / 40, y / 40, s + 6);              // river half-width, in noise units
+    const rw = (v1 ? .006 : .0035) * (1 + vnoise(x / 40, y / 40, s + 6));              // river half-width, in noise units
     if (e < eScree - .02) {
       if (river[i] < rw * 1.9) t = T.SAND;
       if (river[i] < rw) t = vnoise(x / 30, y / 30, s + 7) > .62 && river[i] < rw * .5 ? T.DEEP : T.SHALLOW;
     }
-    if (e < eSand) t = T.SAND;
-    if (e < eShore) t = T.SHALLOW;
-    if (e < eLake) t = T.DEEP;
+    const b = basin[i];
+    if (b < bSand) t = T.SAND;
+    if (b < bShore) t = T.SHALLOW;
+    if (b < bLake) t = T.DEEP;
     if (e > eScree) t = T.SCREE;
     if (e > eRock) t = T.ROCK;
     type[i] = t;
@@ -50,7 +57,7 @@ export function generateWorld(seed) {
   const lo = quantile(elev, .01), hi = quantile(elev, .999);
   const e8 = new Uint8Array(N), m8 = new Uint8Array(N);
   for (let i = 0; i < N; i++) { e8[i] = clamp((elev[i] - lo) / (hi - lo), 0, 1) * 255; m8[i] = clamp(moist[i] * 255, 0, 255); }
-  return { seed: s, type, cost, reach: null, elev: e8, moist: m8, land: null, rock: clamp((eRock - lo) / (hi - lo), 0, 1), reachable: 0 };
+  return { seed: s, wv, type, cost, reach: null, elev: e8, moist: m8, land: null, rock: clamp((eRock - lo) / (hi - lo), 0, 1), reachable: 0 };
 }
 
 // ---------- choosing where to land ----------

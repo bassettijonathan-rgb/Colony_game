@@ -73,7 +73,7 @@ export function createSimCore(post) {
   function handle(m) {
     if (m.t === 'init') {
       clearTimeout(timer); sim = null; watch = -1;
-      const t0 = now(); W = generateWorld(m.seed); sites = findSites(W); const t1 = now();
+      const t0 = now(); W = generateWorld(m.seed, m.save ? m.save.wv || 1 : undefined); sites = findSites(W); const t1 = now();
       if (m.save) begin({ id: m.save.site.id, x: m.save.site.x, y: m.save.site.y }, m.save, null, 0, t0, t1);
       else if (m.mode === 'stress') begin(sites[0], null, 'stress', m.count || 300, t0, t1);
       else post({ t: 'survey', seed: W.seed, rock: W.rock, world: { type: W.type, elev: W.elev, moist: W.moist }, sites, timing: { world: t1 - t0 } });

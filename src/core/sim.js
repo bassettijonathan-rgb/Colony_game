@@ -72,7 +72,7 @@ export class Sim {
   newGame(mode = 'landfall', count = 300, season = 0) {
     const W = this.W, L = W.land; srand(W.seed * 7919 + 17);
     this.S = {
-      v: 4, mode, seed: W.seed, y0: (season | 0) % 4 * SEASON_DAYS, site: { x: L.x, y: L.y, id: W.siteId ?? 0 }, tick: Math.round(6 * HOUR),
+      v: 4, mode, seed: W.seed, wv: W.wv, y0: (season | 0) % 4 * SEASON_DAYS, site: { x: L.x, y: L.y, id: W.siteId ?? 0 }, tick: Math.round(6 * HOUR),
       cols: [], crews: [], archive: makeArchive(W.seed), autoCrews: true,
       seedc: { feed: mode === 'stress' ? 0 : FIRST_BODIES, queue: [], printing: null, stakes: STAKES },
       projects: [shelterProject(W)], pid: 1, blueprints: [], fab: { job: null }, power: { supply: LANDER_KW, draw: 0 },
