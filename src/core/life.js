@@ -115,10 +115,10 @@ export function mindTick(sim, c) {
   c.str = clamp(c.str + (g - rel) * dt, 0, 100);
   bonds(sim, c, dt, working);
   // breaking down: at the far end of strain, people stop and walk off to be alone for a while
-  if (c.alone > 0) { c.alone -= 30; if (c.alone <= 0) { c.alone = 0; c.str = Math.max(0, c.str - 20); sim.log(`${c.name} came back to camp.`); } }
+  if (c.alone > 0) { c.alone -= 30; if (c.alone <= 0) { c.alone = 0; c.str = Math.max(0, c.str - 20); sim.log(`${c.name} came back to camp.`, '', { e: 'back', lvl: 1, who: c.id, title: 'Back from a breakdown' }); } }
   else if (c.str >= 85 && !asleep && rnd() < .15 * dt) {
     c.alone = ri(4, 7) * HOUR; c.tru = Math.max(0, c.tru - 3); S.stats.breakdowns++;
-    sim.log(`${c.name} broke down and walked off to be alone.`, 'bad'); remember(sim, c, 'Broke down and walked away from everyone for a few hours.');
+    sim.log(`${c.name} broke down and walked off to be alone.`, 'bad', { e: 'breakdown', lvl: 2, who: c.id, title: `${c.name} broke down` }); remember(sim, c, 'Broke down and walked away from everyone for a few hours.');
   }
   // the body
   if (c.fresh > 0) { c.fresh -= 30; if (c.fresh <= 0) remember(sim, c, 'Stopped feeling like a stranger in this body.'); }
@@ -138,7 +138,7 @@ export function mindTick(sim, c) {
     if (rnd() < p * dt) {
       const where = a === ACT.QUARRY ? 'cutting stone' : a === ACT.FELL ? 'felling a tree' : 'on the building site';
       c.hurt = 2 * DAY_TICKS; c.hp = Math.max(5, c.hp - 15); c.str = Math.min(100, c.str + 6); S.stats.accidents++;
-      sim.log(`${c.name} was hurt ${where}${c.fat > 85 ? ', working while exhausted' : ''}.`, 'bad'); remember(sim, c, `Got hurt ${where}.`);
+      sim.log(`${c.name} was hurt ${where}${c.fat > 85 ? ', working while exhausted' : ''}.`, 'bad', { e: 'hurt', lvl: 1, who: c.id, title: 'An accident' }); remember(sim, c, `Got hurt ${where}.`);
       const cl = clinicFor(S, c); if (cl) { c.ward = cl.id; c.plan = ''; }   // off to the clinic
     }
   }
@@ -169,7 +169,7 @@ function bonds(sim, c, dt, working) {
       t.k = k;
       if (k && c.id < o.id) {
         S.stats[k === 'friend' ? 'friends' : 'rivals']++;
-        sim.log(k === 'friend' ? `${c.name} and ${o.name} have become friends.` : `${c.name} and ${o.name} can't stand each other.`, k === 'friend' ? 'good' : 'bad');
+        sim.log(k === 'friend' ? `${c.name} and ${o.name} have become friends.` : `${c.name} and ${o.name} can't stand each other.`, k === 'friend' ? 'good' : 'bad', { e: k === 'friend' ? 'friends' : 'rivals', lvl: 1, who: c.id, title: k === 'friend' ? 'New friends' : 'A falling-out' });
         remember(sim, c, k === 'friend' ? `Became friends with ${o.name}.` : `Fell out with ${o.name}.`); remember(sim, o, k === 'friend' ? `Became friends with ${c.name}.` : `Fell out with ${c.name}.`);
       }
     }
@@ -197,7 +197,7 @@ export function trustAll(sim, v, why) {
 }
 function die(sim, c, why) {
   dropCarry(sim, c); c.dead = true; c.act = ACT.DEAD; c.mv = 0; c.home = c.mess = c.ward = -1; sim.S.stats.deaths++;
-  sim.log(`${c.name} died${why === 'starved' ? ' of hunger' : ''}.`, 'bad');
+  sim.log(`${c.name} died${why === 'starved' ? ' of hunger' : ''}.`, 'bad', { e: 'death', lvl: 2, who: c.id, title: `${c.name} died` });
   for (const o of sim.S.cols) if (!o.dead) { const t = o.ties[c.id]; o.str = Math.min(100, o.str + (t && t.k === 'friend' ? 25 : 8)); if (t && t.k) remember(sim, o, `Lost ${c.name}.`); }
   const cr = c.crew >= 0 ? sim.S.crews[c.crew] : null;
   if (cr) { cr.members = cr.members.filter(i => i !== c.id); if (cr.lead === c.id) cr.lead = cr.members[0] ?? -1; }

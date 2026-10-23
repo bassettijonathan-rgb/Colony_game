@@ -5,6 +5,7 @@ import { startSim } from './ui/simclient.js';
 import { View } from './render/view.js';
 import { PersonArt } from './render/people.js';
 import { Panels } from './ui/panels.js';
+import { News } from './ui/news.js';
 import { Music, moodFor } from './ui/music.js';
 import { SEASONS, MAP, NCH, ACT, DAY_TICKS, hidden } from './core/consts.js';
 import { TYPES, facing } from './core/build.js';
@@ -12,7 +13,7 @@ import { LAYERS } from './render/terrain.js';
 import { Store, initStorage, saveLocal, loadLocal, saveAccount, loadAccount, exportFile, importFile } from './ui/storage.js';
 
 const $ = id => document.getElementById(id);
-const HUD = '.glass,.topbar,#bar,#dock';   // the interface over the map: clicks and the wheel there are not for the map
+const HUD = '.glass,.topbar,#bar,#dock,.nc,.al';   // the interface over the map: clicks and the wheel there are not for the map
 const app = $('app');
 const A = {
   sim: null, view: null, panels: null, phase: 'boot', W: null, sites: null, siteSel: 0, mode: 'landfall', tag: '',
@@ -22,6 +23,7 @@ const A = {
   place: null, projSel: -1
 };
 const pad = n => String(n).padStart(2, '0');
+const when = t => { const d = Math.floor(t / DAY_TICKS) + 1, h = (t % DAY_TICKS) / (DAY_TICKS / 24); return `Day ${d}, ${pad(Math.floor(h))}:${pad(Math.floor((h % 1) * 60))}`; };
 const toast = (m) => { const t = $('toast'); t.textContent = m; t.classList.add('on'); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove('on'), 3200); };
 const loader = (msg, p) => { if (msg) $('ldmsg').textContent = msg; if (p !== undefined) $('ldbar').style.width = Math.round(p * 100) + '%'; };
 const withTimeout = (p, ms, v) => Promise.race([p, new Promise(r => setTimeout(() => r(v), ms))]);
@@ -49,12 +51,13 @@ function ensureView(W) {
     A.view = new View(app, W);
     if (!A.view.G || !A.view.ok) { loader('This needs a browser with WebGL 2. ' + (A.view.G ? 'A shader did not compile.' : ''), 1); $('ldmsg').id = 'nogl'; return false; }
     A.panels = new Panels(A, { cmd, select, toast, pickArea, land, siteSelect, startPlace, showProject });
+    A.news = new News(A, { select, showProject, setSpeed, toast, when, flyTo: (x, y) => { A.view.flyTo(x, y, Math.max(A.view.cam.z, 18)); A.follow = false; }, tab: t => A.panels.setTab(t) });
     hookInput();
   } else A.view.setWorld(W);
   if (!A.raf) A.raf = requestAnimationFrame(frame);
   return true;
 }
-function resetPeople() { A.n = 0; A.arts = []; A.names = []; A.people = []; A.archive = []; A.ui = null; A.log = []; A.leads = new Set(); A.cur = A.prev = null; A.pos = new Float32Array(0); select(-1); }
+function resetPeople() { if (A.news) A.news.reset(); A.n = 0; A.arts = []; A.names = []; A.people = []; A.archive = []; A.ui = null; A.log = []; A.leads = new Set(); A.cur = A.prev = null; A.pos = new Float32Array(0); select(-1); }
 
 // from orbit: the planet, and three places to land
 function onSurvey(m) {
@@ -122,8 +125,8 @@ function onState(m) {
   if (A.phase !== 'colony') return;
   if (m.roster) setRoster(m.roster);
   A.ui = m.ui;
-  if (m.log.length) { A.log.push(...m.log); if (A.log.length > 300) A.log.splice(0, A.log.length - 300); for (const e of m.log) if (e.k === 'bad') toast(e.m); }
-  recolour(); A.panels.update();
+  if (m.log.length) { A.log.push(...m.log); if (A.log.length > 300) A.log.splice(0, A.log.length - 300); A.news.add(m.log); }
+  recolour(); A.panels.update(); A.news.alerts(A.ui);
   if (A.projSel >= 0 && !A.ui.projects.some(p => p.id === A.projSel)) A.projSel = -1;
 }
 
@@ -338,7 +341,7 @@ function hookInput() {
     if (e.target.closest && e.target.closest('input,select')) return;
     keys.add(e.code);
     const colony = A.phase === 'colony';
-    if (e.code === 'Space') { e.preventDefault(); if (colony) setSpeed(A.speed ? 0 : A.lastSpeed); }
+    if (e.code === 'Space') { e.preventDefault(); if (colony && !(A.news && A.news.open)) setSpeed(A.speed ? 0 : A.lastSpeed); }
     else if (e.code === 'Digit1' && colony) setSpeed(1); else if (e.code === 'Digit2' && colony) setSpeed(2); else if (e.code === 'Digit3' && colony) setSpeed(3);
     else if (e.code === 'Tab') { e.preventDefault(); V.labels = !V.labels; }
     else if (e.code === 'KeyH') goHome();
@@ -349,6 +352,7 @@ function hookInput() {
     else if (e.code === 'KeyB' && colony) A.panels.toggleTab('build');
     else if (e.code === 'KeyR' && A.place) turnDoor();
     else if (e.code === 'KeyM') musicToggle();
+    else if ((e.code === 'Escape' || e.code === 'Enter') && A.news && A.news.open) { e.preventDefault(); A.news.closeLetter(); }
     else if (e.code === 'Escape') { if (A.place) endPlace(); else if (A.pickCrew >= 0) endPick(); else if (!$('newdlg').hidden) $('newdlg').hidden = true; else if (!$('menu').hidden) menu(false); else if (A.projSel >= 0) closeProject(); else if (A.sel >= 0) select(-1); else if (A.panels && !A.panels.min) A.panels.fold(true); }
     else if (e.code === 'Equal' || e.code === 'NumpadAdd') V.zoomAt(1.25, V.VW / 2, V.VH / 2);
     else if (e.code === 'Minus' || e.code === 'NumpadSubtract') V.zoomAt(.8, V.VW / 2, V.VH / 2);
@@ -439,7 +443,7 @@ window.__colony = {
     return { phase: A.phase, ready: A.phase === 'colony' && !!V && V.terrain.ready && !A.hold, painted: !!V && V.terrain.ready, n: A.n, clock: A.clock, perf: A.perf, thread: A.thread, fps: A.frames.length ? 1000 / avgMs() : 0, cam: V && { ...V.cam }, chunks: V && V.terrain.cached, paint: V && V.terrain.stats, lights: V && V.stats, timing: A.timing, sel: A.sel, saved: A.savedNote, sites: A.sites, ui: A.ui && { alive: A.ui.alive, seed: A.ui.seed, shelter: A.ui.shelter, food: A.ui.food, known: A.ui.known, stakes: A.ui.stakes.length, crews: A.ui.crews.map(c => ({ name: c.name, work: c.work, members: c.members.length, target: c.target, proj: c.proj })), stats: A.ui.stats, projects: A.ui.projects.map(p => ({ id: p.id, name: p.name, type: p.type, stage: p.stage, done: p.done, powered: p.powered, wait: p.wait })), stores: A.ui.stores, power: A.ui.power, mat: A.ui.mat }, place: A.place && { type: A.place.type, x: A.place.x, y: A.place.y, w: A.place.w, h: A.place.h, ok: A.place.check && A.place.check.ok, why: A.place.check && A.place.check.why }, log: A.log.slice(-6).map(e => e.m) };
   },
   setSpeed, select, goHome, requestSave, startColony, siteSelect, land, cmd, toast, startPlace, placeRect, confirmPlace, endPlace, showProject, get music() { return A.music.state; }, musicToggle,
-  tab: t => A.panels.setTab(t), panels: () => A.panels,
+  tab: t => A.panels.setTab(t), panels: () => A.panels, news: () => A.news,
   look(x, y, z) { const V = A.view; V.fly = null; V.cam.x = x; V.cam.y = y; if (z) V.cam.z = z; V.clampCam(); },
 };
 boot();
