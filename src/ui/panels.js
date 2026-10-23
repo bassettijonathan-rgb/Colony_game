@@ -10,6 +10,7 @@ import { TYPES, PLANNABLE, STAGE_NAMES, TEST_STAGES, stagesOf, matName, LANDER_K
 import { progress } from '../render/buildings.js';
 import { crewColour, portrait } from '../render/people.js';
 import { LETTERS } from '../render/view.js';
+import { thingCard } from './things.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -450,6 +451,7 @@ export class Panels {
   // ---------- the building you picked on the map (or in the list) ----------
   bcard() {
     const A = this.A, U = A.ui, el = $('bcard'), p = U && A.projSel >= 0 ? U.projects.find(q => q.id === A.projSel) : null;
+    if (!p && A.thing && U && A.phase === 'colony') return this.tcard(A.thing);
     if (!p || A.phase !== 'colony') { el.hidden = true; this.bSig = ''; return; }
     const sig = JSON.stringify([p, this.confirm === p.id]); if (sig === this.bSig) { el.hidden = false; return; }
     this.bSig = sig;
@@ -477,6 +479,19 @@ export class Panels {
     } else if (p.wait) h += `<div class="pw">${esc(p.wait)}</div>`;
     $('bBody').innerHTML = h;
     const pause = $('bPause'); pause.hidden = p.done || p.type === 'shelter'; pause.textContent = p.paused ? 'Resume' : 'Pause';
+    $('bList').hidden = false; $('bList').textContent = 'In the build list';
+    el.hidden = false;
+  }
+  // the same card for anything else on the map: the Seed, the fire, the kitchen, the yard, stakes, life, trees and rocks
+  tcard(th) {
+    const el = $('bcard'), c = thingCard(this.A, th); this.thingInfo = c;
+    if (!c) { el.hidden = true; return; }
+    const sig = 't' + JSON.stringify(c); if (sig === this.bSig) { el.hidden = false; return; }
+    this.bSig = sig;
+    $('bName').textContent = c.name; $('bPic').innerHTML = icon(c.icon); $('bMeta').textContent = c.meta;
+    $('bJob').textContent = c.job; $('bDot').className = 'dot' + (c.dot ? ' ' + c.dot : '');
+    $('bBody').innerHTML = c.body;
+    $('bPause').hidden = true; $('bList').hidden = !c.btn; if (c.btn) $('bList').textContent = c.btn.label;
     el.hidden = false;
   }
 }

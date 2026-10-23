@@ -307,6 +307,13 @@ export class View {
       for (const [a, b] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { ui.moveTo(X + a * r, Y + b * (r - l)); ui.lineTo(X + a * r, Y + b * r); ui.lineTo(X + a * (r - l), Y + b * r); }
       ui.stroke(); ui.shadowBlur = 0; label(F.sel, true);
     }
+    // the brackets around a thing picked on the map: the Seed, the fire, a tree, a patch of local life
+    if (F.thing) {
+      const T = F.thing, X = sx(T.x), Y = sy(T.y), r = Math.max(9, T.r * z) + Math.sin(F.time * 4) * 1.2, l = Math.max(5, r * .3);
+      ui.strokeStyle = 'rgba(243,182,92,.95)'; ui.lineWidth = 1.6; ui.shadowColor = 'rgba(0,0,0,.6)'; ui.shadowBlur = 4; ui.beginPath();
+      for (const [a, b] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { ui.moveTo(X + a * r, Y + b * (r - l)); ui.lineTo(X + a * r, Y + b * r); ui.lineTo(X + a * (r - l), Y + b * r); }
+      ui.stroke(); ui.shadowBlur = 0;
+    }
   }
 
   // names over building sites, with what they wait for; dark buildings say so
