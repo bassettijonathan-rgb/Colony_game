@@ -31,6 +31,9 @@ const loads = L => Object.entries(L).filter(([k, n]) => n > 0 && k !== 'mark' &&
 // what a crew's members are doing, in a word each
 const DOING = { [ACT.BED]: 'asleep', [ACT.INSIDE]: 'asleep', [ACT.WALK]: 'walking', [ACT.HOME]: 'walking back', [ACT.TOBED]: 'turning in', [ACT.SURVEY]: 'surveying', [ACT.PLANT]: 'planting a stake', [ACT.CARRY]: 'carrying', [ACT.BUILD]: 'building', [ACT.EAT]: 'eating', [ACT.IDLE]: 'at camp', [ACT.ALONE]: 'off alone', [ACT.WAKE]: 'waking', [ACT.QUARRY]: 'cutting stone', [ACT.FELL]: 'felling', [ACT.STONE]: 'carrying stone', [ACT.LOG]: 'carrying logs', [ACT.TEST]: 'testing', [ACT.INDOORS]: 'indoors', [ACT.BENCH]: 'at a bench', [ACT.DEAD]: 'dead', [ACT.DOWN]: 'down', [ACT.TEND]: 'tending someone', [ACT.DRAG]: 'carrying someone' };
 const meterCol = (v, goodHigh) => { const x = goodHigh ? 100 - v : v; return x > 70 ? 'var(--bad)' : x > 45 ? 'var(--mid)' : 'var(--good)'; };
+// a row of buttons choosing a part of a window, and a numbered how-to for it
+const sub = (key, cur, items) => `<div class="seg sm sub">${items.map(([k, t]) => `<button data-act="sub" data-k="${key}" data-v="${k}" class="${cur === k ? 'on' : ''}">${t}</button>`).join('')}</div>`;
+const how = steps => `<ol class="how">${steps.map(t => `<li>${t}</li>`).join('')}</ol>`;
 const topSkills = (sk, n = 3) => SKILLS.map(k => [k, sk[k]]).sort((a, b) => b[1] - a[1]).slice(0, n);
 
 // a field's crop in words, and the buttons to choose what goes in it next
@@ -51,7 +54,7 @@ const SEASON_PICK = [
 export class Panels {
   constructor(A, api) {
     this.A = A; this.api = api; this.tab = 'archive'; this.chosen = new Set(); this.touched = false; this.sig = ''; this.cardSig = ''; this.moveSig = '';
-    this.logSeen = 0; this.busy = false; this.min = false; this.confirm = -1; this.planSig = '';
+    this.btab = 'plan'; this.ltab = 'larder'; this.logSeen = 0; this.busy = false; this.min = false; this.confirm = -1; this.planSig = '';
     const side = $('side'), body = $('sideBody');
     document.querySelectorAll('#dock [data-tab]').forEach(b => b.onclick = () => this.toggleTab(b.dataset.tab));
     $('sideMin').onclick = () => this.fold(true);
@@ -97,6 +100,7 @@ export class Panels {
     this.dock();
   }
   setTab(t) {
+    const [w, part] = t.split(':'); t = w; if (part) this[t === 'build' ? 'btab' : 'ltab'] = part;   // 'life:local' opens a part of a window
     this.tab = t; this.sig = '';
     $('sideTitle').textContent = TAB[t][0]; $('sideIc').innerHTML = `<use href="#i-${TAB[t][1]}"/>`;
     if (this.min) this.fold(false); else this.dock();
@@ -223,32 +227,41 @@ export class Panels {
   life(U) {
     const F = U.F, Y = U.year; if (!F) return ['lf-none', () => `<div class="note">Nothing here in the stress test.</div>`];
     const fields = U.projects.filter(p => p.type === 'field' && p.done);
-    const sig = 'lf' + JSON.stringify([U.rv, Math.round(U.food), F.total, F.raw, F.prep, F.meals, F.vats.map(v => [v.src, Math.ceil(v.left / DAY_TICKS * 4)]), F.lab, F.life, fields.map(p => [p.id, p.crop]), Y && Y.season]);
+    const sig = 'lf' + JSON.stringify([U.rv, Math.round(U.food), F.total, F.raw, F.prep, F.meals, F.vats.map(v => [v.src, Math.ceil(v.left / DAY_TICKS * 4)]), F.lab, F.life, fields.map(p => [p.id, p.crop]), Y && Y.season, this.ltab]);
     return [sig, () => {
       const eaters = Math.max(1, U.alive), days = Math.floor(F.usable / eaters), nm = k => esc(F.names[k] || k);
       const list = (o, f, min = .5) => Object.entries(o).filter(([, n]) => n >= min).map(([k, n]) => `<div class="row2 li"><span class="grow">${nm(k)}</span><span class="num">${f(n, k)}</span></div>`).join('');
-      let h = `<div class="box"><div class="row2"><b class="grow">The larder</b><span class="num">${days} day${days === 1 ? '' : 's'} of food</span></div>
+      const lt = this.ltab, ready = F.life.filter(l => l && !l.tested && !l.queued && l.samples >= 3).length;
+      let h = sub('ltab', lt, [['larder', 'Larder'], ['fields', `Fields · ${fields.length}`], ['local', `Local life${ready ? ` · ${ready}` : ''}`]]);
+      if (lt === 'larder') {
+        h += `<div class="box"><div class="row2"><b class="grow">The larder</b><span class="num">${days} day${days === 1 ? '' : 's'} of food</span></div>
         <div class="note" style="margin:6px 0 4px">About ${Math.floor(F.usable)} meals for ${eaters} ${eaters === 1 ? 'person' : 'people'}, one meal each a day.${Y && Y.season !== 3 ? ` Deep cold comes in ${Y.deepIn} day${Y.deepIn === 1 ? '' : 's'} and lasts twenty.` : ' It is Deep cold: nothing grows.'}${F.locked > 0 ? ` Another ${Math.floor(F.locked)} meals’ worth needs a kitchen crew to make it safe.` : ''}</div>`;
-      h += `<div class="row2 li"><span class="grow">Lander rations</span><span class="num">${Math.floor(U.food)} meals</span></div>`;
-      h += list(F.meals, n => `${Math.floor(n)} cooked`, 1) + list(F.prep, n => `${n.toFixed(1)} loads leached`) + list(F.raw, n => `${n.toFixed(1)} loads`);
-      if (F.vats.length) h += F.vats.map(v => `<div class="row2 li"><span class="grow">Vat: ${nm(v.src)}, ${v.proc === 'leach' ? 'leaching' : 'fermenting'}</span><span class="num">${v.left <= 0 ? 'ready' : Math.ceil(v.left / DAY_TICKS * 24) + ' h left'}</span></div>`).join('');
-      h += `</div>`;
-      // fields
-      h += `<div class="sec">Fields · ${fields.length}</div>`;
-      if (!fields.length) h += `<div class="note">No finished field yet. Plan one in the Build window (B): marked out, dug, given made soil, drained, then raised beds. A farm crew sows and harvests it.</div>`;
-      for (const p of fields) {
-        const [state, sel] = fieldBits(p);
-        h += `<div class="crew"><h3><i style="background:#7fae5a"></i>${esc(p.name)}<em>${p.w * p.h} tiles</em></h3><div class="st">${state}</div>
-          <div class="lbl">CROP</div>${sel}</div>`;
+        h += `<div class="row2 li"><span class="grow">Lander rations</span><span class="num">${Math.floor(U.food)} meals</span></div>`;
+        h += list(F.meals, n => `${Math.floor(n)} cooked`, 1) + list(F.prep, n => `${n.toFixed(1)} loads leached`) + list(F.raw, n => `${n.toFixed(1)} loads`);
+        if (F.vats.length) h += F.vats.map(v => `<div class="row2 li"><span class="grow">Vat: ${nm(v.src)}, ${v.proc === 'leach' ? 'leaching' : 'fermenting'}</span><span class="num">${v.left <= 0 ? 'ready' : Math.ceil(v.left / DAY_TICKS * 24) + ' h left'}</span></div>`).join('');
+        h += `</div><div class="note">Foragers bring in tested wild food, a kitchen crew cooks it and runs the vats, and fields grow the seed bank's crops. Food that hasn't been tested is never eaten: see Local life.</div>`;
+        return h;
       }
-      // the seed bank
-      h += `<div class="sec">The seed bank</div>` + CROP_KEYS.map(k => { const c = CROPS[k]; return `<div class="li2"><b>${c.name}</b> · ripens in ${c.days} warm days, grows above ${c.min}°, killed below ${c.frost}° · <span>${esc(c.note)}</span></div>`; }).join('');
+      // fields
+      if (lt === 'fields') {
+        h += how(['Plan a field in the Build window (<kbd>B</kbd>). Build crews make it in five stages.', 'Put a crew on farm work (Crews window, <kbd>C</kbd>). They sow, harvest and clear it.', 'The Seed picks a crop that can ripen before the frost, or choose one below.']);
+        if (!fields.length) h += `<div class="note">No finished field yet.</div>`;
+        for (const p of fields) {
+          const [state, sel] = fieldBits(p);
+          h += `<div class="crew"><h3><i style="background:#7fae5a"></i>${esc(p.name)}<em>${p.w * p.h} tiles</em></h3><div class="st">${state}</div>
+            <div class="lbl">CROP</div>${sel}</div>`;
+        }
+        // the seed bank
+        h += `<div class="sec">The seed bank</div>` + CROP_KEYS.map(k => { const c = CROPS[k]; return `<div class="li2"><b>${c.name}</b> · ripens in ${c.days} warm days, grows above ${c.min}°, killed below ${c.frost}° · <span>${esc(c.note)}</span></div>`; }).join('');
+        return h;
+      }
       // the lab
+      h += how(['People notice the local life around them as they work outside; it appears below.', 'Foragers and survey crews take samples as they pass. Three samples are enough for a test.', 'Press <b>Test it</b>. The Seed’s analyser tests one kind at a time, slowly; a lab with a lab crew is much faster.', 'The result says whether it can be eaten, and how: raw, cooked, leached or fermented.']);
       const cur = F.lab.cur >= 0 ? F.life[F.lab.cur] : null, labs = U.projects.filter(p => p.type === 'lab' && p.done && p.powered).length;
-      h += `<div class="sec">Testing</div>`;
+      if (cur || F.lab.queue.length) h += `<div class="sec">Testing</div>`;
       h += cur ? `<div class="box"><div class="row2"><b class="grow">Testing ${esc(cur.name.toLowerCase())}</b><span class="num">${pct(F.lab.work / TEST_H)}</span></div><div class="bar"><u style="width:${pct(F.lab.work / TEST_H)}"></u></div></div>` : '';
       if (F.lab.queue.length) h += `<div class="note">Waiting: ${F.lab.queue.map(o => esc(F.life[o].name.toLowerCase())).join(', ')}.</div>`;
-      h += `<div class="note">${labs ? 'People at the lab benches test much faster than the Seed alone.' : 'The Seed’s own analyser tests one set of samples at a time, slowly. A lab with a lab crew is much faster.'}</div>`;
+      if (labs) h += `<div class="note">People at the lab benches test much faster than the Seed alone.</div>`;
       // local life
       const seen = F.life.filter(Boolean);
       h += `<div class="sec">Local life · ${seen.length} found</div>`;
@@ -271,29 +284,35 @@ export class Panels {
   // ---------- building ----------
   build(U) {
     const A = this.A, pw = U.power, st = U.stores, mat = U.mat, list = U.projects;
-    const sig = 'b' + JSON.stringify([U.rv, pw, st, mat, U.seed.fab && U.seed.fab.k, U.blueprints, list.map(p => [p.id, p.stage, p.got, p.wait, p.stall, p.powered, p.paused, p.crews, p.out]), this.confirm, A.projSel]);
+    const sig = 'b' + JSON.stringify([U.rv, pw, st, mat, U.seed.fab && U.seed.fab.k, U.blueprints, list.map(p => [p.id, p.stage, p.got, p.wait, p.stall, p.powered, p.paused, p.crews, p.out]), this.confirm, A.projSel, this.btab]);
     return [sig, () => {
       const used = pw.supply ? Math.min(1, pw.draw / pw.supply) : 0, dark = list.filter(p => p.done && p.type !== 'solar' && !p.powered);
-      let h = `<div class="box"><div class="row2"><b class="grow">Power</b><span class="num">${pw.draw} of ${pw.supply} kW</span></div><div class="bar"><u style="width:${pct(used)}"></u></div>
-        <div class="note" style="margin:6px 0 0">The lander makes ${LANDER_KW} kW${pw.supply > LANDER_KW ? ` and the solar fields ${+(pw.supply - LANDER_KW).toFixed(1)} kW` : ''}. Finished buildings take power in list order; any that don't fit stay dark and unused.${dark.length ? ` Dark now: ${dark.map(p => esc(p.name)).join(', ')}.` : ''}</div></div>`;
-      const cg = st.cargo, pr = st.precise;
-      h += `<div class="box"><b>Stock</b><div class="stock"><span>Stone <em>${st.yard.stone}</em></span><span>Timber <em>${st.yard.timber}</em></span><span>Salvage <em>${st.yard.salvage}</em></span><span>Lander modules <em>${cg.module}</em></span><span>Airlock seals <em>${pr.seal}</em></span><span>Pipe runs <em>${pr.pipe}</em></span><span>Power units <em>${pr.power}</em></span><span>Solar panels <em>${pr.panel}</em></span></div>
-        <div class="note" style="margin:6px 0 0">${U.seed.fab ? `The fabricator is making ${matName(U.seed.fab.k, 1).replace(/^1 (.)/, (m, c) => ('aeiou'.includes(c) ? 'an ' : 'a ') + c)} from salvage. ` : ''}Stone and timber come from the land; seals, pipes, power units and panels are made from salvage at workshop benches, or slowly by the fabricator.</div></div>`;
-      // the local materials and their load tests
-      h += `<div class="sec">Local materials</div>`;
-      for (const m of ['stone', 'timber']) {
-        const M = mat[m], test = list.find(p => p.type === 'test' && p.mat === m), k = M.tested ? Math.round(Math.min(1.3, Math.max(.75, Math.round(100 / M.f) / 100)) * 100) / 100 : 1.4;
-        const d = M.tested ? Math.round((M.f - 1) * 100) : 0;
-        const what = M.tested ? `Tested: ${d === 0 ? 'as strong as' : Math.abs(d) + '% ' + (d > 0 ? 'stronger' : 'weaker') + ' than'} the databank's standard, so designs use ${k < 1 ? Math.round((1 - k) * 100) + '% less' : Math.round((k - 1) * 100) + '% more'} ${m} than the standard.${m === 'timber' ? ` Beams span ${Math.floor(3 + 3 * M.f)} tiles before a roof needs posts.` : ''}`
-          : test ? `Being tested at the rig in the yard: ${TEST_STAGES[test.stage].toLowerCase()}.` : `Untested: every design adds 40% extra ${m} as a safety margin${m === 'timber' ? ', and roofs wider than 4 tiles need rows of posts' : ''}. A test takes three loads.`;
-        h += `<div class="mat"><div class="grow"><b>${m === 'stone' ? 'Stone' : 'Timber'}</b><div class="note" style="margin:2px 0 0">${what}</div></div>${M.tested || test ? '' : `<button class="btn" data-act="test" data-mat="${m}">Test it</button>`}</div>`;
+      const open = list.filter(p => !p.done), done = list.filter(p => p.done), bt = this.btab;
+      let h = sub('btab', bt, [['plan', 'Plan'], ['list', `Projects · ${open.length}`], ['mat', 'Materials']]);
+      if (bt === 'plan') {
+        h += how(['Pick a building below.', 'Drag on the map to draw it. <kbd>R</kbd> turns the door; the card shows what it needs. Confirm to add it to the projects.', 'Build crews (Crews window, <kbd>C</kbd>) work through the projects from the top, cutting stone and felling trees for what each needs.', 'A finished building only works with power: see Materials.']);
+        h += `<div class="types">${PLANNABLE.map(t => `<button data-act="plan" data-type="${t}"><i class="bi">${icon(TICON[t])}</i><b>${TYPES[t].name}</b><span>${esc(TYPES[t].use)}</span></button>`).join('')}</div>`;
+        if (U.blueprints.length) h += `<div class="sec">Blueprints</div><div class="note" style="margin:0 0 6px">Buildings you saved to place again, same size and layout.</div>` + U.blueprints.map((b, i) => `<div class="q"><span>${esc(b.name)} <em class="dim">${TYPES[b.type].name.toLowerCase()} · ${b.w} × ${b.h}</em></span><button class="btn" data-act="bp" data-i="${i}">Place</button><button data-act="bpDel" data-i="${i}" title="Forget this blueprint">Forget</button></div>`).join('');
+        return h;
       }
-      // planning
-      h += `<div class="sec">Plan a building</div><div class="types">${PLANNABLE.map(t => `<button data-act="plan" data-type="${t}"><i class="bi">${icon(TICON[t])}</i><b>${TYPES[t].name}</b><span>${esc(TYPES[t].use)}</span></button>`).join('')}</div>
-        <div class="note">Pick one, then drag on the map to draw it. The Seed lays out the inside and works out what it needs.</div>`;
-      if (U.blueprints.length) h += `<div class="sec">Blueprints</div>` + U.blueprints.map((b, i) => `<div class="q"><span>${esc(b.name)} <em class="dim">${TYPES[b.type].name.toLowerCase()} · ${b.w} × ${b.h}</em></span><button class="btn" data-act="bp" data-i="${i}">Place</button><button data-act="bpDel" data-i="${i}" title="Forget this blueprint">Forget</button></div>`).join('');
+      if (bt === 'mat') {
+        // the local materials and their load tests
+        h += `<div class="sec">Local materials</div><div class="note" style="margin:0 0 6px">Nobody knows yet how strong this world's stone and timber are. <b>Test it</b> adds a load test to the projects: a build crew takes three loads to the rig in the yard and breaks them. After that, every design uses the measured strength instead of a 40% safety margin.</div>`;
+        for (const m of ['stone', 'timber']) {
+          const M = mat[m], test = list.find(p => p.type === 'test' && p.mat === m), k = M.tested ? Math.round(Math.min(1.3, Math.max(.75, Math.round(100 / M.f) / 100)) * 100) / 100 : 1.4;
+          const d = M.tested ? Math.round((M.f - 1) * 100) : 0;
+          const what = M.tested ? `Tested: ${d === 0 ? 'as strong as' : Math.abs(d) + '% ' + (d > 0 ? 'stronger' : 'weaker') + ' than'} the databank's standard, so designs use ${k < 1 ? Math.round((1 - k) * 100) + '% less' : Math.round((k - 1) * 100) + '% more'} ${m} than the standard.${m === 'timber' ? ` Beams span ${Math.floor(3 + 3 * M.f)} tiles before a roof needs posts.` : ''}`
+            : test ? `Being tested at the rig in the yard: ${TEST_STAGES[test.stage].toLowerCase()}.` : `Untested: every design adds 40% extra ${m} as a safety margin${m === 'timber' ? ', and roofs wider than 4 tiles need rows of posts' : ''}. A test takes three loads.`;
+          h += `<div class="mat"><div class="grow"><b>${m === 'stone' ? 'Stone' : 'Timber'}</b><div class="note" style="margin:2px 0 0">${what}</div></div>${M.tested || test ? '' : `<button class="btn" data-act="test" data-mat="${m}">Test it</button>`}</div>`;
+        }
+        h += `<div class="sec">Power and stock</div><div class="box"><div class="row2"><b class="grow">Power</b><span class="num">${pw.draw} of ${pw.supply} kW</span></div><div class="bar"><u style="width:${pct(used)}"></u></div>
+          <div class="note" style="margin:6px 0 0">The lander makes ${LANDER_KW} kW${pw.supply > LANDER_KW ? ` and the solar fields ${+(pw.supply - LANDER_KW).toFixed(1)} kW` : ''}. Finished buildings take power in list order; any that don't fit stay dark and unused.${dark.length ? ` Dark now: ${dark.map(p => esc(p.name)).join(', ')}.` : ''}</div></div>`;
+        const cg = st.cargo, pr = st.precise;
+        h += `<div class="box"><b>Stock</b><div class="stock"><span>Stone <em>${st.yard.stone}</em></span><span>Timber <em>${st.yard.timber}</em></span><span>Salvage <em>${st.yard.salvage}</em></span><span>Lander modules <em>${cg.module}</em></span><span>Airlock seals <em>${pr.seal}</em></span><span>Pipe runs <em>${pr.pipe}</em></span><span>Power units <em>${pr.power}</em></span><span>Solar panels <em>${pr.panel}</em></span></div>
+          <div class="note" style="margin:6px 0 0">${U.seed.fab ? `The fabricator is making ${matName(U.seed.fab.k, 1).replace(/^1 (.)/, (m, c) => ('aeiou'.includes(c) ? 'an ' : 'a ') + c)} from salvage. ` : ''}Stone and timber come from the land; seals, pipes, power units and panels are made from salvage at workshop benches, or slowly by the fabricator.</div></div>`;
+        return h;
+      }
       // the list
-      const open = list.filter(p => !p.done), done = list.filter(p => p.done);
       const row = p => {
         const sel = A.projSel === p.id, f = progress(p), stage = stagesOf(p.type)[p.stage];
         const left = p.done ? '' : loads(Object.fromEntries(Object.entries(p.need).map(([k, n]) => [k, n - (p.got[k] || 0)])));
@@ -310,7 +329,8 @@ export class Panels {
         }
         return r + `</div>`;
       };
-      h += `<div class="sec">Projects · in priority order</div>` + (open.length ? open.map(row).join('') : `<div class="note">Nothing planned.</div>`);
+      h += `<div class="note" style="margin:0 0 8px">Build crews work from the top. The arrows change the order, Pause sets a project aside, and a cancelled project gives back what went into it. Click a name to see it on the map.</div>`;
+      h += `<div class="sec">Projects · in priority order</div>` + (open.length ? open.map(row).join('') : `<div class="note">Nothing planned. Pick a building in Plan.</div>`);
       if (done.length) h += `<div class="sec">Buildings · power goes to them in this order</div>` + done.map(row).join('');
       return h;
     }];
@@ -381,6 +401,7 @@ export class Panels {
       case 'bpDel': this.api.cmd('bpDel', { i: +el.dataset.i }); break;
       case 'test': this.api.cmd('test', { mat: el.dataset.mat }); this.api.toast(`The ${el.dataset.mat} test is first on the project list.`); break;
       case 'pGo': this.api.showProject(+el.dataset.id); break;
+      case 'sub': this[el.dataset.k] = el.dataset.v; this.update(); break;
       case 'triage': this.api.cmd('triage', { v: el.dataset.v }); break;
       case 'crop': this.api.cmd('crop', { id: +el.dataset.id, k: el.dataset.v }); break;
       case 'analyse': this.api.cmd('analyse', { o: +el.dataset.o }); break;
