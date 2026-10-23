@@ -9,6 +9,7 @@ import { createGL } from './gl.js';
 import { FS_H, FS_L, FS_C } from './shaders.js';
 import { Terrain } from './terrain.js';
 import { env, pickLights } from './env.js';
+import { fireOn } from '../core/year.js';
 import { drawPerson, drawDot, makeSeed, crewColour } from './people.js';
 
 const mul3 = (a, f) => [a[0] * f, a[1] * f, a[2] * f];
@@ -320,6 +321,4 @@ export class View {
     const [L, T, R, B] = this.rect; g.strokeStyle = 'rgba(255,236,190,.9)'; g.lineWidth = 1.2 * D; g.strokeRect(L * k, T * k, (R - L) * k, (B - T) * k);
   }
 }
-// how brightly the cook fire burns at this hour: lit for breakfast, roaring through the evening, embers overnight
-export function fireOn(h) { return Math.max(sstep(5.3, 5.8, h) * (1 - sstep(7.2, 8, h)) * .6, sstep(16.8, 17.6, h) * (1 - sstep(22.5, 23.8, h))); }
-export { crewColour };
+export { crewColour, fireOn };

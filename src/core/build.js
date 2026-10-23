@@ -7,18 +7,21 @@ import { propsIn } from './world.js';
 
 // ---------- materials ----------
 export const MAT = {
-  stone: ['load of stone', 'loads of stone'], timber: ['load of timber', 'loads of timber'], salvage: ['load of salvage', 'loads of salvage'],
+  stone: ['load of stone', 'loads of stone'], timber: ['load of timber', 'loads of timber'], salvage: ['load of salvage', 'loads of salvage'], biomass: ['load of biomass', 'loads of biomass'],
   module: ['lander module', 'lander modules'], seal: ['airlock seal', 'airlock seals'], pipe: ['pipe run', 'pipe runs'], power: ['power unit', 'power units'], panel: ['solar panel', 'solar panels'],
 };
 export const matName = (k, n) => MAT[k] ? `${n} ${MAT[k][n === 1 ? 0 : 1]}` : '';
-export const RAW = ['stone', 'timber'], PRECISE = ['seal', 'pipe', 'power', 'panel'];
+export const RAW = ['stone', 'timber', 'biomass'], PRECISE = ['seal', 'pipe', 'power', 'panel'];
 // precise modules are made from salvage at a workshop bench (or, three times slower, by the fabricator)
 export const RECIPE = { seal: { salvage: 2, h: 3 }, pipe: { salvage: 1, h: 1.5 }, power: { salvage: 3, h: 4 }, panel: { salvage: 2, h: 2.5 } };
-// hours to fit one load into a building, for an average builder
-export const FIT_H = { mark: .5, test: 1, module: 1.25, stone: .5, timber: .45, seal: 1.2, pipe: .8, power: 1.2, panel: .5 };
+// hours to fit one load into a building, for an average builder; mark, test and dig are work without a load
+export const FIT_H = { mark: .5, test: 1, dig: .6, module: 1.25, stone: .5, timber: .45, biomass: .35, seal: 1.2, pipe: .8, power: 1.2, panel: .5 };
+export const LABOUR = new Set(['mark', 'test', 'dig']);
 export const LANDER_KW = 8, PANEL_KW = .5, SALVAGE = 60, KIT = { seal: 2, pipe: 4, power: 3, panel: 0 }, FAB_SLOW = 3;
 export const STAGE_NAMES = ['Marking out', 'Foundations', 'Frame', 'Systems', 'Fit-out'];
 export const TEST_STAGES = ['Taking samples', 'Testing'];
+export const FIELD_STAGES = ['Marking out', 'Breaking ground', 'Making soil', 'Drains', 'Raised beds'];
+export const stagesOf = type => type === 'test' ? TEST_STAGES : type === 'field' ? FIELD_STAGES : STAGE_NAMES;
 const SHELTER_STAGES = [['mark', 4], ['module', 8], ['module', 12], ['module', 12], ['module', 10]];
 export const SHELTER_FITS = SHELTER_STAGES.reduce((t, s) => t + s[1], 0), CARGO = SHELTER_STAGES.reduce((t, s) => t + (s[0] === 'module' ? s[1] : 0), 0);
 
@@ -29,10 +32,12 @@ export const TYPES = {
   commons: { name: 'Commons', min: 6, max: 14, size: [7, 9], use: 'Evening meals indoors, which ease strain more than the fire does' },
   workshop: { name: 'Workshop', min: 5, max: 10, size: [6, 7], use: 'Makes airlock seals, pipe runs, power units and solar panels from salvage' },
   clinic: { name: 'Clinic', min: 5, max: 8, size: [5, 6], use: 'The hurt rest here and heal twice as fast' },
-  solar: { name: 'Solar field', min: 3, max: 10, size: [6, 6], open: true, use: "Power, stored in the lander's batteries for the night" },
+  solar: { name: 'Solar field', min: 3, max: 10, size: [6, 6], open: true, use: "Power, stored in the lander's batteries for the night. Panels make less in the short days of Deep cold" },
+  field: { name: 'Field', min: 3, max: 12, size: [8, 6], open: true, use: 'Made soil for the crops in the seed bank: local soil broken up, mixed with biomass and drained' },
+  lab: { name: 'Lab', min: 5, max: 8, size: [5, 6], use: 'Benches where a lab crew tests samples of local life, far faster than the Seed’s own analyser' },
   test: { name: 'Load test', fixed: true },
 };
-export const PLANNABLE = ['workshop', 'commons', 'clinic', 'dorm', 'solar'];
+export const PLANNABLE = ['field', 'workshop', 'commons', 'clinic', 'dorm', 'solar', 'lab'];
 const inner = (w, h) => Math.max(0, (w - 2) * (h - 2));
 // what a building of this size holds, and the power it draws (kW) or makes
 export function capacity(type, w, h) {
@@ -44,6 +49,8 @@ export function capacity(type, w, h) {
     case 'workshop': { const benches = clamp(Math.floor(a / 6), 1, 4); return { benches, kw: 1 + benches }; }
     case 'clinic': { const beds = Math.floor(a / 3); return { beds, kw: +(1.5 + beds * .1).toFixed(1) }; }
     case 'solar': { const panels = Math.floor(w * h / 4); return { panels, kw: 0, supply: panels * PANEL_KW }; }
+    case 'field': return { tiles: w * h, kw: 0 };
+    case 'lab': { const benches = clamp(Math.floor(a / 6), 1, 3); return { benches, kw: +(1.5 + benches * .5).toFixed(1) }; }
   }
   return { kw: 0 };
 }
@@ -66,6 +73,14 @@ export function stageLoads(S, type, w, h, st, mat) {
   if (type === 'test') return st === 0 ? { [mat]: 3 } : { test: 3 };
   const a = w * h, per = 2 * (w + h) - 4, ms = margin(S, 'stone'), mt = margin(S, 'timber'), cap = capacity(type, w, h), L = {};
   const add = (k, n) => { n = Math.ceil(n - 1e-9); if (n > 0) L[k] = (L[k] || 0) + n; };
+  if (type === 'field') {   // break the ground, dig in biomass for soil, lay drains, then edge the beds
+    if (st === 0) add('mark', per / 8);
+    if (st === 1) add('dig', a / 8);
+    if (st === 2) add('biomass', a / 5);
+    if (st === 3) add('stone', a / 14);
+    if (st === 4) { add('dig', a / 16); add('timber', per / 8); }
+    return L;
+  }
   if (TYPES[type].open) {   // footings, racks, cable runs, then the panels
     if (st === 0) add('mark', per / 8);
     if (st === 1) add('stone', a / 12 * ms);
@@ -173,7 +188,8 @@ export const capOf = p => capacity(p.type, p.w, p.h);
 // list, and whatever doesn't fit stays dark until there is more.
 export function powerCheck(sim) {
   const S = sim.S; let supply = LANDER_KW, draw = 0; const changed = [];
-  for (const p of built(S)) if (p.type === 'solar') { supply += capOf(p).supply; if (!p.powered) { p.powered = true; changed.push(p); } }
+  const sun = S.F ? S.F.sun : 1;
+  for (const p of built(S)) if (p.type === 'solar') { supply += capOf(p).supply * sun; if (!p.powered) { p.powered = true; changed.push(p); } }
   for (const p of built(S)) {
     if (p.type === 'solar') continue;
     const kw = capOf(p).kw, on = draw + kw <= supply + 1e-9;
@@ -245,13 +261,13 @@ export function rawWanted(S, k) {
 // ---------- clearing a plot ----------
 // trees and boulders on the plot come down when it is marked out: logs and stone go to the yard
 export function clearPlot(sim, p) {
-  const S = sim.S, W = sim.W; let logs = 0, stones = 0;
+  const S = sim.S, W = sim.W; let logs = 0, stones = 0, bio = 0;
   for (const q of propsIn(W, p.x, p.y, p.x + p.w, p.y + p.h)) {
     const t = Math.floor(q.y) * MAP + Math.floor(q.x);
     if (q.k === 'tree') { const left = S.gone[t] ?? 2; logs += left; sim.setGone(t, 0); }
     else if (q.k === 'boulder') { stones++; sim.setGone(t, 0); }
-    else if (q.k === 'bush') sim.setGone(t, 0);
+    else if (q.k === 'bush') { bio++; sim.setGone(t, 0); }
   }
-  S.stores.yard.timber += logs; S.stores.yard.stone += stones;
-  if (logs || stones) sim.log(`Clearing the plot for ${p.name} gave ${[logs ? matName('timber', logs) : '', stones ? matName('stone', stones) : ''].filter(Boolean).join(' and ')}.`);
+  S.stores.yard.timber += logs; S.stores.yard.stone += stones; S.stores.yard.biomass = (S.stores.yard.biomass || 0) + bio;
+  if (logs || stones || bio) sim.log(`Clearing the plot for ${p.name} gave ${[logs ? matName('timber', logs) : '', stones ? matName('stone', stones) : '', bio ? matName('biomass', bio) : ''].filter(Boolean).join(' and ')}.`);
 }

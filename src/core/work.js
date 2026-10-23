@@ -1,14 +1,17 @@
 // The colony's work: the fabricator printing founders from the archive (and modules from salvage when it has no
-// body to print), crews and what they do (building, quarrying, felling, workshop benches, surveying), and the
-// commands the player gives through the page. The books for buildings are kept in build.js.
-import { MAP, HOUR, ACT, SHIFTS, DUSK, T, WORKS } from './consts.js';
+// body to print), crews and what they do (building, quarrying, felling, foraging, farming, the kitchen, workshop
+// and lab benches, surveying), and the commands the player gives through the page. The books for buildings are
+// kept in build.js, and for food in food.js.
+import { MAP, HOUR, DAY_TICKS, ACT, SHIFTS, T, WORKS } from './consts.js';
 import { rnd, ri, clamp } from './rng.js';
 import { remember, trustAll } from './life.js';
 import { suggestFirst } from './founders.js';
 import {
   TYPES, RAW, PRECISE, RECIPE, FIT_H, FAB_SLOW, STAGE_NAMES, matName, stageLoads, billOf, loadCheck, capacity, checkPlot, addProject,
-  active, built, byId, capOf, powerCheck, shortOf, stockOf, sources, takeFrom, putBack, nextOrder, rawWanted, clearPlot, LANDER_KW,
+  active, built, byId, capOf, powerCheck, shortOf, stockOf, sources, takeFrom, putBack, nextOrder, rawWanted, clearPlot, LANDER_KW, LABOUR, stagesOf,
 } from './build.js';
+import { eat, analyse, labHour, kitchenJob, cookMeals, foodOf, add, patchLeft, takePatch, inSeason, cropPlan, sowUnits, harvestLoads, keyOf, isCrop, mealsInStore, hasKitchen, SAMPLES, PROC_DAYS, CROPS, CROP_KEYS } from './food.js';
+import { dayWeather, untilDeep } from './year.js';
 
 export const PRINT_TICKS = 4 * HOUR;
 const TPH = 95;          // tiles an unhurried person covers in an hour, for planning trips
@@ -64,10 +67,14 @@ export function workNext(sim, c) {
     case 'quarry': return gatherNext(sim, c, 'stone');
     case 'timber': return gatherNext(sim, c, 'timber');
     case 'workshop': return benchNext(sim, c);
+    case 'forage': return forageNext(sim, c);
+    case 'farm': return farmNext(sim, c);
+    case 'kitchen': return kitchenNext(sim, c);
+    case 'lab': return labNext(sim, c);
   }
   return false;
 }
-export const carryAct = k => k === 'stone' ? ACT.STONE : k === 'timber' ? ACT.LOG : ACT.CARRY;
+export const carryAct = k => k === 'stone' ? ACT.STONE : k === 'timber' ? ACT.LOG : k === 'food' || k === 'biomass' ? ACT.SACK : ACT.CARRY;
 // loads on their way to a project, or being fitted
 function inflight(S, p, k) { let n = 0; for (const o of S.cols) if (!o.dead && o.pj === p.id && o.want === k && FIT_JOBS.has(o.job)) n++; return n; }
 const stockAt = (S, key, k) => key === 'yard' ? S.stores.yard[k] : key === 'cargo' ? S.stores.cargo[k] || 0 : ((byId(S, +key.slice(1)) || {}).out || {})[k] || 0;
@@ -78,7 +85,7 @@ function buildNext(sim, c, cr) {
   if (!p || p.done || p.paused) return false;
   for (const k in p.need) {
     if (p.need[k] - (p.got[k] || 0) - inflight(S, p, k) <= 0) continue;
-    if (k === 'mark' || k === 'test') { fitJob(sim, c, p, k); return true; }
+    if (LABOUR.has(k)) { fitJob(sim, c, p, k); return true; }
     for (const s of sources(sim, k)) if (stockAt(S, s.key, k) - reserved(S, s.key, k) > 0) {
       c.job = 'fetch'; c.want = k; c.pj = p.id; c.srcKey = s.key; sim.goTo(c, s.tile, ACT.IDLE); return true;
     }
@@ -90,24 +97,24 @@ function buildNext(sim, c, cr) {
 function fitJob(sim, c, p, k) {
   const spots = sim.spotsOf(p), spot = spots[(c.id * 7 + sim.S.stats.fits * 3) % spots.length];
   c.job = 'fit'; c.want = k; c.pj = p.id; c.spot = spot; c.fx = p.x + p.w / 2; c.fy = p.y + p.h / 2;
-  sim.goTo(c, spot, k === 'test' ? ACT.TEST : ACT.BUILD, c.carry ? carryAct(c.carry) : ACT.WALK);
+  sim.goTo(c, spot, k === 'test' ? ACT.TEST : k === 'dig' || (p.type === 'field' && k === 'biomass') ? ACT.FARM : ACT.BUILD, c.carry ? carryAct(c.carry) : ACT.WALK);
 }
 // the nearest stone or timber nobody else is already cutting: a felled tree with logs left beats a standing one
 function gatherJob(sim, c, k, pj) {
-  const S = sim.S, W = sim.W, list = k === 'stone' ? sim.rocks : sim.trees, claimed = new Set();
+  const S = sim.S, W = sim.W, list = k === 'stone' ? sim.rocks : k === 'biomass' ? sim.scrub : sim.trees, claimed = new Set();
   for (const o of S.cols) if (!o.dead && o.job === 'cut' && o.src >= 0) claimed.add(o.src);
   let best = null, bs = 1e9;
   for (const e of list) {
     if (e.d - 15 > bs) break;
     if (claimed.has(e.src) || !W.cost[e.work]) continue;
     const g = S.gone[e.src], q = S.quarry[e.src] || 0;
-    if (e.kind === 0 ? g === 0 : e.kind === 1 ? g !== undefined || q >= 2 : q >= 30) continue;
+    if (e.kind === 0 ? g === 0 : e.kind === 1 || e.kind === 3 ? g !== undefined || q >= 2 : q >= 30) continue;
     const s = e.d - (e.kind === 0 && g > 0 ? 15 : 0);
     if (s < bs) { bs = s; best = e; }
   }
   if (!best) return false;
   c.job = 'cut'; c.want = k; c.pj = pj; c.src = best.src; c.srcKind = best.kind; c.fx = best.src % MAP + .5; c.fy = (best.src / MAP | 0) + .5;
-  sim.goTo(c, best.work, k === 'stone' ? ACT.QUARRY : ACT.FELL);
+  sim.goTo(c, best.work, k === 'stone' ? ACT.QUARRY : k === 'biomass' ? ACT.GATHER : ACT.FELL);
   return true;
 }
 function gatherNext(sim, c, k) {
@@ -131,16 +138,104 @@ function benchNext(sim, c) {
   sim.goTo(c, sim.yardTile, ACT.IDLE);
   return true;
 }
+// ---------- foraging: biomass for made soil, food the Seed has tested, and samples of what it hasn't ----------
+const FORAGE_R = 110;
+function forageNext(sim, c) {
+  const S = sim.S;
+  let going = 0; for (const o of S.cols) if (!o.dead && o.want === 'biomass' && (o.job === 'cut' || o.job === 'drop' || o.job === 'bio')) going++;
+  if (S.stores.yard.biomass + going < rawWanted(S, 'biomass') - 6 && (patchJob(sim, c, 'bio') || gatherJob(sim, c, 'biomass', -1))) return true;
+  if (forageWanted(sim) && patchJob(sim, c, 'forage')) return true;
+  return patchJob(sim, c, 'sample');
+}
+// whether the larder needs more wild food: five days of meals beyond the rations, and in the last weeks before
+// Deep cold, enough to see the cold through
+function forageWanted(sim) {
+  const S = sim.S, eaters = S.cols.filter(o => !o.dead).length, ahead = untilDeep(sim.day);
+  const want = eaters * (ahead > 0 && ahead <= 25 ? 22 : 5);
+  return mealsInStore(sim, true) - S.food < want;
+}
+// the nearest patch worth the walk for this job, that nobody else is already heading for
+function patchJob(sim, c, job) {
+  const S = sim.S, F = S.F, W = sim.W, L = W.land, claimed = new Set();
+  for (const o of S.cols) if (!o.dead && o.src >= 0 && (o.job === 'forage' || o.job === 'sample' || o.job === 'bio')) claimed.add(o.src);
+  let best = -1, bd = 1e9;
+  const list = sim.life.list, kitchen = hasKitchen(sim);
+  for (let i = 0; i < list.length; i++) {
+    const p = list[i], k = sim.kinds[p.o], Lf = F.life[p.o];
+    if (!Lf.seen || claimed.has(i) || !W.reach[p.t] || !W.cost[p.t]) continue;
+    if (Math.abs(p.x - L.x) > FORAGE_R || Math.abs(p.y - L.y) > FORAGE_R) continue;
+    if (job === 'sample') { if (Lf.tested || Lf.queued || Lf.samples >= SAMPLES || F.sampled[i]) continue; }
+    else if (job === 'forage') { if (!Lf.tested || !k.food || (!kitchen && k.food.proc !== 'cook') || !inSeason(sim, k) || patchLeft(sim, i) <= 0) continue; }
+    else if (!Lf.tested || k.bio < 2 || k.food || patchLeft(sim, i) <= 0) continue;
+    const d = Math.hypot(p.x - c.x, p.y - c.y) + Math.hypot(p.x - L.x, p.y - L.y) * .5;
+    if (d < bd) { bd = d; best = i; }
+  }
+  if (best < 0) return false;
+  const p = list[best];
+  c.job = job; c.src = best; c.want = job === 'bio' ? 'biomass' : ''; c.pj = -1; c.fx = p.x; c.fy = p.y;
+  sim.goTo(c, p.t, job === 'sample' ? ACT.SAMPLE : ACT.GATHER);
+  return true;
+}
+
+// ---------- farming: sowing, harvesting, clearing what the frost killed ----------
+function farmNext(sim, c) {
+  const S = sim.S;
+  for (const p of built(S)) {
+    if (p.type !== 'field' || !p.crop) continue;
+    const cr = p.crop; let busy = 0;
+    for (const o of S.cols) if (!o.dead && o.pj === p.id && (o.job === 'sow' || o.job === 'reap' || o.job === 'clear')) busy++;
+    if (cr.st === 'ripe') { if (cr.left == null) { cr.left = harvestLoads(p); cr.total = cr.left; } if (cr.left - busy > 0) return farmJob(sim, c, p, 'reap'); continue; }
+    if (cr.st === 'dead') { if (!busy) return farmJob(sim, c, p, 'clear'); continue; }
+    if (cr.st === 'bare') {
+      const k = cropPlan(sim, p); if (!k) continue;
+      if (cr.todo == null || cr.sowK !== k) { cr.todo = sowUnits(p); cr.sowK = k; }
+      if (cr.todo - busy > 0) return farmJob(sim, c, p, 'sow');
+    }
+  }
+  return false;
+}
+function farmJob(sim, c, p, k) {
+  const spots = sim.spotsOf(p), spot = spots[(c.id * 5 + sim.S.stats.fits + sim.S.tick) % spots.length];
+  c.job = k; c.pj = p.id; c.fx = p.x + p.w / 2; c.fy = p.y + p.h / 2;
+  sim.goTo(c, spot, ACT.FARM);
+  return true;
+}
+
+// ---------- the kitchen: cooking, and the vats where food is leached and fermented ----------
+function kitchenNext(sim, c) {
+  const S = sim.S, j = kitchenJob(sim, S.cols.filter(o => !o.dead).length);
+  if (!j) return false;
+  if (j.k === 'unvat') { const v = S.F.vats[j.v]; v.taken = S.tick; c.job = 'unvat'; c.vat = v.id; sim.goTo(c, sim.vatTile, ACT.COOK); return true; }
+  c.job = 'kget'; c.food = j.src; c.from = j.from || 'raw'; c.next = j.k; c.pj = -1;
+  sim.goTo(c, sim.cargoTile, ACT.IDLE);
+  return true;
+}
+
+// ---------- the lab ----------
+function labNext(sim, c) {
+  const S = sim.S, F = S.F;
+  if (F.lab.cur < 0 && !F.lab.queue.length) return false;
+  for (const p of built(S)) {
+    if (p.type !== 'lab' || !p.powered) continue;
+    let used = 0; for (const o of S.cols) if (!o.dead && o.ws === p.id && o.job === 'lab') used++;
+    if (used < capOf(p).benches) { c.job = 'lab'; c.ws = p.id; sim.goTo(c, p.door.y * MAP + p.door.x, ACT.BENCH); return true; }
+  }
+  return false;
+}
+
 // whatever someone was carrying when called away goes back to the stores
 export function dropCarry(sim, c) {
   const S = sim.S;
-  if (c.carry === 'salvage') S.stores.yard.salvage += c.cn || 0; else if (c.carry) putBack(S, c.carry);
+  if (c.carry === 'food') add(S.F.larder[c.from || 'raw'], c.food, 1);
+  else if (c.carry === 'salvage') S.stores.yard.salvage += c.cn || 0; else if (c.carry === 'biomass' && c.cn > 1) S.stores.yard.biomass += c.cn; else if (c.carry) putBack(S, c.carry);
+  c.food = ''; c.from = '';
   c.carry = ''; c.cn = 0; c.make = ''; c.want = ''; c.pj = -1; c.src = -1; c.srcKey = '';
 }
 function eff(sim, c, kind = 'build') {
   const S = sim.S, cr = c.crew >= 0 ? S.crews[c.crew] : null, lead = cr && cr.lead >= 0 ? S.cols[cr.lead] : null, sk = c.skills;
-  let e = kind === 'bench' ? .4 + sk.engineering * .07 : kind === 'cut' ? .55 + sk.building * .03 + sk.fieldcraft * .03 : .45 + sk.building * .05 + sk.engineering * .025;
-  if (c.fat > 75) e *= .7; if (c.fresh > 0) e *= .75; if (c.hurt > 0) e *= .8; if (c.str > 65) e *= .85;
+  let e = kind === 'bench' ? .4 + sk.engineering * .07 : kind === 'cut' ? .55 + sk.building * .03 + sk.fieldcraft * .03 : kind === 'farm' ? .5 + sk.botany * .05 + sk.fieldcraft * .01
+    : kind === 'cook' ? .5 + sk.cooking * .05 : kind === 'forage' ? .55 + sk.fieldcraft * .04 + sk.botany * .02 : kind === 'lab' ? .4 + sk.botany * .045 + sk.medicine * .03 : .45 + sk.building * .05 + sk.engineering * .025;
+  if (c.fat > 75) e *= .7; if (c.chill > 35) e *= .85; if (c.unwell) e *= .85; if (c.fresh > 0) e *= .75; if (c.hurt > 0) e *= .8; if (c.str > 65) e *= .85;
   if (c.traits.includes('reckless')) e *= 1.1; if (c.traits.includes('careful')) e *= .92;
   if (lead) e *= .85 + lead.skills.leadership * .03;
   return Math.max(.2, e);
@@ -171,7 +266,8 @@ function advance(sim, p) {
   p.stage++; p.got = {};
   if (p.stage >= 5) return finish(sim, p);
   p.need = stageLoads(S, p.type, p.w, p.h, p.stage, p.mat);
-  sim.log(`${p.name}: ${STAGE_NAMES[st].toLowerCase()} done. Next: ${STAGE_NAMES[p.stage].toLowerCase()}.`, 'good', { pid: p.id });
+  const names = stagesOf(p.type);
+  sim.log(`${p.name}: ${names[st].toLowerCase()} done. Next: ${names[p.stage].toLowerCase()}.`, 'good', { pid: p.id });
   if (p.type === 'shelter') trustAll(sim, 2);
 }
 function finish(sim, p) {
@@ -181,8 +277,13 @@ function finish(sim, p) {
   if (p.type === 'shelter') {
     sim.log(`The shelter is finished: twelve bunks, walls and a roof made from the lander.${more ? '' : ' Nothing else is planned yet, so the build crew is free.'}`, 'good', { e: 'shelter', lvl: 2, pid: p.id, title: 'A roof at last' });
     trustAll(sim, 6, 'Slept under a roof again.');
+  } else if (p.type === 'field') {
+    p.crop = { k: '', st: 'bare', g: 0, h: 1, want: 'auto', todo: null, sowK: '', left: null, total: 0, ripe: 0, sown: 0 };
+    const k = cropPlan(sim, p), farmers = S.crews.some(cr => !cr.gone && cr.work === 'farm' && cr.members.length);
+    sim.log(`${p.name} is ready: ${cap.tiles} tiles of made soil.${k ? ` The Seed would sow ${CROPS[k].name.toLowerCase()}.` : ' Nothing in the seed bank could ripen before Deep cold now, so it stays bare until Thaw.'}${farmers ? '' : ' It needs a farm crew to sow and harvest it.'}`, 'good', { e: 'field', lvl: 1, pid: p.id, title: 'A field of made soil' });
+    trustAll(sim, 2, `Watched ${p.name} being made out of bare local ground.`);
   } else {
-    const what = { dorm: `${cap.beds} bunks`, commons: `seats for ${cap.seats}`, workshop: `${cap.benches} bench${cap.benches > 1 ? 'es' : ''}`, clinic: `${cap.beds} beds`, solar: `${cap.panels} panels making ${cap.supply} kW` }[p.type];
+    const what = { dorm: `${cap.beds} bunks`, commons: `seats for ${cap.seats}`, workshop: `${cap.benches} bench${cap.benches > 1 ? 'es' : ''}`, clinic: `${cap.beds} beds`, solar: `${cap.panels} panels making ${cap.supply} kW`, lab: `${cap.benches} bench${cap.benches > 1 ? 'es' : ''}` }[p.type];
     sim.log(`${p.name} is finished: ${what}.${p.type !== 'solar' && !p.powered ? ` It stays dark until the colony has ${shortOf(S, p)} kW more power.` : ''}`, 'good', { e: 'built', lvl: 1, pid: p.id, title: 'Finished' });
     trustAll(sim, 2, `Watched ${p.name} go up.`);
   }
@@ -196,7 +297,7 @@ function waitReason(sim, p) {
   let miss = null;
   for (const k in p.need) {
     const left = p.need[k] - (p.got[k] || 0); if (left <= 0) continue;
-    if (k === 'mark' || k === 'test' || RAW.includes(k) || stockOf(S, k) > 0 || inflight(S, p, k) > 0) return '';
+    if (LABOUR.has(k) || RAW.includes(k) || stockOf(S, k) > 0 || inflight(S, p, k) > 0) return '';
     if (!miss) miss = [k, left];
   }
   if (!miss) return '';
@@ -273,12 +374,13 @@ export function crewThink(sim, cr) {
   cr.wait = 15;
   const S = sim.S, W = sim.W, L = W.land, h = sim.hour, sh = SHIFTS[cr.shift];
   if (h < sh.a - .5) { cr.recalled = false; cr.dest = -1; return; }
+  if (dayWeather(sim.W.seed, sim.day).out && !cr.recalled) { cr.recalled = true; return; }   // nobody goes surveying in a storm
   const out = cr.members.map(i => S.cols[i]).filter(c => !c.dead && c.plan === 'work');
   if (!out.length) return;
   let px = 0, py = 0; for (const c of out) { px += c.x; py += c.y; } px /= out.length; py /= out.length;
   const dCamp = Math.hypot(px - L.x, py - L.y);
   // time to turn back, so as to be home by the end of the shift (or by dark, if that's the rule)
-  const until = cr.rules.dark ? Math.min(sh.b, DUSK - .2) : sh.b;
+  const until = cr.rules.dark ? Math.min(sh.b, sim.dusk - .2) : sh.b;
   if (!cr.recalled && dCamp > 15 && h + dCamp * 1.3 / TPH + .25 >= until) { cr.recalled = true; return; }
   // nobody walks alone: if someone has to head back early, the freshest crewmate goes with them
   if (cr.rules.pairs) for (const i of cr.members) {
@@ -328,17 +430,34 @@ export function onArrive(sim, c) {
     case 'fit': c.timer = Math.round(FIT_H[c.want] * HOUR / eff(sim, c)); break;
     case 'cut': {
       const felled = c.srcKind === 0 && S.gone[c.src] > 0;
-      c.timer = Math.round((felled ? .25 : c.srcKind === 0 ? .8 : .6) * HOUR / eff(sim, c, 'cut')); break;
+      c.timer = Math.round((felled ? .25 : c.srcKind === 0 ? .8 : c.srcKind === 3 ? .3 : .6) * HOUR / eff(sim, c, 'cut')); break;
     }
     case 'drop':
-      if (c.carry in S.stores.yard) S.stores.yard[c.carry]++; else if (c.carry) putBack(S, c.carry);
-      c.carry = ''; c.want = ''; c.job = ''; c.act = ACT.IDLE; break;
+      if (c.carry in S.stores.yard) S.stores.yard[c.carry] += Math.max(1, c.cn || 0); else if (c.carry) putBack(S, c.carry);
+      c.carry = ''; c.cn = 0; c.want = ''; c.job = ''; c.act = ACT.IDLE; break;
+    case 'forage': case 'bio': c.timer = Math.round((c.job === 'bio' ? .5 : 2) * HOUR / eff(sim, c, 'forage')); break;
+    case 'sample': c.timer = Math.round(.25 * HOUR); break;
+    case 'store': add(S.F.larder.raw, c.food, 1); if (!isCrop(c.food)) S.stats.foraged = (S.stats.foraged || 0) + 1; c.carry = ''; c.food = ''; c.job = ''; c.act = ACT.IDLE; S.rv++; break;
+    case 'sow': c.timer = Math.round(.5 * HOUR / eff(sim, c, 'farm')); break;
+    case 'reap': c.timer = Math.round(.4 * HOUR / eff(sim, c, 'farm')); break;
+    case 'clear': c.timer = Math.round(.6 * HOUR / eff(sim, c, 'farm')); break;
+    case 'kget': c.act = ACT.IDLE; c.timer = PICK; break;
+    case 'cook': c.timer = Math.round(HOUR / eff(sim, c, 'cook')); break;
+    case 'vat': c.timer = Math.round(.5 * HOUR / eff(sim, c, 'cook')); break;
+    case 'unvat': c.timer = Math.round(.4 * HOUR); break;
+    case 'lab': c.where = c.ws; c.timer = HOUR; break;
     case 'salv': c.job = 'salvpick'; c.act = ACT.IDLE; c.timer = PICK; break;
     case 'bench': c.where = c.ws; c.timer = Math.round(RECIPE[c.make].h * HOUR / eff(sim, c, 'bench')); break;
     case 'plant': c.timer = Math.round(HOUR / 6); break;
     case 'eat':
       if (c.act === ACT.INDOORS) c.where = c.mess;
-      if (c.ate !== sim.day) { c.ate = sim.day; if (S.food >= 1) { S.food--; c.hungry = false; S.noFood = false; } else { if (!S.noFood) { S.noFood = true; sim.log('The rations are gone. From tonight people go to bed hungry, and the hungry weaken day by day until they die.', 'bad', { e: 'nofood', lvl: 2, x: sim.W.site.fire.x, y: sim.W.site.fire.y, title: 'The rations are gone' }); } if (!c.hungry) sim.log(`${c.name} went to bed hungry: the rations are gone.`, 'bad', { who: c.id }); c.hungry = true; } }
+      if (c.ate !== sim.day) {
+        c.ate = sim.day;
+        const had = S.food >= 1, got = eat(sim, c);
+        if (had && S.food < 1 && !S.F.rationsOut) { S.F.rationsOut = true; sim.log('The last of the lander’s rations was eaten tonight. From now on the colony lives on what it grows and gathers.', 'bad', { e: 'rations', lvl: 1, x: sim.W.site.cargo.x + .5, y: sim.W.site.cargo.y + .5, title: 'The rations are gone' }); }
+        if (got) { c.meal = got; c.hungry = false; S.noFood = false; if (got !== 'ration') S.stats.meals++; }
+        else { if (!S.noFood) { S.noFood = true; sim.log('There is nothing left to eat. From tonight people go to bed hungry, and the hungry weaken day by day until they die.', 'bad', { e: 'nofood', lvl: 2, x: sim.W.site.fire.x, y: sim.W.site.fire.y, title: 'Nothing left to eat' }); } if (!c.hungry) sim.log(`${c.name} went to bed hungry: there is nothing left to eat.`, 'bad', { who: c.id }); c.hungry = true; c.meal = ''; }
+      }
       break;
     case 'sleep': case 'ward': if (c.act === ACT.INSIDE || c.act === ACT.INDOORS) c.where = c.job === 'ward' ? c.ward : c.home; break;
     case 'wake': break;
@@ -354,7 +473,8 @@ export function onTimer(sim, c) {
     case 'fit': fitted(sim, c); if (c.plan === 'work') workNext(sim, c); break;
     case 'cut': {
       const k = c.want, t = c.src;
-      if (c.srcKind === 0) {
+      if (c.srcKind === 3) { if (S.gone[t] !== undefined) { c.job = ''; break; } sim.setGone(t, 0); }
+      else if (c.srcKind === 0) {
         if (S.gone[t] === undefined) { sim.setGone(t, 2); S.stats.felled++; }
         if (!(S.gone[t] > 0)) { c.job = ''; break; }
         sim.setGone(t, S.gone[t] - 1);
@@ -387,6 +507,76 @@ export function onTimer(sim, c) {
       c.job = 'survey'; c.act = ACT.SURVEY; break;
     }
     case 'wake': c.act = ACT.IDLE; c.plan = ''; c.job = ''; break;
+    case 'forage': case 'bio': {
+      const i = c.src, pt = sim.life.list[i];
+      if (pt && patchLeft(sim, i) > 0) {
+        takePatch(sim, i); S.rv++;
+        if (c.job === 'bio') { c.carry = 'biomass'; c.cn = sim.kinds[pt.o].bio; c.job = 'drop'; c.src = -1; sim.goTo(c, sim.yardTile, ACT.IDLE, ACT.SACK); }
+        else { c.carry = 'food'; c.food = keyOf(pt.o); c.from = 'raw'; c.job = 'store'; c.src = -1; sim.goTo(c, sim.cargoTile, ACT.IDLE, ACT.SACK); }
+      } else { c.job = ''; c.src = -1; }
+      break;
+    }
+    case 'sample': {
+      const i = c.src, pt = sim.life.list[i], F = S.F, L = pt && F.life[pt.o];
+      if (L && !L.tested && !L.queued && L.samples < SAMPLES && !F.sampled[i]) {
+        F.sampled[i] = 1; L.samples++; S.rv++;
+        if (L.samples === SAMPLES) sim.log(`Samples of ${sim.kinds[pt.o].name.toLowerCase()} are ready to test: ${c.name} took the third.`, 'good', { e: 'samples', lvl: 1, who: c.id, title: 'Ready to test' });
+      }
+      c.job = ''; c.src = -1; c.act = ACT.IDLE; break;
+    }
+    case 'sow': case 'reap': case 'clear': {
+      const p = byId(S, c.pj), cr = p && p.crop; c.pj = -1; c.act = ACT.IDLE;
+      const job = c.job; c.job = '';
+      if (!cr) break;
+      S.rv++;
+      if (job === 'clear' && cr.st === 'dead') { cr.st = 'bare'; cr.g = 0; cr.h = 1; cr.left = null; }
+      else if (job === 'sow' && cr.st === 'bare' && cr.todo > 0) {
+        if (--cr.todo <= 0) {
+          Object.assign(cr, { st: 'grow', k: cr.sowK, g: 0, h: 1, sown: sim.day, todo: null, left: null });
+          const c0 = CROPS[cr.k], first = !S.stats.sown; S.stats.sown = (S.stats.sown || 0) + 1;
+          sim.log(`${p.name} is sown with ${c0.name.toLowerCase()}.`, 'good', first ? { e: 'sown', lvl: 1, pid: p.id, title: 'The first crop is in' } : { pid: p.id });
+        }
+      } else if (job === 'reap' && cr.st === 'ripe' && cr.left > 0) {
+        cr.left--; c.carry = 'food'; c.food = cr.k; c.from = 'raw'; c.job = 'store'; sim.goTo(c, sim.cargoTile, ACT.IDLE, ACT.SACK);
+        if (cr.left <= 0) {
+          const c0 = CROPS[cr.k], first = !S.F.firstHarvest; S.F.firstHarvest = true; S.stats.harvests++;
+          sim.log(`${p.name}: the ${c0.name.toLowerCase()} are in, ${cr.total} sacks, about ${cr.total * 4} meals.`, 'good', first ? { e: 'harvest', lvl: 2, pid: p.id, title: 'The first harvest' } : { e: 'harvested', lvl: 1, pid: p.id, title: 'Harvest' });
+          if (first) trustAll(sim, 5, 'Ate food grown on this world for the first time.');
+          Object.assign(cr, { st: 'bare', g: 0, h: 1, left: null, todo: null });
+        }
+      }
+      break;
+    }
+    case 'kget': {
+      const Ld = S.F.larder[c.from];
+      if (Ld && Ld[c.food] >= 1) { Ld[c.food]--; if (Ld[c.food] < .05) delete Ld[c.food]; c.carry = 'food'; c.job = c.next; sim.goTo(c, c.next === 'cook' ? sim.cookTile : sim.vatTile, ACT.COOK, ACT.SACK); }
+      else { c.job = ''; c.food = ''; }
+      break;
+    }
+    case 'cook': {
+      const f = foodOf(sim, c.food);
+      if (f) { add(S.F.larder.meals, c.food, cookMeals(f, c.skills.cooking, false)); S.rv++; }
+      c.carry = ''; c.food = ''; c.from = ''; c.job = ''; c.act = ACT.IDLE; break;
+    }
+    case 'vat': {
+      const f = foodOf(sim, c.food), F = S.F;
+      if (f) {
+        const v = F.vats.find(q => q.src === c.food && q.n < 4 && q.start > S.tick - 3 * HOUR);
+        if (v) v.n++; else { F.vid = (F.vid || 0) + 1; F.vats.push({ id: F.vid, src: c.food, n: 1, proc: f.proc, start: S.tick, ready: S.tick + PROC_DAYS[f.proc] * DAY_TICKS, taken: 0 }); }
+        S.rv++;
+      }
+      c.carry = ''; c.food = ''; c.from = ''; c.job = ''; c.act = ACT.IDLE; break;
+    }
+    case 'unvat': {
+      const F = S.F, i = F.vats.findIndex(q => q.id === c.vat), v = F.vats[i];
+      if (v) {
+        const f = foodOf(sim, v.src); F.vats.splice(i, 1); S.rv++;
+        if (f && v.proc === 'leach') add(F.larder.prep, v.src, v.n);
+        else if (f) add(F.larder.meals, v.src, v.n * cookMeals(f, c.skills.cooking, false));
+      }
+      c.job = ''; c.vat = 0; c.act = ACT.IDLE; break;
+    }
+    case 'lab': labHour(sim, eff(sim, c, 'lab')); c.job = ''; c.where = -1; c.ws = -1; c.act = ACT.IDLE; break;
   }
 }
 const MAT_ONE = { seal: 'airlock seal', pipe: 'pipe run', power: 'power unit', panel: 'solar panel' };
@@ -395,7 +585,7 @@ const MAT_ONE = { seal: 'airlock seal', pipe: 'pipe run', power: 'power unit', p
 // power every planned and finished building will draw, against what the lander and every solar field will make
 function powerPlan(S) {
   let supply = LANDER_KW, draw = 0;
-  for (const p of S.projects) { if (p.gone || p.type === 'test') continue; const c = capOf(p); if (p.type === 'solar') supply += c.supply; else draw += c.kw; }
+  for (const p of S.projects) { if (p.gone || p.type === 'test') continue; const c = capOf(p); if (p.type === 'solar') supply += c.supply * S.F.sun; else draw += c.kw; }
   return { supply: +supply.toFixed(1), draw: +draw.toFixed(1) };
 }
 export function command(sim, m) {
@@ -464,6 +654,10 @@ export function command(sim, m) {
       return q.id;
     }
     case 'bpSave': saveBlueprint(S, m.name, m.type, m.w, m.h); break;
+    // ---- food ----
+    case 'analyse': return analyse(sim, m.o);
+    case 'unanalyse': { const F = S.F, L = F.life[m.o]; if (L && L.queued && F.lab.cur !== m.o) { F.lab.queue = F.lab.queue.filter(o => o !== m.o); L.queued = false; S.rv++; } break; }
+    case 'crop': if (p && p.crop && (m.k === 'auto' || m.k === 'fallow' || CROPS[m.k])) { p.crop.want = m.k; if (p.crop.st === 'bare') p.crop.todo = null; S.rv++; } break;
     case 'bpDel': if (S.blueprints[m.i]) { S.blueprints.splice(m.i, 1); S.rv++; } break;
   }
   return null;
@@ -475,5 +669,5 @@ function saveBlueprint(S, name, type, w, h) {
 }
 function planNote(p) {
   const c = capOf(p);
-  return { dorm: `${c.beds} bunks`, commons: `tables for ${c.seats}`, workshop: `${c.benches} bench${c.benches > 1 ? 'es' : ''}`, clinic: `${c.beds} beds`, solar: `${c.panels} panels` }[p.type] || 'done';
+  return { dorm: `${c.beds} bunks`, commons: `tables for ${c.seats}`, workshop: `${c.benches} bench${c.benches > 1 ? 'es' : ''}`, clinic: `${c.beds} beds`, solar: `${c.panels} panels`, field: `${c.tiles} tiles of beds`, lab: `${c.benches} bench${c.benches > 1 ? 'es' : ''}` }[p.type] || 'done';
 }
