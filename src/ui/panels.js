@@ -199,7 +199,7 @@ export class Panels {
         <div class="note" style="margin:6px 0 0">The lander makes ${LANDER_KW} kW${pw.supply > LANDER_KW ? ` and the solar fields ${+(pw.supply - LANDER_KW).toFixed(1)} kW` : ''}. Finished buildings take power in list order; any that don't fit stay dark and unused.${dark.length ? ` Dark now: ${dark.map(p => esc(p.name)).join(', ')}.` : ''}</div></div>`;
       const cg = st.cargo, pr = st.precise;
       h += `<div class="box"><b>Stock</b><div class="stock"><span>Stone <em>${st.yard.stone}</em></span><span>Timber <em>${st.yard.timber}</em></span><span>Salvage <em>${st.yard.salvage}</em></span><span>Lander modules <em>${cg.module}</em></span><span>Airlock seals <em>${pr.seal}</em></span><span>Pipe runs <em>${pr.pipe}</em></span><span>Power units <em>${pr.power}</em></span><span>Solar panels <em>${pr.panel}</em></span></div>
-        <div class="note" style="margin:6px 0 0">${U.seed.fab ? `The fabricator is making ${matName(U.seed.fab.k, 1).replace(/^1 /, 'a ')} from salvage. ` : ''}Stone and timber come from the land; seals, pipes, power units and panels are made from salvage at workshop benches, or slowly by the fabricator.</div></div>`;
+        <div class="note" style="margin:6px 0 0">${U.seed.fab ? `The fabricator is making ${matName(U.seed.fab.k, 1).replace(/^1 (.)/, (m, c) => ('aeiou'.includes(c) ? 'an ' : 'a ') + c)} from salvage. ` : ''}Stone and timber come from the land; seals, pipes, power units and panels are made from salvage at workshop benches, or slowly by the fabricator.</div></div>`;
       // the local materials and their load tests
       h += `<div class="sec">Local materials</div>`;
       for (const m of ['stone', 'timber']) {
