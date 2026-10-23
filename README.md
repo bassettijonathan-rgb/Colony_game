@@ -47,7 +47,7 @@ Generated live with Web Audio, with no audio files: a pad changing chord every t
 4. Stone is cut from boulders and rock faces and timber felled from trees, by quarry and timber crews that fill the yard, or by builders themselves when the yard is empty. Seals, pipes, power units and solar panels are made from the lander's salvage at workshop benches, or three times slower by the fabricator when it has no body to print.
 5. Until a load test shows how strong the local stone and timber really are, designs carry 40% extra as a margin and roofs wider than four tiles need posts. Tests use three loads at the rig in the yard. Loads are worked out when each stage starts, so testing early makes the rest cheaper.
 6. The lander makes 8 kW; solar fields add more. Finished buildings take power in list order and any that don't fit stay dark and unused. Projects show what they are waiting for, stall, and pick up again.
-7. Click a building, finished or not, for its card: what it is, its five stages, what the current stage still needs and who is working on it.
+7. Click a building, finished or not, for its card: what it is, its five stages, what the current stage still needs and who is working on it. The Seed, the campfire, the cooking spot and vats, the yard, sensor stakes, local life, trees, boulders, bushes and rock faces open a card the same way: what it is, what it holds or gives, and who is working on it.
 8. Dormitories give bunks, the commons a sit-down evening meal that eases strain more than the fire, the clinic beds where the hurt heal twice as fast, and workshops benches for the workshop crew.
 9. Saves are version 3; a milestone 2 colony continues, its shelter becoming the first project of many.
 

@@ -34,7 +34,7 @@
 html,body{height:100%;margin:0;overflow:hidden;background:var(--night)}
 body{font-family:var(--f-ui);color:var(--txt);-webkit-font-smoothing:antialiased;font-size:13px;user-select:none;-webkit-user-select:none}
 #app{position:fixed;inset:0;overflow:hidden;touch-action:none;cursor:grab;background:var(--night)}
-#app.drag{cursor:grabbing}
+#app.can{cursor:pointer}#app.drag{cursor:grabbing}
 #app>canvas{position:absolute;left:0;top:0;width:100%;height:100%;display:block}
 #ui{pointer-events:none}
 #hud{position:absolute;inset:0;pointer-events:none;z-index:5}
@@ -431,6 +431,7 @@ select{font:600 12px var(--f-ui);color:var(--txt);background:rgba(0,0,0,.35);bor
   <symbol id="i-lab" viewBox="0 0 16 16"><path d="M6 2.5h4M6.75 2.5v4L3 13a.9.9 0 0 0 .8 1.4h8.4A.9.9 0 0 0 13 13L9.25 6.5v-4"/><path d="M4.6 10.5h6.8"/></symbol>
   <symbol id="i-life" viewBox="0 0 16 16"><path d="M3 13C3 7 7 3 13 3c0 6-4 10-10 10z"/><path d="M3 13l6.5-6.5"/></symbol>
   <symbol id="i-sun" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.75"/><path d="M8 1.5v1.75M8 12.75v1.75M1.5 8h1.75M12.75 8h1.75M3.4 3.4l1.25 1.25M11.35 11.35l1.25 1.25M3.4 12.6l1.25-1.25M11.35 4.65l1.25-1.25"/></symbol>
+  <symbol id="i-fire" viewBox="0 0 16 16"><path d="M8 1.75c.4 2.2 3.75 3.9 3.75 7.4A3.75 3.75 0 0 1 4.25 9.15c0-1.6.85-2.6 1.6-3.4.2 1.2.8 2 1.65 2.35C7.2 6 7.4 3.8 8 1.75z"/><path d="M3 14.25h10"/></symbol>
   <symbol id="i-moon" viewBox="0 0 16 16"><path d="M12.5 10.2A5 5 0 0 1 5.8 3.5a5 5 0 1 0 6.7 6.7z"/></symbol>
   <symbol id="i-cloud" viewBox="0 0 16 16"><path d="M4.5 12.5h7a2.75 2.75 0 0 0 .3-5.48A4 4 0 0 0 4.1 7.6 2.5 2.5 0 0 0 4.5 12.5z"/></symbol>
   <symbol id="i-rain" viewBox="0 0 16 16"><path d="M4.5 9.5h7a2.5 2.5 0 0 0 .3-5A3.75 3.75 0 0 0 4.4 5 2.25 2.25 0 0 0 4.5 9.5z"/><path d="M5.5 11.5l-.75 2M8.25 11.5l-.75 2M11 11.5l-.75 2"/></symbol>

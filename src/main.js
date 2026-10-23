@@ -6,6 +6,7 @@ import { View } from './render/view.js';
 import { PersonArt } from './render/people.js';
 import { Panels } from './ui/panels.js';
 import { News } from './ui/news.js';
+import { thingAt } from './ui/things.js';
 import { Music, moodFor } from './ui/music.js';
 import { SEASONS, MAP, NCH, ACT, DAY_TICKS, hidden } from './core/consts.js';
 import { WX } from './core/year.js';
@@ -21,7 +22,7 @@ const A = {
   speed: 1, lastSpeed: 1, n: 0, prev: null, cur: null, pos: new Float32Array(0), arts: [], names: [], people: [], archive: [], ui: null, log: [], leads: new Set(),
   clock: null, perf: null, sel: -1, hover: -1, follow: false, frames: [], lastSaveLocal: 0, lastSaveAcct: 0, saveId: 0, cmdId: 0, waiting: new Map(),
   savedNote: 'not yet', thread: '-', timing: null, hold: false, pickCrew: -1, pickAt: null, pendingWear: [], pendingKnown: [], music: new Music(),
-  place: null, projSel: -1
+  place: null, projSel: -1, thing: null
 };
 const pad = n => String(n).padStart(2, '0');
 const when = t => { const d = Math.floor(t / DAY_TICKS) + 1, h = (t % DAY_TICKS) / (DAY_TICKS / 24); return `Day ${d}, ${pad(Math.floor(h))}:${pad(Math.floor((h % 1) * 60))}`; };
@@ -151,7 +152,7 @@ function frame(now) {
   V.clampCam();
   const colony = A.phase === 'colony' && A.ui ? { seed: A.ui.seed, stakes: A.ui.stakes, crews: A.ui.crews, projects: A.ui.projects, stores: A.ui.stores, year: A.ui.year, F: A.ui.F, spots: A.ui.spots, day: A.clock ? A.clock.abs : 1 } : null;
   const hour = A.clock && A.phase === 'colony' ? A.clock.hour : 10.5;
-  V.frame({ n: A.n, pos: A.pos, arts: A.arts, names: A.names, leads: A.leads, hour, time: now / 1000, sel: A.sel, hover: A.hover, budget: A.frames.length > 30 && avgMs() > 22 ? 1 : 2, colony, orbit: A.phase === 'orbit' ? { sites: A.sites, sel: A.siteSel } : null, pickAt: A.pickCrew >= 0 ? A.pickAt : null, place: A.place, projSel: A.projSel });
+  V.frame({ n: A.n, pos: A.pos, arts: A.arts, names: A.names, leads: A.leads, hour, time: now / 1000, sel: A.sel, hover: A.hover, budget: A.frames.length > 30 && avgMs() > 22 ? 1 : 2, colony, orbit: A.phase === 'orbit' ? { sites: A.sites, sel: A.siteSel } : null, pickAt: A.pickCrew >= 0 ? A.pickAt : null, place: A.place, projSel: A.projSel, thing: A.thing });
   if (A.hold && A.phase === 'colony' && !V.landing) { A.hold = false; setSpeed(A.speed || 1); if (V.anim) toast('The Seed is down. Choose who the fabricator prints first.'); }
   A.frames.push(now - (A.lastNow || now)); A.lastNow = now; if (A.frames.length > 120) A.frames.shift();
   A.cpuMs = (A.cpuMs || 0) * .9 + (performance.now() - t0) * .1;
@@ -226,6 +227,7 @@ function musicButton() { const on = A.music.on; $('bMusic').classList.toggle('of
 function select(i, fly) {
   A.sel = i; A.follow = false; $('cFollow').textContent = 'Follow';
   if (i >= 0 && A.projSel >= 0) closeProject();
+  if (i >= 0 && A.thing) A.thing = null;
   if (A.sim) A.sim.send({ t: 'watch', id: i });
   if (A.panels) A.panels.card();
   if (fly && i >= 0 && i < A.n && A.view) { const act = A.pos[i * 4 + 3] >> 1; if (!hidden(act)) A.view.flyTo(A.pos[i * 4], A.pos[i * 4 + 1], Math.max(A.view.cam.z, 22)); else toast(act === ACT.DEAD ? `${A.names[i]} is dead.` : `${A.names[i]} is indoors.`); }
@@ -282,10 +284,12 @@ async function confirmPlace() {
 // the Build tab and the map agree on which project you are looking at
 function showProject(id) {
   const p = A.ui && A.ui.projects.find(q => q.id === id); if (!p || !A.view) return;
-  select(-1); A.projSel = id; A.panels.sig = ''; A.panels.update();
+  select(-1); A.projSel = id; A.thing = null; A.panels.sig = ''; A.panels.update();
   A.view.flyTo(p.x + p.w / 2, p.y + p.h / 2, Math.max(A.view.cam.z, 16)); A.follow = false;
 }
 function menu(on) { $('menu').hidden = !on; $('bMenu').classList.toggle('on', on); if (on) $('perf').hidden = true; }
+function showThing(th) { select(-1); if (A.projSel >= 0) A.projSel = -1; A.thing = th; A.panels.update(); }
+function closeThing() { A.thing = null; if (A.panels) A.panels.update(); }
 function closeProject() { A.projSel = -1; if (A.panels) { A.panels.sig = ''; A.panels.update(); } }
 function projectAt(wx, wy) {
   if (!A.ui) return null;
@@ -310,7 +314,7 @@ function newest(a, b) { if (!a) return b; if (!b) return a; return (a.savedAt ||
 // milestone 2 colonies (version 2) carry on: their shelter becomes the first project of many
 const isSave = d => d && d.v >= 2 && d.v <= 4 && d.sim && d.sim.v >= 2 && d.sim.v <= 4 && Array.isArray(d.sim.cols);
 function startColony(opts) {
-  A.phase = 'boot'; A.hold = false; endPick(); if (A.place) endPlace(); A.projSel = -1;
+  A.phase = 'boot'; A.hold = false; endPick(); if (A.place) endPlace(); A.projSel = -1; A.thing = null;
   if (A.panels) { A.panels.show(false); A.panels.orbit(null); }
   $('loader').classList.remove('gone'); loader(opts.save ? 'Waking the colony' : 'Surveying the planet from orbit', .15);
   A.sim.send(opts.save ? { t: 'init', seed: opts.save.seed, save: opts.save } : { t: 'init', seed: opts.seed, mode: opts.mode || 'landfall', count: opts.count || 300 });
@@ -344,6 +348,10 @@ function hookInput() {
     const [sx, sy] = local(e);
     if (A.pickCrew >= 0) A.pickAt = V.toWorld(sx, sy);
     A.hover = A.phase === 'colony' ? pick(sx, sy) : -1;
+    // a hand over anything that opens a card when clicked
+    let can = A.hover >= 0;
+    if (!can && A.phase === 'colony' && !A.place && A.pickCrew < 0) { const [wx, wy] = V.toWorld(sx, sy); can = !!(thingAt(A, V, wx, wy) || projectAt(wx, wy)); }
+    app.classList.toggle('can', can);
   });
   const up = e => {
     ptrs.delete(e.pointerId); app.classList.remove('drag');
@@ -370,7 +378,7 @@ function hookInput() {
     else if (e.code === 'KeyR' && A.place) turnDoor();
     else if (e.code === 'KeyM') musicToggle();
     else if ((e.code === 'Escape' || e.code === 'Enter') && A.news && A.news.open) { e.preventDefault(); A.news.closeLetter(); }
-    else if (e.code === 'Escape') { if (A.place) endPlace(); else if (A.pickCrew >= 0) endPick(); else if (!$('newdlg').hidden) $('newdlg').hidden = true; else if (!$('menu').hidden) menu(false); else if (A.projSel >= 0) closeProject(); else if (A.sel >= 0) select(-1); else if (A.panels && !A.panels.min) A.panels.fold(true); }
+    else if (e.code === 'Escape') { if (A.place) endPlace(); else if (A.pickCrew >= 0) endPick(); else if (!$('newdlg').hidden) $('newdlg').hidden = true; else if (!$('menu').hidden) menu(false); else if (A.projSel >= 0) closeProject(); else if (A.thing) closeThing(); else if (A.sel >= 0) select(-1); else if (A.panels && !A.panels.min) A.panels.fold(true); }
     else if (e.code === 'Equal' || e.code === 'NumpadAdd') V.zoomAt(1.25, V.VW / 2, V.VH / 2);
     else if (e.code === 'Minus' || e.code === 'NumpadSubtract') V.zoomAt(.8, V.VW / 2, V.VH / 2);
   });
@@ -387,8 +395,8 @@ function hookInput() {
   $('placeCancel').onclick = endPlace; $('plCancel').onclick = endPlace; $('placeTurn').onclick = turnDoor; $('plTurn').onclick = turnDoor; $('plGo').onclick = confirmPlace;
   $('plName2').oninput = e => { delete e.target.dataset.auto; $('plKeep').checked = true; };
   $('cClose').onclick = () => select(-1);
-  $('bClose').onclick = closeProject;
-  $('bList').onclick = () => { const id = A.projSel; A.panels.setTab('build'); showProject(id); };
+  $('bClose').onclick = () => { if (A.thing) closeThing(); else closeProject(); };
+  $('bList').onclick = () => { if (A.thing) { const c = A.panels.thingInfo; if (c && c.btn) A.panels.setTab(c.btn.tab); return; } const id = A.projSel; A.panels.setTab('build'); showProject(id); };
   $('bPause').onclick = () => { const p = A.ui && A.ui.projects.find(q => q.id === A.projSel); if (p) cmd('projPause', { id: p.id, on: !p.paused }); };
   $('cFollow').onclick = () => { A.follow = !A.follow; $('cFollow').textContent = A.follow ? 'Stop following' : 'Follow'; };
   const mm = $('mm');
@@ -428,8 +436,13 @@ function click(sx, sy) {
     return;
   }
   const who = pick(sx, sy);
-  if (who < 0) { const [wx, wy] = V.toWorld(sx, sy), p = projectAt(wx, wy); if (p) { select(-1); A.projSel = p.id; A.panels.sig = ''; A.panels.update(); return; } }
+  if (who < 0) {
+    const [wx, wy] = V.toWorld(sx, sy), th = thingAt(A, V, wx, wy), p = th && th.k !== 'life' && th.k !== 'tree' && th.k !== 'boulder' && th.k !== 'bush' ? null : projectAt(wx, wy);
+    if (p) { select(-1); A.projSel = p.id; A.thing = null; A.panels.sig = ''; A.panels.update(); return; }
+    if (th) { showThing(th); return; }
+  }
   if (A.projSel >= 0) closeProject();
+  if (A.thing) closeThing();
   select(who);
 }
 function pick(sx, sy) {
