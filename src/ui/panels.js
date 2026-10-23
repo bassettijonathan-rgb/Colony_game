@@ -39,6 +39,13 @@ function fieldBits(p) {
     `<div class="seg sm wrap">${['auto', ...CROP_KEYS, 'fallow'].map(k => `<button data-act="crop" data-id="${p.id}" data-v="${k}" class="${(c.want || 'auto') === k ? 'on' : ''}">${k === 'auto' ? 'Seed chooses' : k === 'fallow' ? 'Leave fallow' : CROPS[k].name}</button>`).join('')}</div>`];
 }
 
+// the season the Seed comes down in: the year then runs on from there
+const SEASON_PICK = [
+  ['Thaw', 'The usual start: the cold is ending, and there is a whole year before the next Deep cold.'],
+  ['Long light', 'The warm season, with the longest days. About forty days to get ready for the cold.'],
+  ['Storms', 'Wind and storms from the start, and Deep cold twenty days away.'],
+  ['Deep cold', 'The hardest start: twenty days of frost, snow and blizzards before the thaw.'],
+];
 export class Panels {
   constructor(A, api) {
     this.A = A; this.api = api; this.tab = 'archive'; this.chosen = new Set(); this.touched = false; this.sig = ''; this.cardSig = ''; this.moveSig = '';
@@ -57,8 +64,9 @@ export class Panels {
     body.addEventListener('change', e => this.onChange(e));
     $('cMove').onchange = e => { const v = +e.target.value; this.api.cmd('move', { person: this.A.sel, crew: v }); };
     $('orbit').addEventListener('click', e => {
-      const site = e.target.closest('[data-site]'), go = e.target.closest('[data-land]');
-      if (go) this.api.land(+go.dataset.land); else if (site) this.api.siteSelect(+site.dataset.site);
+      const site = e.target.closest('[data-site]'), go = e.target.closest('[data-land]'), sea = e.target.closest('[data-season]');
+      if (sea) { this.A.season = +sea.dataset.season; this.orbit(this.A.sites, this.A.siteSel); }
+      else if (go) this.api.land(+go.dataset.land); else if (site) this.api.siteSelect(+site.dataset.site);
     });
   }
 
@@ -71,6 +79,8 @@ export class Panels {
         <div class="facts"><div>Open ground <em>${s.open}%</em></div><div>Woodland <em>${s.wood}%</em></div><div>Stone <em>${s.stone}%</em></div><div>Marsh <em>${s.marsh}%</em></div>
         <div>Water <em>${s.water == null ? 'none seen' : s.water < 30 ? 'at hand' : s.water + ' m'}</em></div><div>Open water <em>${s.wet}%</em></div></div>
         <div class="unk">Not known from orbit: the soil, the weather, what lives here, and ${unknown[s.tag] || 'what is under the surface'}.</div></div>`).join('') +
+      `<h4 class="sea">Arrive in</h4><div class="seg sm">${SEASON_PICK.map(([n], i) => `<button data-season="${i}"${i === (this.A.season || 0) ? ' class="on"' : ''}>${n}</button>`).join('')}</div>
+      <p style="margin:6px 0 0">${SEASON_PICK[this.A.season || 0][1]}</p>` +
       `<div class="acts"><button class="go" data-land="${sel}">Land at ${LETTERS[sel]}: ${esc(sites[sel].tag)}</button></div>
       <p style="margin-top:10px">The survey covers ground about 1.2 km across. Each site's figures are for the ground within 80 m of it.</p></div>`;
     el.hidden = false;

@@ -32,7 +32,7 @@ Generated live with Web Audio, with no audio files: a pad changing chord every t
 
 ## How a game starts (milestone 2)
 
-1. From orbit, the Seed offers three landing sites with what it knows and doesn't know about each.
+1. From orbit, the Seed offers three landing sites with what it knows and doesn't know about each. You also choose the season it comes down in (Thaw by default); the year runs on from there, so a landing in Deep cold starts in snow with twenty days to the thaw. `SEASON=0..3` does the same for the bot sims.
 2. It lands where you choose; the burn clears a ring and the shelter plot and the cook fire are laid out.
 3. The fabricator has feedstock for six bodies out of the forty minds in the archive. You choose who, about four hours each.
 4. Founders wake with bodies, skills, traits, memories and old ties. The Seed sorts them into a shelter crew and a survey crew until you change anything.

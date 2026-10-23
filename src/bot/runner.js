@@ -16,12 +16,12 @@ import { doyOf, seasonOf, dayWeather } from '../core/year.js';
 const now = () => performance.now();
 export const siteScore = s => s.open + (s.water != null ? 30 - Math.min(30, s.water / 4) : 0) + s.wood * .3 - s.marsh - s.stone * .5;
 
-export function landColony(seed, mode = 'landfall', count = 300) {
+export function landColony(seed, mode = 'landfall', count = 300, season = +(globalThis.process?.env?.SEASON || 0)) {
   const t0 = now(), W = generateWorld(seed), sites = findSites(W), t1 = now();
   const site = sites.slice().sort((a, b) => siteScore(b) - siteScore(a))[0];
   landAt(W, site); W.siteId = site.id;
   const t2 = now(), P = new Pathfinder(W), t3 = now(), sim = new Sim(W, P), t4 = now();
-  sim.newGame(mode, count);
+  sim.newGame(mode, count, season);
   if (mode === 'landfall') sim.command({ op: 'print', ids: sim.command({ op: 'suggest' }) });
   return { W, P, sim, site, timing: { world: t1 - t0, land: t2 - t1, graph: t3 - t2, field: t4 - t3 } };
 }
@@ -84,7 +84,7 @@ export function runColony(seed, days = 1, mode = 'landfall', count = 300, onTick
         day: sim.day, people: live.length, fat: avg('fat'), str: avg('str'), tru: avg('tru'), known: +(S.knownN / 3600).toFixed(1), food: Math.round(S.food),
         builds: S.projects.filter(p => !p.gone && p.type !== 'test').map(p => `${p.name} ${st(p)}`).join(', '), yard: { ...S.stores.yard }, power: `${S.power.draw}/${S.power.supply} kW`,
         indoors: live.filter(c => c.home >= 0).length, tested: ['stone', 'timber'].filter(m => S.mat[m].tested).join('+') || 'none',
-        season: seasonOf(doyOf(sim.day)), wx: dayWeather(sim.W.seed, sim.day).k, temp: S.F.temp.toFixed(0), meals: Math.round(mealsInStore(sim)), rations: Math.round(S.food),
+        season: seasonOf(doyOf(sim.cal)), wx: dayWeather(sim.W.seed, sim.cal).k, temp: S.F.temp.toFixed(0), meals: Math.round(mealsInStore(sim)), rations: Math.round(S.food),
         life: `${S.F.life.filter(l => l.seen).length} seen ${S.F.life.filter(l => l.tested).length} tested`, larder: JSON.stringify(Object.fromEntries(Object.entries({ ...S.F.larder.raw }).map(([k, v]) => [k, +v.toFixed(1)]))), cooked: Math.round(Object.values(S.F.larder.meals).reduce((a, b) => a + b, 0)),
         fields: built(S).filter(p => p.type === 'field').map(p => `${p.crop.st}${p.crop.k ? ':' + p.crop.k + ' ' + Math.round(p.crop.g * 100) + '%' : ''}`).join(' '), crews: S.crews.filter(c => !c.gone).map(c => c.work.slice(0, 2) + c.members.length).join(' '),
         chill: Math.round(peak), foraged: (S.stats.foraged || 0) - foraged, unwell: live.filter(c => c.unwell).length, dead: S.cols.length - live.length,

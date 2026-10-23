@@ -69,10 +69,10 @@ export class Sim {
 
   // ---------- a new landing ----------
   // 'landfall' is the real start: the Seed alone with its archive. 'stress' wakes a crowd at once to measure the engine.
-  newGame(mode = 'landfall', count = 300) {
+  newGame(mode = 'landfall', count = 300, season = 0) {
     const W = this.W, L = W.land; srand(W.seed * 7919 + 17);
     this.S = {
-      v: 4, mode, seed: W.seed, site: { x: L.x, y: L.y, id: W.siteId ?? 0 }, tick: Math.round(6 * HOUR),
+      v: 4, mode, seed: W.seed, y0: (season | 0) % 4 * SEASON_DAYS, site: { x: L.x, y: L.y, id: W.siteId ?? 0 }, tick: Math.round(6 * HOUR),
       cols: [], crews: [], archive: makeArchive(W.seed), autoCrews: true,
       seedc: { feed: mode === 'stress' ? 0 : FIRST_BODIES, queue: [], printing: null, stakes: STAKES },
       projects: [shelterProject(W)], pid: 1, blueprints: [], fab: { job: null }, power: { supply: LANDER_KW, draw: 0 },
@@ -83,7 +83,8 @@ export class Sim {
       stats: { breakdowns: 0, accidents: 0, fits: 0, trips: 0, darkReturns: 0, friends: 0, rivals: 0, deaths: 0, felled: 0, quarried: 0, made: 0, harvests: 0, meals: 0, cold: 0 },
       F: newFood(this.kinds.length), hist: newHist(),
     };
-    this.S.F.sun = sunFactor(0); this.S.F.seasonSaid = 0; this.S.F.temp = tempAt(W.seed, 1, 6);
+    this.S.F.sun = sunFactor(season); this.S.F.seasonSaid = season; this.S.F.temp = tempAt(W.seed, this.cal, 6);
+    if (season === DEEP) { this.S.F.snow = .55; this.S.F.ice = .35; }   // landing into a winter already under way
     this.resetGround();
     this.wear.fill(0); this.dirty.clear(); this.known.fill(0); this.kdirty.clear(); this.used = new Set(); this.seats = new Set();
     this.reveal(L.x, L.y, 30);   // the lander's own instruments
@@ -220,7 +221,9 @@ export class Sim {
   // ---------- time ----------
   get hour() { return (this.S.tick % DAY_TICKS) / HOUR; }
   get day() { return Math.floor(this.S.tick / DAY_TICKS) + 1; }
-  clock() { const d = this.day, h = this.hour; return { day: ((d - 1) % YEAR_DAYS) + 1, year: Math.floor((d - 1) / YEAR_DAYS) + 1, season: Math.floor(((d - 1) % YEAR_DAYS) / SEASON_DAYS), hour: h, tick: this.S.tick, abs: d }; }
+  // the day of the calendar: the landing can come in any season, so the year runs ahead of the days since landing
+  get cal() { return this.day + (this.S.y0 || 0); }
+  clock() { const d = this.cal, h = this.hour; return { day: ((d - 1) % YEAR_DAYS) + 1, year: Math.floor((d - 1) / YEAR_DAYS) + 1, season: Math.floor(((d - 1) % YEAR_DAYS) / SEASON_DAYS), hour: h, tick: this.S.tick, abs: this.day, cal: d }; }
 
   // ---------- one tick ----------
   tick() {
@@ -238,7 +241,7 @@ export class Sim {
   }
   // ---------- the hour: light, temperature, snow and ice, crops, the Seed's analyser, the seasons ----------
   hourly() {
-    const S = this.S, F = S.F, d = this.day, h = Math.round(this.hour) % 24, doy = doyOf(d), wx = dayWeather(this.W.seed, d), t = tempAt(this.W.seed, d, h);
+    const S = this.S, F = S.F, d = this.day, h = Math.round(this.hour) % 24, doy = doyOf(this.cal), wx = dayWeather(this.W.seed, this.cal), t = tempAt(this.W.seed, this.cal, h);
     const dl = daylight(doy + h / 24); this.dawn = dl.dawn; this.dusk = dl.dusk;
     F.temp = t;
     if (t < 1 && wx.snow) F.snow = Math.min(1, F.snow + wx.snow * .045); else if (t > 1.5) F.snow = Math.max(0, F.snow - (t - 1.5) * .007 - wx.rain * .02);
@@ -262,7 +265,7 @@ export class Sim {
   }
   // how long the food would last, in plain words
   foodNote() {
-    const n = mealsInStore(this, true), all = mealsInStore(this), eaters = this.S.cols.filter(c => !c.dead).length || 1, days = Math.floor(n / eaters), deep = untilDeep(this.day) + 20;
+    const n = mealsInStore(this, true), all = mealsInStore(this), eaters = this.S.cols.filter(c => !c.dead).length || 1, days = Math.floor(n / eaters), deep = untilDeep(this.cal) + 20;
     const locked = Math.floor((all - n) / eaters);
     return `The colony has food for about ${days} day${days === 1 ? '' : 's'} at ${eaters} meal${eaters === 1 ? '' : 's'} a day${days < deep ? `, and it needs ${deep} to see the cold through` : ', enough to see the cold through'}.${locked > 0 ? ` Another ${locked} day${locked === 1 ? '' : 's'} of it is raw food only a kitchen crew can make safe.` : ''}`;
   }
@@ -446,12 +449,12 @@ export class Sim {
       projects: S.projects.filter(p => !p.gone).map(p => ({ crop: p.crop && { ...p.crop, plan: p.crop.st === 'bare' ? cropPlan(this, p) : null, eta: p.crop.st === 'grow' ? daysToRipen(this, p.crop.k, p.crop.g) : null }, id: p.id, type: p.type, name: p.name, x: p.x, y: p.y, w: p.w, h: p.h, side: p.side, door: p.door, stage: p.stage, need: p.need, got: p.got, done: p.done, powered: p.powered, paused: p.paused, wait: p.wait, stall: p.stall, mat: p.mat, cap: capOf(p), crews: S.crews.filter(cr => !cr.gone && cr.work === 'build' && cr.proj === p.id).map(cr => cr.name), out: p.out })),
       stores: { yard: S.stores.yard, cargo: S.stores.cargo, precise: Object.fromEntries(PRECISE.map(k => [k, stockOf(S, k)])) }, power: S.power, blueprints: S.blueprints,
       mat: { stone: { tested: S.mat.stone.tested, f: S.mat.stone.tested ? S.mat.stone.f : null }, timber: { tested: S.mat.timber.tested, f: S.mat.timber.tested ? S.mat.timber.f : null } },
-      food: S.food, alive: S.cols.filter(c => !c.dead).length, year: this.yearUI(), F: this.foodUI(), known: S.knownN, stakes: S.stakes, auto: S.autoCrews, stats: S.stats, today: histRow(this, this.day),
+      food: S.food, alive: S.cols.filter(c => !c.dead).length, year: this.yearUI(), F: this.foodUI(), known: S.knownN, stakes: S.stakes, auto: S.autoCrews, stats: S.stats, today: histRow(this, this.day), y0: S.y0 || 0,
       detail: c && { id: c.id, meal: c.meal, tox: +c.tox.toFixed(1), lack: c.lack, skills: c.skills, mem: c.mem.slice(-6), ties: Object.entries(c.ties).filter(([, t]) => t.k).map(([id, t]) => ({ id: +id, k: t.k, f: Math.round(t.f), a: Math.round(t.a) })), worked: c.worked, fresh: c.fresh, hurt: c.hurt, plan: c.plan, home: c.home >= 0 && byId(S, c.home) ? byId(S, c.home).name : '', carry: c.carry },
     };
   }
   yearUI() {
-    const d = this.day, doy = doyOf(d), wx = dayWeather(this.W.seed, d), F = this.S.F;
+    const d = this.cal, doy = doyOf(d), wx = dayWeather(this.W.seed, d), F = this.S.F;
     return { doy, season: seasonOf(doy), wx: wx.k, snap: wx.snap, temp: +F.temp.toFixed(1), dawn: +this.dawn.toFixed(2), dusk: +this.dusk.toFixed(2), snow: +F.snow.toFixed(2), ice: +F.ice.toFixed(2), deepIn: untilDeep(d), sun: F.sun };
   }
   foodUI() {
@@ -482,7 +485,7 @@ export class Sim {
     if (old) projectsThink(this); // give the migrated crews their project now, not at the next check
     this.wear.set(unrle(wear, MAP * MAP)); this.known.set(unrle(known, MAP * MAP)); this.dirty.clear(); this.kdirty.clear();
     this.used = new Set(this.S.cols.map(c => c.slot)); this.seats = new Set(this.S.cols.map(c => c.seat));
-    const dl = daylight(doyOf(this.day) + this.hour / 24); this.dawn = dl.dawn; this.dusk = dl.dusk;
+    const dl = daylight(doyOf(this.cal) + this.hour / 24); this.dawn = dl.dawn; this.dusk = dl.dusk;
     for (let k = 0; k < NCH * NCH; k++) { this.dirty.add(k); this.kdirty.add(k); }
     return this.S;
   }

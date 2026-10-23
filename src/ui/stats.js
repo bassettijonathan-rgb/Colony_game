@@ -67,7 +67,7 @@ export class Stats {
     this.sig = sig;
     const today = rows[rows.length - 1], first = U.mode === 'stress';
     // headline numbers
-    const t = today || [], doy = ((t[K.day] - 1) % YEAR_DAYS) + 1, yr = Math.floor((t[K.day] - 1) / YEAR_DAYS) + 1;
+    const t = today || [], cal = (t[K.day] || 1) + (U.y0 || 0), doy = ((cal - 1) % YEAR_DAYS) + 1, yr = Math.floor((cal - 1) / YEAR_DAYS) + 1;
     const tile = (lbl, v, sub) => `<div class="stt"><em>${lbl}</em><b>${v}</b><span>${sub || ''}</span></div>`;
     let h = `<div class="sttiles">` +
       tile('Days since landing', t[K.day] || 1, `Year ${yr || 1} · ${SEAS[Math.floor((doy - 1) / SEASON_DAYS)] || SEAS[0]}`) +
@@ -97,6 +97,7 @@ export class Stats {
 
   draw(cv, c) {
     if (!c) return;
+    const y0 = (this.A.ui && this.A.ui.y0) || 0;
     const dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = 150;
     if (cv.width !== Math.round(W * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
     const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
@@ -109,7 +110,7 @@ export class Stats {
     g.font = '600 9.5px Manrope,system-ui,sans-serif'; g.textBaseline = 'top';
     let s0 = 0;
     for (let i = 1; i <= n; i++) {
-      const si = d => Math.floor((((d - 1) % YEAR_DAYS)) / SEASON_DAYS), s = si(c.days[s0]);
+      const si = d => Math.floor((((d + y0 - 1) % YEAR_DAYS)) / SEASON_DAYS), s = si(c.days[s0]);
       if (i < n && si(c.days[i]) === s) continue;
       const x0 = c.bars ? L + s0 * pw / n : n === 1 ? L : X(s0) - (s0 ? pw / (n - 1) / 2 : 0), x1 = c.bars ? L + i * pw / n : n === 1 ? L + pw : X(i - 1) + (i < n ? pw / (n - 1) / 2 : 0);
       g.fillStyle = SEAS_TINT[s]; g.fillRect(x0, T, x1 - x0, ph);

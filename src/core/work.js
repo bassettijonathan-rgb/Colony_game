@@ -150,7 +150,7 @@ function forageNext(sim, c) {
 // whether the larder needs more wild food: five days of meals beyond the rations, and in the last weeks before
 // Deep cold, enough to see the cold through
 function forageWanted(sim) {
-  const S = sim.S, eaters = S.cols.filter(o => !o.dead).length, ahead = untilDeep(sim.day);
+  const S = sim.S, eaters = S.cols.filter(o => !o.dead).length, ahead = untilDeep(sim.cal);
   const want = eaters * (ahead > 0 && ahead <= 25 ? 22 : 5);
   return mealsInStore(sim, true) - S.food < want;
 }
@@ -374,7 +374,7 @@ export function crewThink(sim, cr) {
   cr.wait = 15;
   const S = sim.S, W = sim.W, L = W.land, h = sim.hour, sh = SHIFTS[cr.shift];
   if (h < sh.a - .5) { cr.recalled = false; cr.dest = -1; return; }
-  if (dayWeather(sim.W.seed, sim.day).out && !cr.recalled) { cr.recalled = true; return; }   // nobody goes surveying in a storm
+  if (dayWeather(sim.W.seed, sim.cal).out && !cr.recalled) { cr.recalled = true; return; }   // nobody goes surveying in a storm
   const out = cr.members.map(i => S.cols[i]).filter(c => !c.dead && c.plan === 'work');
   if (!out.length) return;
   let px = 0, py = 0; for (const c of out) { px += c.x; py += c.y; } px /= out.length; py /= out.length;
