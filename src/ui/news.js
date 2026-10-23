@@ -189,7 +189,7 @@ export class News {
     const ripe = fields.filter(p => p.crop && p.crop.st === 'ripe');
     if (ripe.length) add('ripe', ripe.length === 1 ? `${ripe[0].name} is ready to harvest` : `${ripe.length} fields are ready to harvest`, ripe.map(p => ({ pid: p.id })));
     const ready = F ? F.life.filter(l => l && !l.tested && !l.queued && l.samples >= 3) : [];
-    if (ready.length) add('samples', ready.length === 1 ? `${ready[0].name}: samples ready to test` : `${ready.length} sets of samples ready to test`, [{ tab: 'life' }]);
+    if (ready.length) add('samples', ready.length === 1 ? `${ready[0].name}: samples ready to test` : `${ready.length} sets of samples ready to test`, [{ tab: 'life:local' }]);
     let ids;
     if ((ids = people(p => p[6] & 8)).length) add('hungry', named(ids, 'is hungry', 'people are hungry'), ids.map(i => ({ who: i })));
     if ((ids = people(p => p[6] & 64)).length) add('cold', named(ids, 'is dangerously cold', 'people are dangerously cold'), ids.map(i => ({ who: i })));
@@ -210,7 +210,7 @@ export class News {
     const dark = U.projects.filter(p => p.done && p.type !== 'solar' && !p.powered);
     if (dark.length) add('dark', dark.length === 1 ? `${dark[0].name} is dark` : `${dark.length} buildings are dark`, dark.map(p => ({ pid: p.id })));
     const idle = U.crews.filter(c => !c.gone && c.work === 'build' && c.members.length && c.proj < 0);
-    if (idle.length && U.shelter.done && !U.projects.some(p => !p.done && !p.paused && p.type !== 'test')) add('idle', ALERTS.idle[1], [{ tab: 'build' }]);
+    if (idle.length && U.shelter.done && !U.projects.some(p => !p.done && !p.paused && p.type !== 'test')) add('idle', ALERTS.idle[1], [{ tab: 'build:plan' }]);
     list.sort((a, b) => ORDER.indexOf(a.key) - ORDER.indexOf(b.key));
     this.list = list;
     const sig = list.map(a => a.key + ':' + a.title + ':' + (a.detail || '')).join('|');
