@@ -79,9 +79,9 @@ export function createSimCore(post) {
       else post({ t: 'survey', seed: W.seed, rock: W.rock, world: { type: W.type, elev: W.elev, moist: W.moist }, sites, timing: { world: t1 - t0 } });
     } else if (m.t === 'land') { if (W && !sim) { const t1 = now(); begin(sites[m.site], null, 'landfall', 0, t1, t1, m.season | 0); } }
     else if (m.t === 'speed') { speed = m.v; }
-    else if (m.t === 'save') { post({ t: 'saved', id: m.id, data: sim ? sim.serialize() : null }); }
+    else if (m.t === 'save') { post({ t: 'saved', rq: m.rq, data: sim ? sim.serialize() : null }); }
     else if (m.t === 'watch') { watch = m.id; if (sim) { lastState = 0; } }
-    else if (m.t === 'cmd') { if (!sim) return; const r = sim.command(m); if (m.id) post({ t: 'cmd', id: m.id, r }); lastState = 0; }
+    else if (m.t === 'cmd') { if (!sim) return; const r = sim.command(m); if (m.rq) post({ t: 'cmd', rq: m.rq, r }); lastState = 0; }
     else if (m.t === 'stop') { clearTimeout(timer); }
   }
   return { handle };

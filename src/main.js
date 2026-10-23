@@ -42,11 +42,19 @@ function onSim(m) {
     case 'wear': if (A.view && A.phase === 'colony') for (const [k, d] of m.chunks) A.view.terrain.setWear(k, d); else A.pendingWear.push(...m.chunks); return;
     case 'known': if (A.view && A.phase === 'colony') for (const [k, d] of m.chunks) A.view.setKnown(k, d); else A.pendingKnown.push(...m.chunks); return;
     case 'marks': return onMarks(m);
-    case 'saved': case 'cmd': { const r = A.waiting.get(m.id); if (r) { A.waiting.delete(m.id); r(m.t === 'saved' ? m.data : m.r); } }
+    case 'saved': case 'cmd': { const r = A.waiting.get(m.rq); if (r) { A.waiting.delete(m.rq); r(m.t === 'saved' ? m.data : m.r); } }
   }
 }
-function ask(msg) { const id = ++A.saveId; return withTimeout(new Promise(r => { A.waiting.set(id, r); A.sim.send({ ...msg, id }); }), 4000, null); }
+function ask(msg) { const id = ++A.saveId; return withTimeout(new Promise(r => { A.waiting.set(id, r); A.sim.send({ ...msg, rq: id }); }), 4000, null); }   // rq, not id: commands use id for the project
 const requestSave = () => ask({ t: 'save' });
+// the whole page fills the screen; inside a frame that doesn't allow it, say how else
+async function fullscreen() {
+  const d = document, el = d.documentElement;
+  try {
+    if (d.fullscreenElement || d.webkitFullscreenElement) await (d.exitFullscreen || d.webkitExitFullscreen).call(d);
+    else await (el.requestFullscreen || el.webkitRequestFullscreen).call(el, { navigationUI: 'hide' });
+  } catch (e) { toast('Fullscreen isn’t allowed here. Your browser’s own fullscreen (F11) works instead.'); }
+}
 function cmd(op, args = {}) { return ask({ t: 'cmd', op, ...args }); }
 const wrap = sim => ({ v: 4, day: Math.floor(sim.tick / DAY_TICKS) + 1, count: sim.cols.length, sim });
 function ensureView(W) {
@@ -381,6 +389,7 @@ function hookInput() {
     else if (e.code === 'KeyB' && colony) A.panels.toggleTab('build');
     else if (e.code === 'KeyR' && A.place) turnDoor();
     else if (e.code === 'KeyM') musicToggle();
+    else if (e.code === 'F11') { e.preventDefault(); fullscreen(); }
     else if ((e.code === 'Escape' || e.code === 'Enter') && A.news && A.news.open) { e.preventDefault(); A.news.closeLetter(); }
     else if (e.code === 'Escape') { if (A.stats && A.stats.open) A.stats.show(false); else if (A.place) endPlace(); else if (A.pickCrew >= 0) endPick(); else if (!$('newdlg').hidden) $('newdlg').hidden = true; else if (!$('menu').hidden) menu(false); else if (A.projSel >= 0) closeProject(); else if (A.thing) closeThing(); else if (A.sel >= 0) select(-1); else if (A.panels && !A.panels.min) A.panels.fold(true); }
     else if (e.code === 'Equal' || e.code === 'NumpadAdd') V.zoomAt(1.25, V.VW / 2, V.VH / 2);
@@ -390,6 +399,9 @@ function hookInput() {
   window.addEventListener('blur', () => keys.clear());
   document.querySelectorAll('.speeds button').forEach(b => b.addEventListener('click', () => setSpeed(+b.dataset.s)));
   $('bHome').onclick = goHome;
+  $('bFull').onclick = () => fullscreen();
+  const fsIcon = () => { const on = !!(document.fullscreenElement || document.webkitFullscreenElement); $('bFull').querySelector('use').setAttribute('href', on ? '#i-unfull' : '#i-full'); $('bFull').title = on ? 'Leave fullscreen (F11)' : 'Fullscreen (F11)'; };
+  document.addEventListener('fullscreenchange', fsIcon); document.addEventListener('webkitfullscreenchange', fsIcon);
   $('bMusic').onclick = () => musicToggle();
   $('vol').value = Math.round(A.music.vol * 100); musicButton();
   $('vol').oninput = e => { A.music.setVolume(e.target.value / 100); if (!A.music.on && e.target.value > 0) musicToggle(true); };

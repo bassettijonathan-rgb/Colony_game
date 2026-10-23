@@ -445,6 +445,8 @@ select{font:600 12px var(--f-ui);color:var(--txt);background:rgba(0,0,0,.35);bor
   <symbol id="i-salvage" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6l1.4 1.4M11 11l1.4 1.4M3.6 12.4L5 11M11 5l1.4-1.4"/></symbol>
   <symbol id="i-survey" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="2.8"/><path d="M8 8l4.2-4.2"/></symbol>
   <symbol id="i-seed" viewBox="0 0 16 16"><path d="M8 1.8l4.4 1.8 1.8 4.4-1.8 4.4L8 14.2l-4.4-1.8L1.8 8l1.8-4.4z"/><circle cx="8" cy="8" r="2.4"/></symbol>
+  <symbol id="i-full" viewBox="0 0 16 16"><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/></symbol>
+  <symbol id="i-unfull" viewBox="0 0 16 16"><path d="M6 2.5V6H2.5M13.5 6H10V2.5M10 13.5V10h3.5M2.5 10H6v3.5"/></symbol>
   <symbol id="i-menu" viewBox="0 0 16 16"><path d="M2.5 4h11M2.5 8h11M2.5 12h11"/></symbol>
   <symbol id="i-archive" viewBox="0 0 16 16"><ellipse cx="8" cy="3.8" rx="5.5" ry="1.9"/><path d="M2.5 3.8v8.4c0 1 2.5 1.9 5.5 1.9s5.5-.9 5.5-1.9V3.8M2.5 8c0 1 2.5 1.9 5.5 1.9s5.5-.9 5.5-1.9"/></symbol>
   <symbol id="i-crews" viewBox="0 0 16 16"><circle cx="8" cy="4.6" r="2"/><circle cx="3.6" cy="6.2" r="1.6"/><circle cx="12.4" cy="6.2" r="1.6"/><path d="M4.6 13c.3-2.4 1.6-3.8 3.4-3.8s3.1 1.4 3.4 3.8M1 12.4c.2-1.7 1-2.7 2.4-2.9M15 12.4c-.2-1.7-1-2.7-2.4-2.9"/></symbol>
@@ -502,6 +504,7 @@ select{font:600 12px var(--f-ui);color:var(--txt);background:rgba(0,0,0,.35);bor
       </div>
       <div class="tb sys">
         <button class="sq" id="bHome" title="Back to the Seed (H)" aria-label="Back to the Seed"><svg class="ic" style="width:19px;height:19px"><use href="#i-seed"/></svg></button>
+        <button class="sq" id="bFull" title="Fullscreen (F11)" aria-label="Fullscreen"><svg class="ic" style="width:19px;height:19px"><use href="#i-full"/></svg></button>
         <button class="sq" id="bMenu" title="Menu: save, load, music, controls" aria-label="Menu"><svg class="ic" style="width:19px;height:19px"><use href="#i-menu"/></svg></button>
         <button id="fpsChip" title="Performance"><b id="fps">--</b>FPS</button>
       </div>
@@ -533,6 +536,7 @@ select{font:600 12px var(--f-ui);color:var(--txt);background:rgba(0,0,0,.35);bor
           <span><kbd>F</kbd> <kbd>H</kbd></span><span>follow the picked person, back to the Seed</span>
           <span><kbd>R</kbd> <kbd>Esc</kbd></span><span>turn the door, cancel</span>
           <span><kbd>M</kbd></span><span>music</span>
+          <span><kbd>F11</kbd></span><span>fullscreen</span>
         </div>
       </div>
     </div>
