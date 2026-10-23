@@ -9,10 +9,12 @@ import { makeArchive, makePerson } from './founders.js';
 import { propsIn } from './world.js';
 import { think, mindTick, daily, remember } from './life.js';
 import { crewThink, seedTick, onArrive, onTimer, command, projectsThink, dropCarry } from './work.js';
-import { shelterProject, strength, powerCheck, capOf, byId, stockOf, PRECISE, SALVAGE, KIT, CARGO, LANDER_KW } from './build.js';
+import { shelterProject, strength, powerCheck, capOf, byId, stockOf, built, PRECISE, SALVAGE, KIT, CARGO, LANDER_KW } from './build.js';
+import { drawLife, placeLife, newFood, labHour, fieldHour, spoil, mealsInStore, patchLeft, inSeason, cropPlan, daysToRipen, foodOf, CROPS, SEED_LAB, verdict, PROC_NAME } from './food.js';
+import { daylight, doyOf, seasonOf, dayWeather, tempAt, untilDeep, DEEP } from './year.js';
 
 export const CREW_NAMES = ['Basalt', 'Kestrel', 'Cedar', 'Drift', 'Ember', 'Fern', 'Gale', 'Heron', 'Iris', 'Juniper', 'Lichen', 'Moss', 'Nettle', 'Onyx', 'Pike', 'Quartz', 'Rowan', 'Sedge', 'Thistle', 'Umber', 'Vetch', 'Willow', 'Yarrow', 'Zinc', 'Alder', 'Bramble', 'Cobalt', 'Dune', 'Flint', 'Garnet', 'Hazel', 'Ivy', 'Jasper', 'Kelp', 'Larch', 'Marl'];
-export const STAKES = 10, FOOD_DAYS = 60, FIRST_BODIES = 6;
+export const STAKES = 10, FOOD_DAYS = 40, FIRST_BODIES = 6;
 const SOURCE_R = 70;   // how far from the Seed people go for stone and timber
 
 export class Sim {
@@ -31,10 +33,21 @@ export class Sim {
     this.cargoTile = site.cargo.y * MAP + site.cargo.x; this.doorTile = site.shelter.door.y * MAP + site.shelter.door.x; this.yardTile = site.yard.pick.y * MAP + site.yard.pick.x;
     this.gnew = []; this.qnew = [];
     this.sourcesNear();
+    // the life this world has, and where it grows
+    this.kinds = drawLife(W.seed); this.life = placeLife(W, this.kinds);
+    const F = site.fire, dx = Math.sign(L.x - F.x) || 1, dy = Math.sign(L.y - F.y);
+    // the kitchen by the fire: where the cooking is done, and where the vats stand
+    this.cookTile = this.freeNear(F.x - dy * 1.6, F.y + dx * 1.6); this.vatTile = this.freeNear(F.x + dy * 2.6, F.y - dx * 2.6);
+    this.dawn = 5.6; this.dusk = 19.3;
+  }
+  freeNear(x, y) {
+    const W = this.W;
+    for (let r = 0; r < 6; r += .5) for (let a = 0; a < 6.28; a += .5) { const t = Math.floor(y + Math.sin(a) * r) * MAP + Math.floor(x + Math.cos(a) * r); if (W.cost[t] && W.reach[t] && W.type[t] !== T.SHALLOW) return t; }
+    return Math.floor(y) * MAP + Math.floor(x);
   }
   // every tree, boulder and rock face within reach of camp, nearest to the yard first
   sourcesNear() {
-    const W = this.W, L = W.land, Y = W.site.yard.pick, g = W.gone, trees = [], rocks = [];
+    const W = this.W, L = W.land, Y = W.site.yard.pick, g = W.gone, trees = [], rocks = [], scrub = [];
     W.gone = null;
     const x0 = L.x - SOURCE_R, y0 = L.y - SOURCE_R, x1 = L.x + SOURCE_R, y1 = L.y + SOURCE_R;
     const ok = t => W.cost0[t] && W.reach[t], d = t => Math.hypot(t % MAP - Y.x, (t / MAP | 0) - Y.y);
@@ -42,6 +55,7 @@ export class Sim {
       const t = Math.floor(q.y) * MAP + Math.floor(q.x);
       if (q.k === 'tree' && ok(t)) trees.push({ src: t, work: t, kind: 0, d: d(t) });
       else if (q.k === 'boulder' && ok(t)) rocks.push({ src: t, work: t, kind: 1, d: d(t) });
+      else if (q.k === 'bush' && ok(t)) scrub.push({ src: t, work: t, kind: 3, d: d(t) });
     }
     W.gone = g;
     for (let y = Math.max(1, y0); y < Math.min(MAP - 1, y1); y++) for (let x = Math.max(1, x0); x < Math.min(MAP - 1, x1); x++) {
@@ -49,7 +63,7 @@ export class Sim {
       for (const n of [t - 1, t + 1, t - MAP, t + MAP]) if (ok(n) && W.type[n] !== T.SHALLOW) { rocks.push({ src: t, work: n, kind: 2, d: d(t) }); break; }
     }
     const by = (a, b) => a.d - b.d || a.src - b.src;
-    this.trees = trees.sort(by); this.rocks = rocks.sort(by);
+    this.trees = trees.sort(by); this.rocks = rocks.sort(by); this.scrub = scrub.sort(by);
   }
 
   // ---------- a new landing ----------
@@ -57,16 +71,18 @@ export class Sim {
   newGame(mode = 'landfall', count = 300) {
     const W = this.W, L = W.land; srand(W.seed * 7919 + 17);
     this.S = {
-      v: 3, mode, seed: W.seed, site: { x: L.x, y: L.y, id: W.siteId ?? 0 }, tick: Math.round(6 * HOUR),
+      v: 4, mode, seed: W.seed, site: { x: L.x, y: L.y, id: W.siteId ?? 0 }, tick: Math.round(6 * HOUR),
       cols: [], crews: [], archive: makeArchive(W.seed), autoCrews: true,
       seedc: { feed: mode === 'stress' ? 0 : FIRST_BODIES, queue: [], printing: null, stakes: STAKES },
       projects: [shelterProject(W)], pid: 1, blueprints: [], fab: { job: null }, power: { supply: LANDER_KW, draw: 0 },
-      stores: { yard: { stone: 0, timber: 0, salvage: SALVAGE }, cargo: { module: CARGO, ...KIT } },
+      stores: { yard: { stone: 0, timber: 0, biomass: 0, salvage: SALVAGE }, cargo: { module: CARGO, ...KIT } },
       mat: { stone: { tested: false, f: strength(W.seed, 'stone') }, timber: { tested: false, f: strength(W.seed, 'timber') } }, gone: {}, quarry: {},
       stakes: [], food: mode === 'stress' ? 1e9 : FOOD_DAYS * FIRST_BODIES,
       log: [], logN: 0, chunkLast: new Array(NCH * NCH).fill(0), rr: 0, walked: 0, knownN: 0, rv: 1,
-      stats: { breakdowns: 0, accidents: 0, fits: 0, trips: 0, darkReturns: 0, friends: 0, rivals: 0, deaths: 0, felled: 0, quarried: 0, made: 0 },
+      stats: { breakdowns: 0, accidents: 0, fits: 0, trips: 0, darkReturns: 0, friends: 0, rivals: 0, deaths: 0, felled: 0, quarried: 0, made: 0, harvests: 0, meals: 0, cold: 0 },
+      F: newFood(this.kinds.length),
     };
+    this.S.F.sun = sunFactor(0); this.S.F.seasonSaid = 0; this.S.F.temp = tempAt(W.seed, 1, 6);
     this.resetGround();
     this.wear.fill(0); this.dirty.clear(); this.known.fill(0); this.kdirty.clear(); this.used = new Set(); this.seats = new Set();
     this.reveal(L.x, L.y, 30);   // the lander's own instruments
@@ -104,6 +120,7 @@ export class Sim {
       home: -1, mess: -1, ward: -1, where: -1, spot: -1, slot, seat: this.seat(),
       fat: 18, str: 8, tru: Math.round(60 + (has('stubborn') ? -8 : 0) + (has('cheerful') ? 5 : 0) + (has('anxious') ? -3 : 0) + (rnd() - .5) * 12), hp: 100,
       fresh: 10 * DAY_TICKS, hurt: 0, alone: 0, worked: 0, dark: 0, ate: 0, hungry: false, dead: false, escort: 0, outside: 0, bed: 21.3 + rnd() * .9,
+      chill: 0, tox: 0, lack: 0, ds: 0, dl: 0, unwell: false, meal: '', food: '', from: '', next: '', vat: 0,
     };
     for (const k of p.knew || []) { const o = S.cols.find(q => q.fid === k.fid); if (o) { const a = k.k === 'friend' ? 50 : -50; c.ties[o.id] = { f: 60, a, k: k.k }; o.ties[id] = { f: 60, a, k: k.k }; } }
     S.cols.push(c); S.rv++;
@@ -215,7 +232,40 @@ export class Sim {
     for (let i = 0; i < cols.length; i++) this.move(cols[i]);
     this.separate();
     this.groundTick();
-    if (S.tick % DAY_TICKS === Math.round(4 * HOUR)) for (const c of cols) daily(this, c);
+    if (S.tick % HOUR === 0) this.hourly();
+    if (S.tick % DAY_TICKS === Math.round(4 * HOUR)) { for (const c of cols) daily(this, c); if (S.mode === 'landfall') spoil(this); }
+  }
+  // ---------- the hour: light, temperature, snow and ice, crops, the Seed's analyser, the seasons ----------
+  hourly() {
+    const S = this.S, F = S.F, d = this.day, h = Math.round(this.hour) % 24, doy = doyOf(d), wx = dayWeather(this.W.seed, d), t = tempAt(this.W.seed, d, h);
+    const dl = daylight(doy + h / 24); this.dawn = dl.dawn; this.dusk = dl.dusk;
+    F.temp = t;
+    if (t < 1 && wx.snow) F.snow = Math.min(1, F.snow + wx.snow * .045); else if (t > 1.5) F.snow = Math.max(0, F.snow - (t - 1.5) * .007 - wx.rain * .02);
+    if (t < -3) F.ice = Math.min(1, F.ice + (-3 - t) * .0025); else if (t > 0) F.ice = Math.max(0, F.ice - t * .004);
+    if (S.mode !== 'landfall') return;
+    for (const p of built(S)) if (p.type === 'field' && p.crop) fieldHour(this, p, t, h);
+    labHour(this, SEED_LAB);
+    if (h === 6) this.morning(d, doy, wx);
+  }
+  // each morning: a new season, the warning before Deep cold, and bad weather
+  morning(d, doy, wx) {
+    const S = this.S, F = S.F, s = seasonOf(doy);
+    if (F.seasonSaid !== s && doy % 20 === 0) {
+      F.seasonSaid = s; F.sun = sunFactor(s); for (const p of powerCheck(this)) if (p.type !== 'solar') this.log(p.powered ? `${p.name} has power again.` : `${p.name} went dark: the solar panels make less now.`, p.powered ? 'good' : 'bad', p.powered ? { pid: p.id } : { e: 'dark', lvl: 1, pid: p.id, title: 'Not enough power' });
+      if (d > 1) this.log(SEASON_TEXT[s] + (s === DEEP ? ` ${this.foodNote()}` : ''), s === DEEP ? 'bad' : '', { e: 'season' + s, lvl: 2, title: SEASON_TITLE[s] });
+    }
+    if (doy === 52 && F.warned !== d) { F.warned = d; this.log(`Deep cold starts in eight days and lasts twenty. Nothing grows then, and work outside gets hard and dangerous. ${this.foodNote()}${this.fieldNote()}`, 'bad', { e: 'deepwarn', lvl: 2, title: 'Deep cold is coming' }); }
+    if (wx.out || wx.snap) this.log(wx.k === 'blizzard' ? 'A blizzard today. Nobody can work outside: the crews stay in camp.' : wx.k === 'storm' ? 'A storm today: high wind and lightning. Work outside is risky, and the survey crews stay in camp.' : 'A cold snap: far colder than usual for the next few days.', 'bad', { e: wx.out ? wx.k : 'snap', lvl: 1, title: wx.out ? WX_TITLE[wx.k] : 'A cold snap' });
+  }
+  // how long the food would last, in plain words
+  foodNote() {
+    const n = mealsInStore(this, true), all = mealsInStore(this), eaters = this.S.cols.filter(c => !c.dead).length || 1, days = Math.floor(n / eaters), deep = untilDeep(this.day) + 20;
+    const locked = Math.floor((all - n) / eaters);
+    return `The colony has food for about ${days} day${days === 1 ? '' : 's'} at ${eaters} meal${eaters === 1 ? '' : 's'} a day${days < deep ? `, and it needs ${deep} to see the cold through` : ', enough to see the cold through'}.${locked > 0 ? ` Another ${locked} day${locked === 1 ? '' : 's'} of it is raw food only a kitchen crew can make safe.` : ''}`;
+  }
+  fieldNote() {
+    const late = built(this.S).filter(p => p.type === 'field' && p.crop && p.crop.st === 'grow' && daysToRipen(this, p.crop.k, p.crop.g) === Infinity);
+    return late.length ? ` The crops in ${late.map(p => p.name).join(' and ')} won't ripen before the frost.` : '';
   }
 
   // ---------- walking ----------
@@ -259,7 +309,7 @@ export class Sim {
         if (rnd() < .004) c.ang += (rnd() - .5) * 2;
         if (rnd() < (a === ACT.SURVEY ? .002 : .0008)) { const x = Math.floor(c.x + (rnd() - .5) * 4), y = Math.floor(c.y + (rnd() - .5) * 4), t = y * MAP + x; if (x > 0 && y > 0 && x < MAP && y < MAP && this.W.reach[t] && this.W.cost[t]) { c.leg = [t]; c.li = 0; } }
         if (c.li < c.leg.length) { const t = c.leg[c.li]; if (this.walk(c, t % MAP + .5, (t / MAP | 0) + .5)) c.li++; }
-      } else if (a === ACT.BUILD || a === ACT.TEST || a === ACT.QUARRY || a === ACT.FELL) this.face(c, c.fx, c.fy); else if (a === ACT.EAT) {
+      } else if (a === ACT.BUILD || a === ACT.TEST || a === ACT.QUARRY || a === ACT.FELL || a === ACT.GATHER || a === ACT.FARM || a === ACT.SAMPLE) this.face(c, c.fx, c.fy); else if (a === ACT.EAT || a === ACT.COOK) {
         const F = this.W.site.fire; this.face(c, F.x, F.y);
       }
     }
@@ -304,7 +354,7 @@ export class Sim {
   separate() {
     const cols = this.S.cols, n = cols.length, G = this.grid, GW = MAP / 2;
     if (!this.next || this.next.length < n) this.next = new Int32Array(n);
-    const nx = this.next, cells = [], still = a => a === ACT.BED || a === ACT.EAT || a === ACT.WAKE || a === ACT.ALONE || a === ACT.BUILD || a === ACT.PLANT || a === ACT.QUARRY || a === ACT.FELL || a === ACT.TEST;
+    const nx = this.next, cells = [], still = a => a === ACT.BED || a === ACT.EAT || a === ACT.WAKE || a === ACT.ALONE || a === ACT.BUILD || a === ACT.PLANT || a === ACT.QUARRY || a === ACT.FELL || a === ACT.TEST || a === ACT.GATHER || a === ACT.FARM || a === ACT.COOK || a === ACT.SAMPLE;
     for (let i = 0; i < n; i++) { const c = cols[i]; nx[i] = -2; if (c.dead || hidden(c.act)) continue; const g = (c.y / 2 | 0) * GW + (c.x / 2 | 0); nx[i] = G[g]; if (G[g] < 0) cells.push(g); G[g] = i; }
     const C = this.W.cost;
     for (let i = 0; i < n; i++) {
@@ -385,16 +435,30 @@ export class Sim {
     const S = this.S, sd = S.seedc, sh = S.projects[0];
     const c = watch >= 0 ? S.cols[watch] : null;
     return {
-      rv: S.rv, mode: S.mode, logN: S.logN,
-      p: S.cols.map(c => [c.act, c.crew, Math.round(c.fat), Math.round(c.str), Math.round(c.tru), Math.round(c.hp), (c.fresh > 0 ? 1 : 0) | (c.hurt > 0 ? 2 : 0) | (c.alone > 0 ? 4 : 0) | (c.hungry ? 8 : 0) | (c.dead ? 16 : 0) | (c.carry && c.mv ? 32 : 0)]),
+      rv: S.rv, mode: S.mode, logN: S.logN, spots: { cook: this.cookTile, vat: this.vatTile },
+      p: S.cols.map(c => [c.act, c.crew, Math.round(c.fat), Math.round(c.str), Math.round(c.tru), Math.round(c.hp), (c.fresh > 0 ? 1 : 0) | (c.hurt > 0 ? 2 : 0) | (c.alone > 0 ? 4 : 0) | (c.hungry ? 8 : 0) | (c.dead ? 16 : 0) | (c.carry && c.mv ? 32 : 0) | (c.chill > 50 ? 64 : 0) | (c.unwell ? 128 : 0), Math.round(c.chill)]),
       crews: S.crews.map(cr => ({ id: cr.id, name: cr.name, gone: cr.gone, lead: cr.lead, members: cr.members, work: cr.work, shift: cr.shift, rules: cr.rules, target: cr.target, dest: cr.dest, recalled: cr.recalled, proj: cr.proj })),
       seed: { feed: sd.feed, queue: sd.queue, printing: sd.printing && { fid: sd.printing.fid, left: sd.printing.left }, stakes: sd.stakes, fab: S.fab.job && { k: S.fab.job.k, left: S.fab.job.left } },
       shelter: { stage: sh.stage, done: sh.done, beds: 12 },
-      projects: S.projects.filter(p => !p.gone).map(p => ({ id: p.id, type: p.type, name: p.name, x: p.x, y: p.y, w: p.w, h: p.h, side: p.side, door: p.door, stage: p.stage, need: p.need, got: p.got, done: p.done, powered: p.powered, paused: p.paused, wait: p.wait, stall: p.stall, mat: p.mat, cap: capOf(p), crews: S.crews.filter(cr => !cr.gone && cr.work === 'build' && cr.proj === p.id).map(cr => cr.name), out: p.out })),
+      projects: S.projects.filter(p => !p.gone).map(p => ({ crop: p.crop && { ...p.crop, plan: p.crop.st === 'bare' ? cropPlan(this, p) : null, eta: p.crop.st === 'grow' ? daysToRipen(this, p.crop.k, p.crop.g) : null }, id: p.id, type: p.type, name: p.name, x: p.x, y: p.y, w: p.w, h: p.h, side: p.side, door: p.door, stage: p.stage, need: p.need, got: p.got, done: p.done, powered: p.powered, paused: p.paused, wait: p.wait, stall: p.stall, mat: p.mat, cap: capOf(p), crews: S.crews.filter(cr => !cr.gone && cr.work === 'build' && cr.proj === p.id).map(cr => cr.name), out: p.out })),
       stores: { yard: S.stores.yard, cargo: S.stores.cargo, precise: Object.fromEntries(PRECISE.map(k => [k, stockOf(S, k)])) }, power: S.power, blueprints: S.blueprints,
       mat: { stone: { tested: S.mat.stone.tested, f: S.mat.stone.tested ? S.mat.stone.f : null }, timber: { tested: S.mat.timber.tested, f: S.mat.timber.tested ? S.mat.timber.f : null } },
-      food: S.food, alive: S.cols.filter(c => !c.dead).length, known: S.knownN, stakes: S.stakes, auto: S.autoCrews, stats: S.stats,
-      detail: c && { id: c.id, skills: c.skills, mem: c.mem.slice(-6), ties: Object.entries(c.ties).filter(([, t]) => t.k).map(([id, t]) => ({ id: +id, k: t.k, f: Math.round(t.f), a: Math.round(t.a) })), worked: c.worked, fresh: c.fresh, hurt: c.hurt, plan: c.plan, home: c.home >= 0 && byId(S, c.home) ? byId(S, c.home).name : '', carry: c.carry },
+      food: S.food, alive: S.cols.filter(c => !c.dead).length, year: this.yearUI(), F: this.foodUI(), known: S.knownN, stakes: S.stakes, auto: S.autoCrews, stats: S.stats,
+      detail: c && { id: c.id, meal: c.meal, tox: +c.tox.toFixed(1), lack: c.lack, skills: c.skills, mem: c.mem.slice(-6), ties: Object.entries(c.ties).filter(([, t]) => t.k).map(([id, t]) => ({ id: +id, k: t.k, f: Math.round(t.f), a: Math.round(t.a) })), worked: c.worked, fresh: c.fresh, hurt: c.hurt, plan: c.plan, home: c.home >= 0 && byId(S, c.home) ? byId(S, c.home).name : '', carry: c.carry },
+    };
+  }
+  yearUI() {
+    const d = this.day, doy = doyOf(d), wx = dayWeather(this.W.seed, d), F = this.S.F;
+    return { doy, season: seasonOf(doy), wx: wx.k, snap: wx.snap, temp: +F.temp.toFixed(1), dawn: +this.dawn.toFixed(2), dusk: +this.dusk.toFixed(2), snow: +F.snow.toFixed(2), ice: +F.ice.toFixed(2), deepIn: untilDeep(d), sun: F.sun };
+  }
+  foodUI() {
+    const S = this.S, F = S.F, Ld = F.larder, r1 = o => { const q = {}; for (const k in o) q[k] = Math.round(o[k] * 10) / 10; return q; };
+    return {
+      life: F.life.map((L, o) => { const k = this.kinds[o]; return L.seen ? { o, name: k.name, seen: k.seen, where: k.where, season: k.season, samples: L.samples, queued: L.queued, tested: L.tested, day: L.day, food: L.tested ? k.food : undefined, bio: L.tested ? k.bio : undefined, result: L.tested ? k.result : undefined, verdict: L.tested ? verdict(k) : undefined, now: inSeason(this, k) } : null; }),
+      lab: { queue: F.lab.queue, cur: F.lab.cur, work: +F.lab.work.toFixed(1) },
+      raw: r1(Ld.raw), prep: r1(Ld.prep), meals: r1(Ld.meals), vats: F.vats.map(v => ({ src: v.src, n: v.n, left: Math.max(0, v.ready - S.tick), proc: v.proc })),
+      names: Object.fromEntries([...new Set([...Object.keys(Ld.raw), ...Object.keys(Ld.prep), ...Object.keys(Ld.meals), ...F.vats.map(v => v.src)])].map(k => [k, (foodOf(this, k) || { name: k }).name])),
+      total: Math.round(mealsInStore(this)), usable: Math.round(mealsInStore(this, true)), locked: Math.round(mealsInStore(this) - mealsInStore(this, true)), gone: Object.keys(F.patch).filter(i => patchLeft(this, +i) <= 0).map(Number),
     };
   }
   logSince(n) { return this.S.log.filter(e => e.n > n); }
@@ -409,10 +473,12 @@ export class Sim {
     this.S = JSON.parse(JSON.stringify(S)); srand(rng);
     const old = this.S.v === 2;
     if (old) this.migrate2();
+    if (this.S.v === 3) this.migrate3();
     this.resetGround(); this.gnew = []; this.qnew = [];
     if (old) projectsThink(this); // give the migrated crews their project now, not at the next check
     this.wear.set(unrle(wear, MAP * MAP)); this.known.set(unrle(known, MAP * MAP)); this.dirty.clear(); this.kdirty.clear();
     this.used = new Set(this.S.cols.map(c => c.slot)); this.seats = new Set(this.S.cols.map(c => c.seat));
+    const dl = daylight(doyOf(this.day) + this.hour / 24); this.dawn = dl.dawn; this.dusk = dl.dusk;
     for (let k = 0; k < NCH * NCH; k++) { this.dirty.add(k); this.kdirty.add(k); }
     return this.S;
   }
@@ -436,6 +502,24 @@ Sim.prototype.migrate2 = function () {
   delete S.shelter; delete S.seedc.cargo; S.v = 3;
   powerCheck(this);
 };
+// version 3 (milestone 3) had no year, no food but the rations, and no local life
+Sim.prototype.migrate3 = function () {
+  const S = this.S;
+  S.F = newFood(this.kinds.length); S.F.sun = sunFactor(seasonOf(doyOf(this.day))); S.F.seasonSaid = seasonOf(doyOf(this.day));
+  S.stores.yard.biomass = 0; Object.assign(S.stats, { harvests: 0, meals: 0, cold: 0 });
+  for (const c of S.cols) Object.assign(c, { chill: 0, tox: 0, lack: 0, ds: 0, dl: 0, unwell: false, meal: '', food: '', from: '', next: '', vat: 0 });
+  S.v = 4;
+  powerCheck(this);
+};
+const sunFactor = s => [1, 1.2, .85, .55][s];
+const SEASON_TITLE = ['Thaw', 'Long light', 'The storm season', 'Deep cold'];
+const WX_TITLE = { storm: 'A storm', blizzard: 'A blizzard' };
+const SEASON_TEXT = [
+  'Thaw: the ice is going and the ground is softening. Crops can go in once the nights stay above freezing.',
+  'Long light: the warm season, with the longest days. The best time for crops, and the solar panels make the most.',
+  'The storm season: cooler days, wind and storms. Storms flatten crops and make work outside risky. Bring in what is ripe.',
+  'Deep cold: nothing grows for twenty days, the days are short and the nights far below freezing. Bunks indoors and stored food carry the colony through.',
+];
 export function bestLead(S, cr) {
   let best = -1, bs = -1;
   for (const i of cr.members) { const c = S.cols[i]; if (c.dead) continue; const s = c.skills.leadership + c.tru / 40; if (s > bs) { bs = s; best = i; } }

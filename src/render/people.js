@@ -112,7 +112,7 @@ export function drawPerson(g, a, x, y, ang, moving, act, t) {
   let sc = 1.75;
   if (act === 9 && still) sc = 1.62;          // sitting by the fire
   if (act === 10 && still) sc = 1.5;          // hunched, alone
-  if (act === 11 && still) sc = 1.58;         // kneeling
+  if ((act === 11 || act === 21 || act === 24) && still) sc = 1.58;         // kneeling: planting a stake, picking, taking a sample
   g.save(); g.translate(x, y); g.rotate(ang + Math.PI / 2); sc *= 1 + bob; g.scale(sc, sc);
   if (act === 12) {   // just woken: the fabricator's glow still on them
     const k = .5 + .5 * Math.sin(t * 2.4 + a.walk), q = g.createRadialGradient(0, 0, .05, 0, 0, .55);
@@ -131,6 +131,11 @@ export function drawPerson(g, a, x, y, ang, moving, act, t) {
   else if (act === 16) { lh = [-.13, -.24]; rh = [.13, -.24]; prop = 'stone'; }
   else if (act === 17) { lh = [-.18, -.08]; rh = [.12, -.2]; prop = 'log'; }
   else if (act === 18 && still) { const k = Math.sin(t * 3 + a.walk); lh = [-.12, -.22 + k * .02]; rh = [.12, -.22 - k * .02]; prop = 'tablet'; }
+  else if (act === 21 && still) { const k = Math.sin(t * 4.4 + a.walk * 2); lh = [-.1, -.27 + k * .04]; rh = [.11, -.28 - k * .04]; prop = 'pick-up'; a.k = k; }
+  else if (act === 22 && still) { const k = Math.max(0, Math.sin(t * 2.8 + a.walk * 2)); a.k = k; lh = [-.03, -.2 - k * .05]; rh = [.07, -.23 - k * .08]; prop = 'hoe'; }
+  else if (act === 23 && still) { const k = t * 3 + a.walk; lh = [-.14, -.2]; rh = [Math.cos(k) * .05, -.3 + Math.sin(k) * .03]; prop = 'pot'; }
+  else if (act === 24 && still) { lh = [-.06, -.27]; rh = [.08, -.25]; prop = 'vial'; }
+  else if (act === 25) { lh = [-.16, -.1]; rh = [.12, -.2]; prop = 'sack'; }
   if (prop === 'crate') { g.fillStyle = 'rgba(0,0,0,.25)'; rrect(g, -.2, -.5, .42, .3, .03); g.fill(); }
   hand(lh[0], lh[1]); hand(rh[0], rh[1]);
   if (prop === 'tablet') { g.fillStyle = '#2a3038'; rrect(g, -.1, -.34, .2, .12, .02); g.fill(); g.fillStyle = `rgba(120,220,255,${.55 + .3 * Math.sin(t * 2 + a.walk)})`; rrect(g, -.085, -.33, .17, .09, .015); g.fill(); }
@@ -143,8 +148,13 @@ export function drawPerson(g, a, x, y, ang, moving, act, t) {
     g.restore();
   }
   else if (prop === 'stone') { g.fillStyle = '#9d968a'; rrect(g, -.19, -.5, .38, .26, .03); g.fill(); g.strokeStyle = 'rgba(40,36,30,.5)'; g.lineWidth = .015; rrect(g, -.19, -.5, .38, .26, .03); g.stroke(); }
+  else if (prop === 'pick-up') { g.fillStyle = '#7d9a5a'; ell(g, rh[0], rh[1] - .04, .04, .03); g.fill(); g.fillStyle = 'rgba(60,46,30,.55)'; ell(g, 0, -.36, .1, .05); g.fill(); }
+  else if (prop === 'hoe') { g.save(); g.translate((lh[0] + rh[0]) / 2, (lh[1] + rh[1]) / 2); g.rotate(-.5 + a.k * 1.1); g.fillStyle = '#6a4a2e'; g.fillRect(-.016, -.42, .032, .44); g.fillStyle = '#8e969e'; rrect(g, -.07, -.45, .14, .05, .01); g.fill(); g.restore(); }
+  else if (prop === 'pot') { g.fillStyle = '#3d4248'; ell(g, 0, -.33, .12, .1); g.fill(); g.fillStyle = 'rgba(200,170,110,.85)'; ell(g, 0, -.335, .09, .07); g.fill(); g.strokeStyle = '#6a4a2e'; g.lineWidth = .02; g.beginPath(); g.moveTo(rh[0], rh[1]); g.lineTo(rh[0] * .4, -.33); g.stroke(); }
+  else if (prop === 'vial') { g.fillStyle = 'rgba(210,230,240,.9)'; rrect(g, .05, -.34, .04, .12, .015); g.fill(); g.fillStyle = `rgba(120,230,200,${.6 + .3 * Math.sin(t * 3 + a.walk)})`; rrect(g, .055, -.29, .03, .06, .01); g.fill(); }
   else if (prop === 'stake') { g.fillStyle = '#9aa4ae'; g.fillRect(-.015, -.42, .03, .18); g.fillStyle = `rgba(120,230,255,${.6 + .4 * Math.sin(t * 6)})`; ell(g, 0, -.42, .03, .03); g.fill(); }
   g.drawImage(a.body, -.5, -.5, 1, 1);
+  if (prop === 'sack') { g.fillStyle = 'rgba(0,0,0,.25)'; ell(g, .05, .09, .2, .17); g.fill(); g.fillStyle = '#9a8460'; ell(g, .02, .06, .19, .16); g.fill(); g.strokeStyle = 'rgba(60,46,30,.6)'; g.lineWidth = .015; g.beginPath(); g.moveTo(-.1, -.06); g.quadraticCurveTo(.02, .02, .14, -.04); g.stroke(); }   // on the back
   if (prop === 'log') { g.save(); g.translate(.06, -.06); g.rotate(-.35); g.fillStyle = 'rgba(0,0,0,.25)'; rrect(g, -.53, -.03, 1.1, .14, .07); g.fill(); g.fillStyle = '#7a5430'; rrect(g, -.55, -.07, 1.1, .14, .07); g.fill(); g.fillStyle = '#c9a273'; ell(g, .54, 0, .06, .07); g.fill(); g.restore(); }   // over the shoulder
   if (act === 10 && still) { g.globalAlpha = .85; g.drawImage(a.head, -.5, -.44, 1, 1); g.globalAlpha = 1; }
   else g.drawImage(a.head, -.5, -.5, 1, 1);

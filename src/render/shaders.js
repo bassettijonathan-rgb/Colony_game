@@ -198,13 +198,28 @@ ${LOOKUP}
 uniform sampler2D uDyn,uLight,uH,uKnown;uniform vec2 uRes;uniform vec4 uCam;
 uniform float uTime,uExposure,uSat,uMist,uNight,uEnc,uVig,uFogOn;uniform vec3 uKeyDir,uKeyCol,uSky,uFog,uLift,uGain;
 uniform vec4 uLP[24];uniform vec4 uLC[24];uniform int uNL;out vec4 o;
+// the year: snow cover, ice, wet ground, the season's colour on the growth (x autumn, y winter), and what is
+// falling (x rain, y snow, z wind), in a colour that suits the light
+uniform float uSnowC,uIce,uWet;uniform vec2 uSeas;uniform vec4 uPrec;uniform vec3 uPC;
 ${NOISE}
+// rain: thin streaks in screen space, slanted by the wind; snow: flakes that drift as they fall
+float rainL(vec2 p,float sc,float sp,float dens){p*=sc;p.x+=p.y*uPrec.z*.35;p.y-=uTime*sp;p.x-=uTime*sp*uPrec.z*.35;
+ vec2 c=floor(vec2(p.x,p.y*.125));vec2 r=h22(c+sc);if(r.x>dens)return 0.0;vec2 f=vec2(fract(p.x),fract(p.y*.125+r.y));
+ return smoothstep(.06,0.0,abs(f.x-.2-r.y*.6))*smoothstep(0.0,.08,f.y)*smoothstep(.34,.12,f.y);}
+float snowL(vec2 p,float sc,float sp,float dens){p*=sc;p.y-=uTime*sp;p.x-=uTime*sp*(.25+uPrec.z*.9);
+ vec2 c=floor(p);vec2 r=h22(c+sc*3.1);if(r.x>dens)return 0.0;vec2 q=c+.5+(r-.5)*.6+vec2(sin(uTime*1.3+r.y*6.3)*.18,0.0);
+ return smoothstep(.16,.04,length(p-q));}
 vec3 aces(vec3 x){return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14),0.0,1.0);}
 void main(){
  vec2 g=gl_FragCoord.xy/uRes,s=vec2(g.x,1.0-g.y);
  vec2 w=uCam.xy+s*uCam.zw;vec2 gx=vec2(uCam.z/uRes.x,0.0),gy=vec2(0.0,uCam.w/uRes.y);
  vec4 dy=texture(uDyn,s);vec3 st=albAt(w,gx,gy).rgb;
+ // the growth turns ochre in the storm season and dies back grey-brown through Deep cold
+ float veg=clamp((st.g-max(st.r,st.b))*8.0,0.0,1.0);
+ if(veg>0.0&&uSeas.x+uSeas.y>0.001){float lg=dot(st,vec3(.45,.45,.1));
+  st=mix(st,vec3(lg*1.28,lg*1.02,lg*.52),veg*uSeas.x*.7);st=mix(st,vec3(lg*1.04,lg*.97,lg*.86)*.86,veg*uSeas.y*.78);}
  vec3 alb=pow(max(st*(1.0-dy.a)+dy.rgb,0.0),vec3(2.2));
+ alb*=1.0-uWet*.3*(1.0-dy.a);
  vec2 lp=1.0/vec2(textureSize(uLight,0));vec4 Lt=texture(uLight,g)*0.36+(texture(uLight,g+vec2(0.9,0.6)*lp)+texture(uLight,g+vec2(-0.6,0.9)*lp)+texture(uLight,g+vec2(-0.9,-0.6)*lp)+texture(uLight,g+vec2(0.6,-0.9)*lp))*0.16;vec3 light=uEnc>0.5?Lt.rgb*Lt.rgb*8.0:Lt.rgb;float sunv=Lt.a;
  vec3 col=alb*light;
  vec4 m=matAt(w);float hT=texture(uH,g).r*4.0;
@@ -224,8 +239,17 @@ void main(){
   float fn=vn(w*vec2(3.0,1.4)+vec2(0.0,-t*0.7))*0.6+vn(w*7.0+vec2(t*0.3,-t*1.4))*0.4;
   float foam=smoothstep(0.2,0.0,dep)*smoothstep(0.42,0.72,fn+(0.2-dep)*1.4);
   wc=mix(wc,vec3(0.8,0.86,0.88)*(light*0.85+0.03),foam*0.7);
-  col=mix(col,wc,wat);}
- float spec=clamp((1.0-m.a)*1.3,0.0,1.0);
+  // ice spreads from the shallows out over the deep water as the cold goes on
+  float ice=smoothstep(-.04,.12,uIce*1.25-dep-.12);
+  if(ice>0.001){float cr=abs(vn(w*2.6+3.0)-.5);vec3 ic=mix(vec3(.36,.46,.52),vec3(.62,.7,.76),vn(w*1.3))*(1.0-smoothstep(.03,0.0,cr)*.35);
+   wc=mix(wc,ic*light+uSky*.08+uKeyCol*pow(max(Hh.z,0.0),30.0)*.12*sunv,ice);}
+  col=mix(col,wc,wat);wat*=1.0-ice;}
+ // snow lies in drifts first, then covers everything but open water
+ if(uSnowC>0.001){float sn=fbm(w*.3+7.0)*.55+vn(w*2.3)*.27+vn(w*9.0)*.18,th=1.0-uSnowC*1.2;
+  float cov=smoothstep(th,th+.16,sn)*(1.0-dy.a*.85)*(1.0-wat)*(.8+.2*smoothstep(.25,.6,vn(w*5.0)));vec3 sc=mix(vec3(.27,.3,.36),vec3(.36,.38,.43),vn(w*4.0))*(.9+.1*vn(w*17.0));
+  col=mix(col,sc*light,cov);}
+ if(uWet>0.001){float pud=smoothstep(.66,.74,fbm(w*.5+19.0))*uWet*(1.0-dy.a)*(1.0-wat);col=mix(col,col*.5+uSky*.1,pud*.6);}
+ float spec=clamp((1.0-m.a)*1.3+uWet*.25*(1.0-dy.a),0.0,1.0);
  if(spec>0.01){vec3 Hh=normalize(uKeyDir+vec3(0.0,0.0,1.0));col+=uSky*0.12*spec+uKeyCol*pow(max(Hh.z,0.0),40.0)*0.25*sunv*spec;}
  for(int i=0;i<24;i++){if(i>=uNL)break;float r=uLC[i].a;if(r<=0.0)continue;vec2 d=uLP[i].xy-w;float dd=dot(d,d);col+=uLC[i].rgb*0.3*exp(-dd/(r*r))+uLC[i].rgb*0.05*exp(-dd/(r*r*9.0));}
  if(uMist>0.001){float mp=textureLod(uMatO,w/uMap,3.0).r;float fm=fbm(w*0.085+vec2(uTime*0.035,uTime*0.01));float dens=uMist*smoothstep(0.32,0.8,fm)*(0.4+1.2*mp);col=mix(col,uFog,clamp(dens,0.0,0.8));}
@@ -238,6 +262,11 @@ void main(){
   if(fg>0.001){float lm=dot(col,vec3(0.2126,0.7152,0.0722));vec3 fc=vec3(lm)*vec3(.6,.7,.86)*.62+vec3(.01,.015,.03);
    float edge=fg*(1.0-fg)*4.0;fc+=vec3(.05,.12,.16)*edge*(.6+.4*sin(uTime*1.5+w.x*.2+w.y*.13))*(1.0-uNight*.5);col=mix(col,fc,fg*.88);}}
  if(!inMap(w))col*=0.25;
+ // falling rain and snow, over everything
+ if(uPrec.x+uPrec.y>0.001){vec2 sp=vec2(s.x*uRes.x/uRes.y,s.y);float f=0.0;
+  if(uPrec.x>0.001)f+=(rainL(sp,38.0,2.4,uPrec.x*.5)+rainL(sp+.37,61.0,3.1,uPrec.x*.55)*.7)*.55;
+  if(uPrec.y>0.001)f+=snowL(sp,14.0,1.1,uPrec.y*.32)+snowL(sp+.5,23.0,1.6,uPrec.y*.36)*.75+snowL(sp+.21,37.0,2.2,uPrec.y*.4)*.5;
+  col=mix(col,uPC,clamp(f,0.0,1.0)*.55);}
  col=pow(col,vec3(1.0/2.2));
  col+=(fract(sin(dot(gl_FragCoord.xy,vec2(12.9898,78.233)))*43758.5453)-0.5)/255.0;
  o=vec4(col,1.0);}`;

@@ -4,11 +4,14 @@
 import { MAP, CH, ACT, hidden } from '../core/consts.js';
 import { clamp, sstep, hash } from '../core/rng.js';
 import { drawBuilding, drawYard, drawCargo, drawMarks, buildingLights, progress } from './buildings.js';
-import { STAGE_NAMES, TEST_STAGES, TYPES } from '../core/build.js';
+import { stagesOf, TYPES } from '../core/build.js';
 import { createGL } from './gl.js';
 import { FS_H, FS_L, FS_C } from './shaders.js';
 import { Terrain } from './terrain.js';
 import { env, pickLights } from './env.js';
+import { fireOn, skyAt, doyOf, seasonOf } from '../core/year.js';
+import { drawLife, placeLife } from '../core/food.js';
+import { drawPatch, drawKitchen } from './life.js';
 import { drawPerson, drawDot, makeSeed, crewColour } from './people.js';
 
 const mul3 = (a, f) => [a[0] * f, a[1] * f, a[2] * f];
@@ -43,14 +46,14 @@ export class View {
   }
   // a new planet, same window
   setWorld(W) {
-    this.W = W; this.terrain.dispose(); this.terrain = new Terrain(this.G, W);
+    this.W = W; this.life = null; this.terrain.dispose(); this.terrain = new Terrain(this.G, W);
     this.cam = W.land ? { x: W.land.x + .5, y: W.land.y + 3, z: Math.max(this.cam.z, 24) } : { x: MAP / 2, y: MAP / 2, z: 1 };
     this.fly = null; this.anim = null; this.fog = !!W.land;
     this.mmBase = this.minimapBase(); this.mmFog = this.fogBase(); this.clampCam();
   }
   // the lander comes down where the player chose: the ground it changed is painted again, and it descends
   land(W, rect) {
-    this.W = W; this.terrain.patch(W, rect); this.fog = true;
+    this.W = W; this.life = null; this.terrain.patch(W, rect); this.fog = true;
     this.mmBase = this.minimapBase(); this.mmFog = this.fogBase();
     this.anim = { t0: performance.now() };
     this.flyTo(W.land.x + .5, W.land.y + 2, 26);
@@ -94,7 +97,7 @@ export class View {
   frame(F) {
     const G = this.G, gl = G.gl, [L, Tp, R, B] = this.rect, z = this.cam.z, ppt = z * this.DPR;
     this.terrain.update(L, Tp, R, B, ppt, performance.now(), F.budget || 2);
-    const E = env(F.hour);
+    const X = this.sky(F), E = env(F.hour, X);
     this.drawDyn(F, L, Tp, R, B, E);
     const lights = this.lights(F, E);
     const { lit, inView } = pickLights(lights, this.cam.x, this.cam.y, [L - 6, Tp - 6, R + 6, B + 6]);
@@ -118,9 +121,23 @@ export class View {
     look(u, 0); G.bind(u.uDyn, 7, this.tDyn); G.bind(u.uLight, 8, this.rtL.t); G.bind(u.uH, 9, this.rtH.t); G.bind(u.uKnown, 10, T.tKnown); gl.uniform1f(u.uFogOn, this.fog ? 1 : 0);
     gl.uniform2f(u.uRes, this.glc.width, this.glc.height); gl.uniform4fv(u.uCam, cam4); gl.uniform1f(u.uTime, F.time); gl.uniform1f(u.uExposure, E.exp); gl.uniform1f(u.uSat, E.sat); gl.uniform1f(u.uMist, E.mist); gl.uniform1f(u.uNight, E.night); gl.uniform1f(u.uEnc, G.float ? 0 : 1); gl.uniform1f(u.uVig, .5);
     gl.uniform3fv(u.uKeyDir, E.key); gl.uniform3fv(u.uKeyCol, E.kc); gl.uniform3fv(u.uSky, E.sky); gl.uniform3fv(u.uFog, mul3(E.amb.map((v, i) => v + ([.9, .85, .8][i] - v) * .3), 1.1)); gl.uniform3fv(u.uLift, E.lift); gl.uniform3fv(u.uGain, E.gain);
+    gl.uniform1f(u.uSnowC, X ? X.cover : 0); gl.uniform1f(u.uIce, X ? X.ice : 0); gl.uniform1f(u.uWet, X ? X.wet : 0); gl.uniform2f(u.uSeas, X ? X.aut : 0, X ? X.wint : 0);
+    gl.uniform4f(u.uPrec, X ? X.rain : 0, X ? X.snow : 0, X ? X.wind : 0, 0);
+    { const k = .12 + .5 * (1 - E.night) * (X ? 1 - X.cloud * .4 : 1); gl.uniform3f(u.uPC, k * .9, k * .95, k * 1.05); }
     gl.uniform4fv(u.uLP, this.LP); gl.uniform4fv(u.uLC, this.LC); gl.uniform1i(u.uNL, lit.length); gl.drawArrays(gl.TRIANGLES, 0, 3);
     this.drawUI(F, L, Tp);
     this.E = E;
+  }
+
+  // the day's sky and ground for the drawing: weather eased in from yesterday's, the real dawn and dusk, snow
+  // and ice from the simulation, the season's colour on the growth, and now and then lightning in a storm
+  sky(F) {
+    const C = F.colony; if (!C || !C.year) return null;
+    const Y = C.year, d = C.day || 1, w = skyAt(this.W.seed, d, F.hour), doy = doyOf(d) + F.hour / 24;
+    const aut = sstep(40, 52, doy) * (1 - sstep(58, 63, doy)), wint = doy >= 56 ? sstep(57, 64, doy) : 1 - sstep(2, 12, doy);
+    let flash = 0;
+    if (w.storm > .3) { const q = F.time * .45, n = Math.floor(q), f = q - n; if (hash(n, 7, 31) < .3 * w.storm) flash = Math.max(0, 1 - f / .05) * (f < .05 ? 1 : 0) + (f > .08 && f < .1 ? .6 : 0); }
+    return { dawn: Y.dawn, dusk: Y.dusk, cloud: w.cloud, rain: w.rain, snow: w.snow, wind: w.wind, fog: w.fog, wet: Math.min(1, w.wet * (Y.temp > 0 ? 1 : .3)), cover: Y.snow, ice: Y.ice, aut, wint, flash };
   }
 
   drawDyn(F, L, Tp, R, B, E) {
@@ -136,12 +153,14 @@ export class View {
     const C = F.colony, site = this.W.site;
     if (C) {
       drawMarks(dc, hRect, this.W, vis);
-      for (const p of C.projects) if (p.type !== 'test' && vis(p.x + p.w / 2, p.y + p.h / 2, Math.max(p.w, p.h))) drawBuilding(dc, hRect, p, E);
+      this.drawLife(dc, hDisc, C, L, Tp, R, B, k, E, F.time);
+      for (const p of C.projects) if (p.type !== 'test' && vis(p.x + p.w / 2, p.y + p.h / 2, Math.max(p.w, p.h))) drawBuilding(dc, hRect, p, E, F.time);
     }
     if (C && vis(Ld.x, Ld.y, 24)) {
       drawCargo(dc, hRect, site, C.stores);
       drawYard(dc, hRect, site.yard, C.stores, C.projects.filter(p => p.type === 'test'), F.time);
       this.drawFire(dc, hDisc, site.fire, F.hour, F.time);
+      drawKitchen(dc, hRect, C.spots, C.F && C.F.vats, F.time);
     }
     if (C) for (const s of C.stakes) if (vis(s.x, s.y, 2)) {
       dc.fillStyle = 'rgba(0,0,0,.35)'; dc.beginPath(); dc.ellipse(s.x + .12, s.y + .1, .2, .14, 0, 0, 6.3); dc.fill();
@@ -177,6 +196,25 @@ export class View {
     hc.globalCompositeOperation = 'source-over';
   }
 
+  // the local life the colony knows about, patch by patch; placed exactly as the simulation places it
+  lifeList() {
+    if (!this.life && this.W.land) { this.kinds = drawLife(this.W.seed); this.life = placeLife(this.W, this.kinds); this.goneSet = new Set(); this.goneKey = ''; }
+    return this.life;
+  }
+  drawLife(g, hDisc, C, L, Tp, R, B, k, E, t) {
+    const FD = C.F; this.lanterns = []; if (!FD || k < 2.5) return;
+    const life = this.lifeList(); if (!life) return;
+    const key = FD.gone.join(','); if (key !== this.goneKey) { this.goneKey = key; this.goneSet = new Set(FD.gone); }
+    const s = seasonOf(doyOf(C.day || 1)), night = E.night > .4, CH0 = 32, NC = Math.ceil(MAP / CH0);
+    const cx0 = Math.max(0, Math.floor((L - 1) / CH0)), cx1 = Math.min(NC - 1, Math.floor((R + 1) / CH0)), cy0 = Math.max(0, Math.floor((Tp - 1) / CH0)), cy1 = Math.min(NC - 1, Math.floor((B + 1) / CH0));
+    for (let cy = cy0; cy <= cy1; cy++) for (let cx = cx0; cx <= cx1; cx++) for (const i of life.by[cy * NC + cx]) {
+      const p = life.list[i]; if (!FD.life[p.o] || p.x < L - 1 || p.x > R + 1 || p.y < Tp - 1 || p.y > B + 1) continue;
+      const kd = this.kinds[p.o], bare = this.goneSet.has(i), dorm = !kd.season[s];
+      if (kd.look.shape === 'lantern' && !bare && !dorm) this.lanterns.push([p, kd]);
+      if (k < 6) { g.fillStyle = `rgba(${kd.look.a.join(',')},.8)`; g.fillRect(p.x - .2, p.y - .2, .4, .4); continue; }
+      drawPatch(g, hDisc, kd, p, bare, dorm, night, t);
+    }
+  }
   drawFire(g, hDisc, f, hour, t) {
     for (let i = 0; i < 9; i++) { const a = i / 9 * 6.283; g.fillStyle = i % 2 ? '#6e6a64' : '#7f7a72'; g.beginPath(); g.arc(f.x + Math.cos(a) * .55, f.y + Math.sin(a) * .55, .14, 0, 6.3); g.fill(); hDisc(f.x + Math.cos(a) * .55, f.y + Math.sin(a) * .55, .12, .25); }
     g.strokeStyle = '#4a3527'; g.lineWidth = .12; g.lineCap = 'round'; for (let i = 0; i < 3; i++) { const a = i * 2.1 + .4; g.beginPath(); g.moveTo(f.x + Math.cos(a) * .35, f.y + Math.sin(a) * .35); g.lineTo(f.x - Math.cos(a) * .25, f.y - Math.sin(a) * .25); g.stroke(); }
@@ -202,6 +240,7 @@ export class View {
     if (on > .01) {
       for (let i = 0; i < 4; i++) { const an = i * Math.PI / 2 + Math.PI / 4, blink = (Math.sin(t * 2.2 + i * 1.3) > .6) ? 1 : .15; out.push({ x: Ld.x + Math.cos(an) * 2.1, y: Ld.y + Math.sin(an) * 2.1, z: .6, r: 2.6, c: mul3([1, .25, .2], 1.4 * on * blink), g: .15 }); }
       buildingLights(out, C.projects, on, mul3);
+      this.lanternLights(out, C, on);
       for (const s of C.stakes) out.push({ x: s.x, y: s.y, z: .9, r: 3, c: mul3([.5, .9, 1], 1.2 * on * (Math.sin(t * 2.6 + s.x) > .2 ? 1 : .3)), g: .2 });
       // a lantern for each crew lead, and anyone else out past the camp after dark
       for (let i = 0; i < F.n; i++) {
@@ -214,6 +253,11 @@ export class View {
     return out;
   }
 
+  // the glowing kind of local life lights its own patch at night (drawLife lists the ones in view)
+  lanternLights(out, C, on) {
+    if (!this.lanterns) return;
+    for (const [p, kd] of this.lanterns.slice(0, 30)) out.push({ x: p.x, y: p.y, z: .5, r: 2.6, c: mul3(kd.look.a.map(v => v / 255), 1.3 * on), g: .25 });
+  }
   drawUI(F, L, Tp) {
     const ui = this.ui, z = this.cam.z, D = this.DPR;
     ui.setTransform(1, 0, 0, 1, 0, 0); ui.clearRect(0, 0, this.uic.width, this.uic.height);
@@ -273,7 +317,7 @@ export class View {
       const stuck = !!p.stall || (p.done && p.type !== 'solar' && !p.powered), show = stuck || (!p.done && z >= 5) || (this.labels && z >= 8) || p.id === F.projSel;
       if (!show) continue;
       const X = sx(p.x + p.w / 2), Y = sy(p.y) - 10; if (X < -150 || X > this.VW + 150 || Y < -40 || Y > this.VH + 60) continue;
-      const head = p.done ? p.name : `${p.name} · ${p.paused ? 'paused' : STAGE_NAMES[p.stage].toLowerCase() + ' ' + Math.round(progress(p) * 100) + '%'}`;
+      const head = p.done ? p.name : `${p.name} · ${p.paused ? 'paused' : stagesOf(p.type)[p.stage].toLowerCase() + ' ' + Math.round(progress(p) * 100) + '%'}`;
       const sub = stuck ? p.wait : '';
       ui.font = '700 11.5px Manrope,system-ui,sans-serif';
       const tw = Math.max(ui.measureText(head).width, sub ? (ui.font = '600 11px Manrope,system-ui,sans-serif', ui.measureText(sub).width) : 0) + 14, hh = sub ? 34 : 20;
@@ -320,6 +364,4 @@ export class View {
     const [L, T, R, B] = this.rect; g.strokeStyle = 'rgba(255,236,190,.9)'; g.lineWidth = 1.2 * D; g.strokeRect(L * k, T * k, (R - L) * k, (B - T) * k);
   }
 }
-// how brightly the cook fire burns at this hour: lit for breakfast, roaring through the evening, embers overnight
-export function fireOn(h) { return Math.max(sstep(5.3, 5.8, h) * (1 - sstep(7.2, 8, h)) * .6, sstep(16.8, 17.6, h) * (1 - sstep(22.5, 23.8, h))); }
-export { crewColour };
+export { crewColour, fireOn };

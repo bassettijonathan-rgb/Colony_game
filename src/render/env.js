@@ -11,8 +11,19 @@ const K_GAIN = [[0, [.84, .95, 1.16]], [5, [.86, .95, 1.14]], [6.2, [1.06, .95, 
 const K_LIFT = [[0, [.004, .012, .035]], [5.5, [.02, .012, .03]], [7, [.012, .012, .02]], [13, [.01, .012, .02]], [18, [.03, .012, .02]], [19.5, [.02, .008, .04]], [21, [.004, .012, .035]], [24, [.004, .012, .035]]];
 const K_MISC = [[0, [1.75, .72, .08]], [5, [1.7, .74, .12]], [6.3, [1.15, .95, .55]], [8, [1.0, 1.04, .18]], [9.5, [1.0, 1.0, 0]], [12, [.94, .98, 0]], [15, [.97, 1.0, 0]], [17, [1.02, 1.05, 0]], [19.5, [1.3, .92, 0]], [21, [1.75, .72, .06]], [24, [1.75, .72, .08]]];   // exposure, saturation, mist
 
-export function env(h) {
-  const SR = 5.8, SS = 18.9, p = (h - SR) / (SS - SR); let key = [0, 0, 1], kc = [0, 0, 0];
+// X carries the day: when the sun really rises and sets, and the weather (cloud, rain, snow, fog, wind, a
+// lightning flash). The keys above were drawn for a sunrise at 5.8 and a sunset at 18.9, so the hour is first
+// moved onto that day.
+const SR = 5.8, SS = 18.9;
+function remap(h, dawn, dusk) {
+  h = ((h % 24) + 24) % 24;
+  if (h >= dawn && h <= dusk) return SR + (h - dawn) / (dusk - dawn) * (SS - SR);
+  const n = 24 - (dusk - dawn), q = ((h - dusk + 24) % 24) / n;
+  return (SS + q * (24 - (SS - SR))) % 24;
+}
+export function env(h0, X) {
+  const h = X ? remap(h0, X.dawn, X.dusk) : h0;
+  const p = (h - SR) / (SS - SR); let key = [0, 0, 1], kc = [0, 0, 0];
   const sunEl = Math.sin(clamp(p, 0, 1) * Math.PI) * (p > 0 && p < 1 ? 1 : 0) * 1.08;
   const night = clamp(1 - sstep(5.1, 6.6, h) + sstep(18.6, 20.1, h), 0, 1);
   if (p > 0 && p < 1) {
@@ -24,7 +35,19 @@ export function env(h) {
     key = [hx / hl * Math.cos(el), hy / hl * Math.cos(el), Math.sin(el)]; kc = mul3([.42, .55, .95], .32 * sstep(0, .15, q) * sstep(1, .85, q) * night);
   }
   const m = keys(h, K_MISC);
-  return { key, kc, amb: keys(h, K_AMB), sky: keys(h, K_SKY), gain: keys(h, K_GAIN), lift: keys(h, K_LIFT), exp: m[0], sat: m[1], mist: m[2], night, cloud: (1 - night) * .85 };
+  let amb = keys(h, K_AMB), sky = keys(h, K_SKY), exp = m[0], sat = m[1], mist = m[2], cloud = (1 - night) * .85;
+  if (X) {
+    // overcast: the sun goes behind the cloud, the light turns flat and grey; fog and rain hang a mist over it all
+    const c = X.cloud, lum = (amb[0] + amb[1] + amb[2]) / 3, glum = (sky[0] + sky[1] + sky[2]) / 3;
+    kc = mul3(kc, 1 - c * .82);
+    amb = amb.map((v, i) => (v + (lum * [.95, 1, 1.06][i] - v) * c * .7) * (1 + c * .35 * (1 - night)));
+    sky = sky.map((v, i) => v + (glum * [.9, .95, 1][i] - v) * c * .8);
+    sat *= 1 - c * .28; exp *= 1 - c * .08;
+    mist = Math.min(1, mist + X.fog * .9 + X.rain * .25 + X.snow * .3);
+    cloud = (1 - night) * (c > .75 ? .25 : .85);
+    if (X.flash > 0) { amb = amb.map((v, i) => v + [.7, .78, 1][i] * X.flash * 1.6); exp *= 1 + X.flash * .4; }
+  }
+  return { key, kc, amb, sky, gain: keys(h, K_GAIN), lift: keys(h, K_LIFT), exp, sat, mist, night, cloud };
 }
 
 // all the lamps that could be lit, nearest to the middle of the view first; the first 24 get lit
