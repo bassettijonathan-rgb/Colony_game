@@ -16,6 +16,7 @@ const STYLE = {
   commons: { slab: '#8d877b', joint: 'rgba(50,44,36,.32)', post: '#6f5136', beam: '#7d5d3e', wall: '#a8a090', roof: ['#a07a4c', '#704f30'], done: ['#b38a58', '#8f6a42', '#664a2e'], seam: 'rgba(40,28,18,.4)' },
   workshop: { slab: '#8a8680', joint: 'rgba(40,40,40,.3)', post: '#5f554b', beam: '#6c5f50', wall: '#98928a', roof: ['#8d949c', '#646b73'], done: ['#a6adb5', '#7f878f', '#5c636b'], seam: 'rgba(30,34,40,.5)' },
   lab: { slab: '#8f8b84', joint: 'rgba(50,48,44,.3)', post: '#5f554b', beam: '#6c5f50', wall: '#aab4b4', roof: ['#b9c6c8', '#86969a'], done: ['#c9d6d8', '#9eb0b4', '#74878c'], seam: 'rgba(40,56,60,.4)' },
+  plant: { slab: '#8a8780', joint: 'rgba(40,42,36,.3)', post: '#5a5a4c', beam: '#66654f', wall: '#9a9c8c', roof: ['#8f9886', '#646d5c'], done: ['#a3ab96', '#7b8570', '#58614e'], seam: 'rgba(30,36,28,.5)' },
   clinic: { slab: '#8f8b84', joint: 'rgba(50,48,44,.3)', post: '#6f5a44', beam: '#7a6450', wall: '#b4b0a6', roof: ['#d2d8d8', '#a5b0b2'], done: ['#e4e9ea', '#c3cccd', '#9aa6a8'], seam: 'rgba(50,60,64,.35)' },
 };
 
@@ -77,6 +78,10 @@ export function drawBuilding(g, hRect, p, E, t) {
   else if (p.type === 'workshop') { for (const k of [.3, .7]) { const a = long ? x + w * k : cx, b = long ? cy : y + h * k; g.fillStyle = '#454b52'; g.beginPath(); g.arc(a, b, .32, 0, 6.3); g.fill(); g.fillStyle = '#2a2f35'; g.beginPath(); g.arc(a, b, .18, 0, 6.3); g.fill(); hRect(a - .3, b - .3, .6, .6, 2); } }
   else if (p.type === 'clinic') { g.fillStyle = '#5fc7c0'; if (long) g.fillRect(x + .2, cy - .25, w - .4, .5); else g.fillRect(cx - .25, y + .2, .5, h - .4); }
   else if (p.type === 'lab') { const n2 = Math.max(1, Math.min(3, Math.round(w * h / 6))); for (let i = 0; i < n2; i++) { const k = (i + .5) / n2, a = long ? x + w * k : cx, b = long ? cy : y + h * k; g.fillStyle = '#56636a'; g.fillRect(a - .3, b - .22, .6, .44); g.fillStyle = 'rgba(120,230,200,.55)'; g.fillRect(a - .2, b - .1, .14, .2); hRect(a - .3, b - .22, .6, .44, 1.9); } }
+  else if (p.type === 'plant') {   // round tanks along the roof, glowing faintly while they work
+    const n2 = p.cap ? p.cap.tanks : Math.max(1, Math.min(3, Math.round(w * h / 12)));
+    for (let i = 0; i < n2; i++) { const k = (i + .5) / n2, a = long ? x + w * k : cx, b = long ? cy : y + h * k, on = p.powered && p.tanks && p.tanks[i] > 0; g.fillStyle = '#4e5a4a'; g.beginPath(); g.arc(a, b, .55, 0, 6.3); g.fill(); g.fillStyle = on ? 'rgba(150,210,110,.75)' : '#34402f'; g.beginPath(); g.arc(a, b, .32, 0, 6.3); g.fill(); hRect(a - .55, b - .55, 1.1, 1.1, 2.2); }
+  }
   else if (p.type === 'dorm') { g.fillStyle = '#4c4038'; g.fillRect(x + .6, y + .5, .35, .35); hRect(x + .6, y + .5, .35, .35, 2.1); }
   if (!p.powered && p.type !== 'shelter') { g.fillStyle = 'rgba(8,12,18,.22)'; g.beginPath(); g.roundRect(x, y, w, h, .25); g.fill(); }
   // the door, on the side the plan gave it

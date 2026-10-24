@@ -51,6 +51,14 @@ Generated live with Web Audio, with no audio files: a pad changing chord every t
 8. Dormitories give bunks, the commons a sit-down evening meal that eases strain more than the fire, the clinic beds where the hurt heal twice as fast, and workshops benches for the workshop crew.
 9. Saves are version 3; a milestone 2 colony continues, its shelter becoming the first project of many.
 
+## More people: the feedstock plant
+
+1. The Seed lands with feedstock for six bodies. After that the fabricator can only print more people from feedstock the colony makes itself.
+2. A feedstock plant (Build window, Plan) holds one to three tanks, by size, and draws power like any building. With power, each tank takes a batch of 3 loads of biomass and 1 of stone from the yard and turns it, over half a day, into an eighth of a body's feedstock. A two-tank plant makes a body's worth about every two days.
+3. Forage crews keep the yard stocked with biomass for it (after the projects' own biomass, and after food when the larder runs low), and quarry crews with stone. The plant's card shows each tank, the next body's progress and what it waits for; an alert says when it is starved.
+4. The plant stops once the fabricator holds feedstock for four bodies, or for everyone left in the archive. Each new body's worth arrives as a letter; pick who wakes in the Archive (`Q`), which also explains the plant when the feedstock runs out.
+5. The bot builds a plant after its solar field, puts someone on quarrying, and prints the Seed's pick whenever there is feedstock.
+
 ## Food and the year (milestone 4, part 1)
 
 1. The year is 80 days in four seasons of 20. Temperature follows the season and the hour, the weather is drawn day by day (clear, cloud, rain, fog, wind, storms, snow), and the sun rises and sets later or earlier through the year. Deep cold is the fourth season: nothing grows, water freezes, snow lies, and anyone outdoors at night chills fast. The chip next to the clock shows today's weather and temperature; pointing at it gives sunrise, sunset and the days left until Deep cold.

@@ -6,7 +6,7 @@ import { ACT, ACT_NAME, SHIFTS, WORKS, RULES, SKILLS, SKILL_NAME, DAY_TICKS, HOU
 import { TRAITS, suggestFirst } from '../core/founders.js';
 import { PRINT_TICKS } from '../core/work.js';
 import { CROPS, CROP_KEYS, SAMPLES, TEST_H, PROC_NAME } from '../core/food.js';
-import { TYPES, PLANNABLE, STAGE_NAMES, TEST_STAGES, stagesOf, matName, LANDER_KW } from '../core/build.js';
+import { TYPES, PLANNABLE, STAGE_NAMES, TEST_STAGES, stagesOf, matName, LANDER_KW, FEED } from '../core/build.js';
 import { progress } from '../render/buildings.js';
 import { crewColour, portrait } from '../render/people.js';
 import { LETTERS } from '../render/view.js';
@@ -23,10 +23,10 @@ const cap1 = s => s.charAt(0).toUpperCase() + s.slice(1);
 const SIDE = ['north', 'east', 'south', 'west'];
 const pct = f => Math.round(f * 100) + '%';
 const icon = (id, cls = 'ic') => `<svg class="${cls}"><use href="#i-${id}"/></svg>`;
-const TICON = { shelter: 'seed', dorm: 'dorm', commons: 'commons', workshop: 'tool', clinic: 'clinic', solar: 'solar', test: 'test', field: 'field', lab: 'lab' };
+const TICON = { shelter: 'seed', dorm: 'dorm', commons: 'commons', workshop: 'tool', clinic: 'clinic', solar: 'solar', test: 'test', field: 'field', lab: 'lab', plant: 'tank' };
 const TAB = { archive: ['Archive', 'archive'], crews: ['Crews', 'crews'], build: ['Build', 'build'], life: ['Food and local life', 'life'], log: ['Log', 'log'] };
 // what a building holds, in a few words
-const holds = (type, c) => ({ shelter: `${c.beds} bunks`, dorm: `${c.beds} bunks`, commons: `seats for ${c.seats}`, workshop: `${c.benches} bench${c.benches > 1 ? 'es' : ''}`, clinic: `${c.beds} beds`, solar: `${c.panels} panels, ${c.supply} kW`, field: `${c.tiles} tiles of beds`, lab: `${c.benches} lab bench${c.benches > 1 ? 'es' : ''}` })[type] || '';
+const holds = (type, c) => ({ shelter: `${c.beds} bunks`, dorm: `${c.beds} bunks`, commons: `seats for ${c.seats}`, workshop: `${c.benches} bench${c.benches > 1 ? 'es' : ''}`, clinic: `${c.beds} beds`, solar: `${c.panels} panels, ${c.supply} kW`, field: `${c.tiles} tiles of beds`, lab: `${c.benches} lab bench${c.benches > 1 ? 'es' : ''}`, plant: `${c.tanks} tank${c.tanks > 1 ? 's' : ''}` })[type] || '';
 const loads = L => Object.entries(L).filter(([k, n]) => n > 0 && k !== 'mark' && k !== 'test').map(([k, n]) => matName(k, n)).join(', ');const SHIFT_TXT = SHIFTS.map(s => `${s.name} ${s.a}–${s.b}`);
 // what a crew's members are doing, in a word each
 const DOING = { [ACT.BED]: 'asleep', [ACT.INSIDE]: 'asleep', [ACT.WALK]: 'walking', [ACT.HOME]: 'walking back', [ACT.TOBED]: 'turning in', [ACT.SURVEY]: 'surveying', [ACT.PLANT]: 'planting a stake', [ACT.CARRY]: 'carrying', [ACT.BUILD]: 'building', [ACT.EAT]: 'eating', [ACT.IDLE]: 'at camp', [ACT.ALONE]: 'off alone', [ACT.WAKE]: 'waking', [ACT.QUARRY]: 'cutting stone', [ACT.FELL]: 'felling', [ACT.STONE]: 'carrying stone', [ACT.LOG]: 'carrying logs', [ACT.TEST]: 'testing', [ACT.INDOORS]: 'indoors', [ACT.BENCH]: 'at a bench', [ACT.DEAD]: 'dead', [ACT.DOWN]: 'down', [ACT.TEND]: 'tending someone', [ACT.DRAG]: 'carrying someone' };
@@ -148,10 +148,13 @@ export class Panels {
       for (const f of suggestFirst(pool, capLeft)) this.chosen.add(f);
     }
     for (const f of [...this.chosen]) { const p = arch[f]; if (!p || p.woke != null || sd.queue.includes(f) || (sd.printing && sd.printing.fid === f)) this.chosen.delete(f); }
-    const sig = ['a', U.rv, sd.feed, sd.queue.join('.'), sd.printing ? sd.printing.fid : -1, [...this.chosen].join('.'), arch.length].join('|');
+    const sig = ['a', U.rv, sd.feed, sd.fb, sd.queue.join('.'), sd.printing ? sd.printing.fid : -1, [...this.chosen].join('.'), arch.length].join('|');
     return [sig, () => {
       const names = new Map(arch.map(p => [p.fid, p.name]));
-      let h = `<div class="box"><div class="row2"><div class="grow"><b>Fabricator</b><div class="note" style="margin:2px 0 0">${sd.feed ? `Feedstock for ${sd.feed} more ${sd.feed === 1 ? 'body' : 'bodies'}.` : 'No feedstock left. The core has stopped.'} Each body takes about four hours to print.</div></div></div>`;
+      const plants = U.projects.filter(p => p.type === 'plant' && p.done);
+      let h = `<div class="box"><div class="row2"><div class="grow"><b>Fabricator</b><div class="note" style="margin:2px 0 0">${sd.feed ? `Feedstock for ${sd.feed} more ${sd.feed === 1 ? 'body' : 'bodies'}.` : 'No feedstock left for bodies.'} Each body takes about four hours to print.</div></div></div>`;
+      if (plants.length) h += `<div class="note" style="margin:8px 0 0">Feedstock plant: the next body’s feedstock is ${Math.round(sd.fb / sd.per * 100)}% made.${plants.map(p => p.why ? ` ${esc(p.name)}: ${esc(p.why)}` : '').join('')}</div><div class="bar"><u style="width:${Math.round(sd.fb / sd.per * 100)}%"></u></div>`;
+      else if (!sd.feed || capLeft <= 0) h += `<div class="sec">To print more people</div>` + how(['Plan a <b>feedstock plant</b> in the Build window (<kbd>B</kbd>), under Plan. It needs power, like every building.', 'Keep its tanks fed: a forage crew brings biomass and a quarry crew brings stone to the yard.', 'Each tank turns that into feedstock, an eighth of a body every half day. When a body’s worth is ready, pick who wakes here.']);
       if (sd.printing) h += `<div style="margin-top:8px;font-size:12px;font-weight:700">Printing ${esc(names.get(sd.printing.fid))}</div><div class="bar"><u id="prBar" style="width:0"></u></div>`;
       if (sd.queue.length) h += `<div class="sec">Next in line</div>` + sd.queue.map((f, i) => `<div class="q"><span>${i + 1}. ${esc(names.get(f))}</span><button data-act="unq" data-fid="${f}">Remove</button></div>`).join('');
       h += `</div>`;
@@ -494,7 +497,7 @@ export class Panels {
     const A = this.A, U = A.ui, el = $('bcard'), p = U && A.projSel >= 0 ? U.projects.find(q => q.id === A.projSel) : null;
     if (!p && A.thing && U && A.phase === 'colony') return this.tcard(A.thing);
     if (!p || A.phase !== 'colony') { el.hidden = true; this.bSig = ''; return; }
-    const sig = JSON.stringify([p, this.confirm === p.id, p.type === 'clinic' && [U.care, U.med]]); if (sig === this.bSig) { el.hidden = false; return; }
+    const sig = JSON.stringify([p, this.confirm === p.id, p.type === 'clinic' && [U.care, U.med], p.type === 'plant' && [U.seed.feed, U.seed.fb]]); if (sig === this.bSig) { el.hidden = false; return; }
     this.bSig = sig;
     const T = TYPES[p.type], test = p.type === 'test', names = stagesOf(p.type), n = names.length;
     const f = progress(p), all = p.done ? 1 : (p.stage + f) / n;
@@ -511,6 +514,13 @@ export class Panels {
       h += `<div class="note" style="margin:6px 0 0">${C.medics ? `${C.medics} ${C.medics === 1 ? 'person is' : 'people are'} skilled enough to work as a medic.` : 'Nobody is skilled in medicine yet: others will do what they can, worse.'} A crew set to clinic work stays close by.</div>`;
       h += `<div class="sec">When there are more patients than medics</div><div class="seg sm wrap">${Object.entries(TRIAGE).map(([k, t]) => `<button data-act="triage" data-v="${k}" class="${C.triage === k ? 'on' : ''}">${t}</button>`).join('')}</div>`;
       if (M) h += `<div class="note" style="margin:6px 0 0">Supplies: ${M.dress} dressings, ${M.pk} painkillers, ${M.abx} antibiotic courses, ${M.blood} units of blood substitute.</div>`;
+    }
+    if (p.type === 'plant' && p.done) {
+      const sd = U.seed, T0 = p.tanks || [], full = FEED.h * HOUR;
+      h += `<div class="sec">Tanks</div><div class="bill">${Array.from({ length: p.cap.tanks }, (_, i) => `<div><em>Tank ${i + 1}</em>${T0[i] > 0 ? `working, ${Math.round((1 - T0[i] / full) * 100)}%` : 'empty'}</div>`).join('')}</div>`;
+      h += `<div class="sec">Next body · ${sd.fb} of ${sd.per} batches</div><div class="bar"><u style="width:${Math.round(sd.fb / sd.per * 100)}%"></u></div>`;
+      h += `<div class="note" style="margin:6px 0 0">Each batch takes ${FEED.biomass} loads of biomass and ${FEED.stone} of stone from the yard and half a day with power. ${sd.feed ? `The fabricator holds feedstock for ${sd.feed} ${sd.feed === 1 ? 'body' : 'bodies'}: pick who wakes in the Archive (<kbd>Q</kbd>).` : ''}</div>`;
+      if (p.why) h += `<div class="pw">${esc(p.why)}</div>`;
     }
     if (p.type === 'field' && p.done) { const [state, sel] = fieldBits(p); h += `<div class="sec">Crop</div><div class="note" style="margin:0 0 6px">${state}</div>${sel}`; }
     if (!p.done) {

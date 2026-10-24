@@ -2,9 +2,11 @@
 // The bot plays the opening the way a sensible player would: it lands on the most promising of the three
 // sites, wakes the six founders the Seed suggests, keeps the Seed's crews, and lets the days run. Every morning it
 // looks at the building list: it tests the local stone and timber, then plans a field, a workshop, a solar field,
-// a commons, a second field, a clinic and a dormitory, two at a time, each on the nearest good plot. It feeds the
-// colony too: a forager once the shelter stands, a farmer once a field is made, a cook once there is food that
-// needs the kitchen, every sample tested as soon as it is ready, and the surveyors foraging once the stakes are out.
+// a feedstock plant, a commons, a second field, a clinic and a dormitory, two at a time, each on the nearest good
+// plot. It feeds the colony too: a forager once the shelter stands, a farmer once a field is made, a cook once
+// there is food that needs the kitchen, every sample tested as soon as it is ready, and the surveyors foraging once
+// the stakes are out. Once the plant stands it puts someone on quarrying, and prints the Seed's pick whenever
+// there is feedstock.
 import { generateWorld, findSites, landAt } from '../core/world.js';
 import { Pathfinder } from '../core/path.js';
 import { Sim } from '../core/sim.js';
@@ -26,12 +28,15 @@ export function landColony(seed, mode = 'landfall', count = 300, season = +(glob
   return { W, P, sim, site, timing: { world: t1 - t0, land: t2 - t1, graph: t3 - t2, field: t4 - t3 } };
 }
 
-const PLAN = [['field', 8, 6], ['workshop', 6, 7], ['solar', 6, 6], ['commons', 7, 8], ['field', 8, 7], ['clinic', 5, 6], ['field', 8, 6], ['dorm', 6, 8]];
+const PLAN = [['field', 8, 6], ['workshop', 6, 7], ['solar', 6, 6], ['plant', 5, 6], ['commons', 7, 8], ['field', 8, 7], ['clinic', 5, 6], ['field', 8, 6], ['dorm', 6, 8]];
 export function botBuild(sim) {
   const S = sim.S;
   botFood(sim);
   if (!S.projects[0].done) return;   // the shelter comes first
   for (const m of ['stone', 'timber']) if (!S.mat[m].tested) sim.command({ op: 'test', mat: m });
+  // new feedstock wakes the Seed's pick from the archive
+  const sd = S.seedc;
+  if (sd.feed > 0 && !sd.queue.length && !sd.printing) sim.command({ op: 'print', ids: sim.command({ op: 'suggest' }).slice(0, sd.feed) });
   if (S.projects.filter(p => !p.gone && !p.done && p.type !== 'test').length >= 2) return;
   const n = {}, next = PLAN.find(([t]) => { n[t] = (n[t] || 0) + 1; return S.projects.filter(p => !p.gone && p.type === t).length < n[t]; });
   const spot = next && findPlot(sim, next[0], next[1], next[2]);
@@ -56,6 +61,7 @@ function botFood(sim) {
   want('forage', 'fieldcraft');
   if (sim.policy === 'lean') return;
   if (built(S).some(p => p.type === 'field')) want('farm', 'botany');
+  if (built(S).some(p => p.type === 'plant')) want('quarry', 'building');
   const tested = F.life.map((L, o) => L.tested && sim.kinds[o].food).filter(Boolean);
   if (tested.some(f => f.proc !== 'cook') || F.firstHarvest) want('kitchen', 'cooking');
   const sv = crewOf('survey');

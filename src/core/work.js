@@ -8,7 +8,7 @@ import { remember, trustAll } from './life.js';
 import { suggestFirst } from './founders.js';
 import {
   TYPES, RAW, PRECISE, RECIPE, FIT_H, FAB_SLOW, STAGE_NAMES, matName, stageLoads, billOf, loadCheck, capacity, checkPlot, addProject,
-  active, built, byId, capOf, powerCheck, shortOf, stockOf, sources, takeFrom, putBack, nextOrder, rawWanted, clearPlot, LANDER_KW, LABOUR, stagesOf,
+  active, built, byId, capOf, powerCheck, shortOf, stockOf, sources, takeFrom, putBack, nextOrder, rawWanted, clearPlot, LANDER_KW, LABOUR, stagesOf, FEED, plantStop,
 } from './build.js';
 import { eat, analyse, labHour, kitchenJob, cookMeals, foodOf, add, patchLeft, takePatch, inSeason, cropPlan, sowUnits, harvestLoads, keyOf, isCrop, mealsInStore, hasKitchen, SAMPLES, PROC_DAYS, CROPS, CROP_KEYS } from './food.js';
 import { dayWeather, untilDeep } from './year.js';
@@ -25,6 +25,7 @@ const FIT_JOBS = new Set(['fetch', 'pick', 'cut', 'fit']);
 export function seedTick(sim) {
   const S = sim.S, sd = S.seedc;
   if (S.mode !== 'landfall') return;
+  if (S.tick % PLANT_STEP === 0) plantTick(sim);
   if (!sd.printing && sd.queue.length && sd.feed > 0) {
     const fid = sd.queue.shift(); sd.printing = { fid, left: PRINT_TICKS }; sd.feed--; S.rv++;
     sim.log(`The fabricator began printing a body for ${S.archive[fid].name}.`);
@@ -35,7 +36,7 @@ export function seedTick(sim) {
     remember(sim, c, 'Woke in a new body, on a new world.');
     sim.log(`${p.name} woke in a new body.`, 'good', { e: 'woke', lvl: 1, who: c.id, title: 'A founder is awake' });
     if (S.autoCrews) autoCrew(sim, c); else sim.log(`${p.name} is waiting to be put in a crew.`, '', { e: 'nocrew', lvl: 1, who: c.id, title: 'Waiting for a crew' });
-    if (!sd.feed && !sd.queue.length) sim.log('The fabricator has used the last of its feedstock for bodies. It will make modules from salvage when the colony needs them.', '', { e: 'feedstock', lvl: 1, x: sim.W.site.cargo.x + .5, y: sim.W.site.cargo.y + .5, title: 'No more bodies to print' });
+    if (!sd.feed && !sd.queue.length) sim.log(`The fabricator has used the last of its feedstock for bodies. ${built(S).some(q => q.type === 'plant') ? 'The feedstock plant makes more, a batch at a time.' : 'To print more people, the colony needs a feedstock plant: plan one in the Build window.'} Meanwhile the fabricator makes modules from salvage.`, '', { e: 'feedstock', lvl: 1, x: sim.W.site.cargo.x + .5, y: sim.W.site.cargo.y + .5, title: 'No more bodies to print' });
   }
   // with no body to print, the fabricator makes modules from salvage, three times slower than a workshop bench
   if (sd.printing || sd.queue.length) return;
@@ -52,6 +53,39 @@ export function seedTick(sim) {
     if (M && (M.dress < MED_KIT.dress / 3 || M.abx < 3 || M.blood < 2 || M.pk < 4) && S.stores.yard.salvage >= MEDS_SALVAGE) { S.stores.yard.salvage -= MEDS_SALVAGE; f.job = { k: 'meds', left: Math.round(MEDS_H * HOUR * FAB_SLOW) }; S.rv++; return; }
     const k = nextOrder(sim);
     if (k && S.stores.yard.salvage >= RECIPE[k].salvage) { S.stores.yard.salvage -= RECIPE[k].salvage; f.job = { k, left: Math.round(RECIPE[k].h * HOUR * FAB_SLOW) }; S.rv++; }
+  }
+}
+// ---------- the feedstock plant ----------
+// With power, each tank takes a batch of biomass and stone from the yard and over half a day turns it into an
+// eighth of a body's feedstock. What it waits for, if anything, goes on its card.
+const PLANT_STEP = 30, PLANT_WAIT = {
+  biomass: 'Waiting for biomass in the yard. A forage crew brings it.',
+  stone: 'Waiting for stone in the yard. A quarry crew brings it.',
+  'biomass+stone': 'Waiting for biomass and stone in the yard. A forage crew brings biomass, and a quarry crew brings stone.',
+};
+function plantTick(sim) {
+  const S = sim.S, sd = S.seedc, Y = S.stores.yard;
+  for (const p of built(S)) {
+    if (p.type !== 'plant') continue;
+    const n = capOf(p).tanks; if (!p.tanks) p.tanks = [];
+    while (p.tanks.length < n) p.tanks.push(0);
+    let why = p.powered ? '' : 'No power, so the tanks have stopped.';
+    for (let i = 0; i < n && p.powered; i++) {
+      if (p.tanks[i] > 0) {
+        if ((p.tanks[i] -= PLANT_STEP) > 0) continue;
+        p.tanks[i] = 0; S.rv++;
+        if ((sd.fb = (sd.fb || 0) + 1) >= FEED.per) {
+          sd.fb -= FEED.per; sd.feed++; S.stats.feedstock = (S.stats.feedstock || 0) + 1;
+          sim.log(`${p.name} has made feedstock for another body. ${sd.queue.length ? `The fabricator starts on ${S.archive[sd.queue[0]].name}, next in line.` : 'The fabricator can print one more founder: choose who in the Archive.'}`, 'good', { e: 'feedmade', lvl: 2, pid: p.id, title: 'Feedstock for one more person' });
+        }
+      }
+      const stop = plantStop(S);
+      if (stop) { why = why || stop; continue; }
+      const short = ['biomass', 'stone'].filter(k => Y[k] < FEED[k]);
+      if (short.length) { why = why || PLANT_WAIT[short.join('+')]; continue; }
+      Y.biomass -= FEED.biomass; Y.stone -= FEED.stone; p.tanks[i] = Math.round(FEED.h * HOUR); S.rv++;
+    }
+    if (why !== (p.why || '')) { p.why = why; S.rv++; }
   }
 }
 // the Seed's suggestion for where a new founder goes: two out surveying, everyone else building
@@ -154,8 +188,11 @@ const FORAGE_R = 110;
 function forageNext(sim, c) {
   const S = sim.S;
   let going = 0; for (const o of S.cols) if (!o.dead && o.want === 'biomass' && (o.job === 'cut' || o.job === 'drop' || o.job === 'bio')) going++;
-  if (S.stores.yard.biomass + going < rawWanted(S, 'biomass') - 6 && (patchJob(sim, c, 'bio') || gatherJob(sim, c, 'biomass', -1))) return true;
+  // the projects' biomass first, then food when the larder needs it, then the feedstock plant's
+  const bio = plants => S.stores.yard.biomass + going < rawWanted(S, 'biomass', plants) - 6 && (patchJob(sim, c, 'bio') || gatherJob(sim, c, 'biomass', -1));
+  if (bio(false)) return true;
   if (forageWanted(sim) && patchJob(sim, c, 'forage')) return true;
+  if (bio(true)) return true;
   return patchJob(sim, c, 'sample');
 }
 // whether the larder needs more wild food: five days of meals beyond the rations, and in the last weeks before

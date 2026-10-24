@@ -15,7 +15,8 @@ const CARD_S = 22, CARD_NEW_S = 45, MAX_CARDS = 4;
 export const EXPLAIN = {
   woke: 'A founder is awake in a printed body. For the first ten days a new body feels strange: they tire faster and work a little slower. Unless you have taken over the crews, the Seed puts each new founder in one.',
   nocrew: 'Since you took over the crews from the Seed, new founders wait at camp until you put them in one. Open Crews (C) to choose.',
-  feedstock: "The fabricator can't print any more people. From here the colony has only the people who are already awake.",
+  feedstock: 'The feedstock the Seed brought down is used up. A body is mostly water and the molecules of life, with minerals for the bones: a feedstock plant makes that from local biomass and crushed stone, slowly. Plan one in the Build window (B), give it power, and keep a forage crew and a quarry crew filling the yard.',
+  feedmade: 'Each body of feedstock lets the fabricator print one more founder from the archive. Choose who in the Archive (Q). The plant keeps going until the fabricator holds feedstock for four bodies.',
   hurt: 'Accidents happen most to the exhausted, the reckless, the very cold and people new to their bodies, and more in storms. Wounds bleed, hurt and can go bad; the Health tab of a person’s card shows each one and what has been done for it. The hurt are slower until they heal.',
   badhurt: 'Blood loss, pain and shock add up: someone can die of several wounds that would each be survivable. Someone nearby gives first aid and gets them to a bed; a medic does the rest, far better in a clinic with power.',
   down: 'Someone who is down can’t get up on their own. The nearest free person comes to stop the bleeding and carry them to a bed, even if it means waking up.',
@@ -57,6 +58,7 @@ export const EXPLAIN = {
 // problems that last: what to look at and what helps
 const ALERTS = {
   print: ['info', 'Choose who to print', 'The fabricator has feedstock and nobody in line. Open the Archive (Q) to pick who wakes next.'],
+  feedwait: ['warn', '', 'Its tanks have stopped. Its card says what it waits for.'],
   food: ['warn', '', 'Foragers bring in wild food the Life window (G) shows is safe; fields feed more once they are made and sown.'],
   cold: ['bad', '', 'They need to get indoors or to the fire. The very cold work slower and have accidents, and can die if it lasts.'],
   unwell: ['warn', '', 'Something in their diet. More kinds of food in the larder put it right over some days.'],
@@ -80,7 +82,7 @@ const ALERTS = {
   stalled: ['warn', '', ''],
   idle: ['info', 'Nothing to build', 'A build crew has nothing on the project list. Plan a building in the Build window (B), or give the crew other work.'],
 };
-const ORDER = ['down', 'bleed', 'hungry', 'cold', 'food', 'deep', 'locked', 'nofarm', 'ripe', 'unwell', 'samples', 'print', 'alone', 'hurt', 'meds', 'nomedic', 'strain', 'tired', 'trust', 'nocrew', 'stalled', 'dark', 'idle'];
+const ORDER = ['down', 'bleed', 'hungry', 'cold', 'food', 'deep', 'locked', 'nofarm', 'ripe', 'unwell', 'samples', 'print', 'feedwait', 'alone', 'hurt', 'meds', 'nomedic', 'strain', 'tired', 'trust', 'nocrew', 'stalled', 'dark', 'idle'];
 
 export class News {
   constructor(A, api) {
@@ -207,6 +209,8 @@ export class News {
     if ((ids = people(p => p[1] < 0 && p[0] !== ACT.WAKE)).length) add('nocrew', named(ids, 'has no crew', 'people have no crew'), ids.map(i => ({ who: i })));
     const stalled = U.projects.filter(p => p.stall && !p.done);
     if (stalled.length) add('stalled', stalled.length === 1 ? `${stalled[0].name} stalled` : `${stalled.length} projects stalled`, stalled.map(p => ({ pid: p.id })), stalled.map(p => `${p.name}: ${p.wait}.`).join(' '));
+    const starved = U.projects.filter(p => p.type === 'plant' && p.done && p.powered && p.why && p.why.startsWith('Waiting'));
+    if (starved.length) add('feedwait', starved.length === 1 ? `${starved[0].name} is waiting` : `${starved.length} feedstock plants are waiting`, starved.map(p => ({ pid: p.id })), starved[0].why);
     const dark = U.projects.filter(p => p.done && p.type !== 'solar' && !p.powered);
     if (dark.length) add('dark', dark.length === 1 ? `${dark[0].name} is dark` : `${dark.length} buildings are dark`, dark.map(p => ({ pid: p.id })));
     const idle = U.crews.filter(c => !c.gone && c.work === 'build' && c.members.length && c.proj < 0);
