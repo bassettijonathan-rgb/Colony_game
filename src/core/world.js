@@ -208,3 +208,27 @@ export function floodPlain(W) {
   W.flood = thr;
   return thr;
 }
+
+// ---------- the ground below: one level down, a couple of storeys under the surface ----------
+// What a dug room would cut through, tile by tile: soil, clay, stone or hard rock, ground too wet to dig by water,
+// and seams of ore in the stone. Only the ground around the landing is worked out; further out it is solid.
+export const UG = { SOIL: 0, CLAY: 1, STONE: 2, HARD: 3, WET: 4, SOLID: 5 }, ORE = 8;
+export const U_NAME = ['soil', 'clay', 'stone', 'hard rock', 'wet ground', 'solid rock'];
+export function underOf(W) {
+  if (W.under) return W.under;
+  const L = W.land, s = W.seed, out = new Uint8Array(MAP * MAP).fill(UG.SOLID), thr = floodPlain(W);
+  const x0 = Math.max(1, L.x - FLOOD_R), x1 = Math.min(MAP - 2, L.x + FLOOD_R), y0 = Math.max(1, L.y - FLOOD_R), y1 = Math.min(MAP - 2, L.y + FLOOD_R);
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+    const i = y * MAP + x, t = W.type[i], e = W.elev[i] / 255, m = W.moist[i] / 255, n = vnoise(x / 14, y / 14, s + 41), up = W.rock - e;
+    let u;
+    if (t === T.SHALLOW || t === T.DEEP || t === T.MARSH || thr[i] <= 2) u = UG.WET;
+    else if (t === T.ROCK || up < .03) u = UG.HARD;
+    else if (up < .1 || n > .58) u = UG.STONE;
+    else if (m > .55 && n < .4) u = UG.CLAY;
+    else u = UG.SOIL;
+    if ((u === UG.STONE || u === UG.HARD) && vnoise(x / 6, y / 6, s + 43) > .74 && hash(x, y, s + 44) < .85) u |= ORE;
+    out[i] = u;
+  }
+  W.under = out;
+  return out;
+}

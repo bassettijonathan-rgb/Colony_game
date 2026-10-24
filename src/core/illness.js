@@ -9,6 +9,7 @@ import { HOUR, ACT, T, hidden } from './consts.js';
 import { rnd, clamp } from './rng.js';
 import { SEALED } from '../sealed/texts.js';
 import { doyOf, seasonOf, dayWeather } from './year.js';
+import { spend } from './director.js';
 
 // Each kind: what it is called, the symptoms anyone can see, how new cases start (src) and how it spreads from
 // the sick (spread, chances per hour of company or per shared meal), hours of incubation, sickness and crisis,
@@ -75,7 +76,8 @@ function sus(sim, c, K) {
   const imm = c.bd.imm[K.id] || 0;
   return (K.after === 'immune' ? 1 - Math.max(0, imm) : 1) * (newBody(sim, c) ? 2 : 1) * (c.hungry ? 1.4 : 1) * (c.unwell ? 1.2 : 1) * (c.fat > 80 ? 1.2 : 1) * (c.chill > 50 ? 1.2 : 1);
 }
-const tryCatch = (sim, c, K, p, from) => { if (!c.bd.ill.some(q => q.k === K.id) && rnd() < p * sus(sim, c, K)) catchIt(sim, c, K, from); };
+// catching it from the world (from -1) is damped by the director when the colony has had enough; from each other, never
+const tryCatch = (sim, c, K, p, from) => { if (!c.bd.ill.some(q => q.k === K.id) && rnd() < p * sus(sim, c, K) * (from < 0 && sim.S.dir ? sim.S.dir.damp : 1)) catchIt(sim, c, K, from); };
 export function catchIt(sim, c, K, from) {
   const b = c.bd, imm = b.imm[K.id] || 0;
   const sev = clamp(K.sev * (.2 + .8 * Math.pow(rnd(), 1.3)) * (newBody(sim, c) ? 1.25 : 1) * (c.hungry ? 1.2 : 1) * (c.age > 55 ? 1.15 : 1) * (imm < 0 ? 1 - imm : 1), .05, 1);
@@ -113,6 +115,7 @@ function next(sim, c, q, K) {
     sim.log(m, 'bad', { e: first ? 'sickfirst' : 'sick', lvl: first ? 2 : 1, who: c.id, title: first ? 'Illness in the camp' : `${c.name} is sick` });
   } else if (q.st === 1 && q.sev >= K.crisisAt) {
     q.st = 2; q.T = q.t = span(K.crisis);
+    spend(sim, 1, 'crisis');
     sim.log(`${c.name}'s illness has taken a turn for the worse. The next day or so decides it.`, 'bad', { e: 'crisis', lvl: 2, who: c.id, title: `${c.name} is gravely ill` });
   } else if (q.st < 3) {
     if (q.st === 2) sim.log(`${c.name} is through the worst of ${label(q)}.`, 'good', { who: c.id });

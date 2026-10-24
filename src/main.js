@@ -167,9 +167,9 @@ function frame(now) {
   if (keys.has('KeyW') || keys.has('ArrowUp')) pan(0, -sp); if (keys.has('KeyS') || keys.has('ArrowDown')) pan(0, sp);
   if (A.follow && A.sel >= 0 && A.sel < A.n) { c.x += (A.pos[A.sel * 4] - c.x) * Math.min(1, dt * 6); c.y += (A.pos[A.sel * 4 + 1] - c.y) * Math.min(1, dt * 6); }
   V.clampCam();
-  const colony = A.phase === 'colony' && A.ui ? { seed: A.ui.seed, stakes: A.ui.stakes, crews: A.ui.crews, projects: A.ui.projects, stores: A.ui.stores, year: A.ui.year, F: A.ui.F, spots: A.ui.spots, hz: A.ui.hz, day: A.clock ? A.clock.cal || A.clock.abs : 1 } : null;
+  const colony = A.phase === 'colony' && A.ui ? { seed: A.ui.seed, stakes: A.ui.stakes, crews: A.ui.crews, projects: A.ui.projects, stores: A.ui.stores, year: A.ui.year, F: A.ui.F, spots: A.ui.spots, hz: A.ui.hz, ctl: A.ui.ctl ?? -1, ord: A.ui.ord, day: A.clock ? A.clock.cal || A.clock.abs : 1 } : null;
   const hour = A.clock && A.phase === 'colony' ? A.clock.hour : 10.5;
-  V.frame({ n: A.n, pos: A.pos, arts: A.arts, names: A.names, leads: A.leads, hour, time: now / 1000, sel: A.sel, hover: A.hover, budget: A.frames.length > 30 && avgMs() > 22 ? 1 : 2, colony, orbit: A.phase === 'orbit' ? { sites: A.sites, sel: A.siteSel } : null, pickAt: A.pickCrew >= 0 ? A.pickAt : null, place: A.place, projSel: A.projSel, thing: A.thing });
+  V.frame({ n: A.n, pos: A.pos, arts: A.arts, names: A.names, leads: A.leads, hour, time: now / 1000, sel: A.sel, hover: A.hover, budget: A.frames.length > 30 && avgMs() > 22 ? 1 : 2, colony, orbit: A.phase === 'orbit' ? { sites: A.sites, sel: A.siteSel } : null, pickAt: A.pickCrew >= 0 ? A.pickAt : null, place: A.place, projSel: A.projSel, thing: A.thing, ctlMark: A.ctlMark });
   if (A.hold && A.phase === 'colony' && !V.landing) { A.hold = false; setSpeed(A.speed || 1); if (V.anim) toast('The Seed is down. Choose who the fabricator prints first.'); }
   A.frames.push(now - (A.lastNow || now)); A.lastNow = now; if (A.frames.length > 120) A.frames.shift();
   A.cpuMs = (A.cpuMs || 0) * .9 + (performance.now() - t0) * .1;
@@ -267,14 +267,16 @@ function endPick() { A.pickCrew = -1; A.pickAt = null; $('pickHint').hidden = tr
 function startPlace(type, w, h, name) {
   if (A.phase !== 'colony' || !TYPES[type]) return;
   endPick(); select(-1);
-  A.place = { type, w: w || 0, h: h || 0, fixed: !!w, name: name || '', x: null, y: null, side: 0, turned: false, check: null, locked: false, seq: 0 };
+  A.place = { type, w: w || 0, h: h || 0, fixed: !!w, name: name || '', x: null, y: null, side: 0, turned: false, check: null, locked: false, seq: 0, wasBelow: !!(A.view && A.view.below) };
+  if (TYPES[type].below) belowView(true);
   $('placeTxt').textContent = w ? `Move the ${name || TYPES[type].name} where it should go and click to put it down` : `Drag on the map to draw the ${TYPES[type].name.toLowerCase()}: at least ${TYPES[type].min} by ${TYPES[type].min} tiles, at most ${TYPES[type].max} long`;
   $('placeTurn').hidden = !!TYPES[type].open; $('plTurn').hidden = !!TYPES[type].open;
+  $('placeTurn').textContent = TYPES[type].below ? 'Turn stairs (R)' : 'Turn door (R)'; $('plTurn').textContent = TYPES[type].below ? 'Turn stairs' : 'Turn door';
   $('placeHint').hidden = false; app.classList.add('placing');
   $('plKeep').checked = false; $('plName2').value = name || ''; delete $('plName2').dataset.auto;
   A.panels.planCard(null);
 }
-function endPlace() { A.place = null; $('placeHint').hidden = true; app.classList.remove('placing'); A.panels.planCard(null); }
+function endPlace() { if (A.place && TYPES[A.place.type].below && !A.place.wasBelow) belowView(false); A.place = null; $('placeHint').hidden = true; app.classList.remove('placing'); A.panels.planCard(null); }
 function placeRect(x, y, w, h) {
   const P = A.place; if (!P) return;
   if (P.x === x && P.y === y && P.w === w && P.h === h) return;
@@ -295,7 +297,7 @@ async function confirmPlace() {
   const P = A.place; if (!P || !P.check || !P.check.ok) return;
   const keep = $('plKeep').checked, name = $('plName2').value.trim();
   const r = await cmd('place', { type: P.type, x: P.x, y: P.y, w: P.w, h: P.h, side: P.side, save: keep ? name || TYPES[P.type].name : undefined });
-  if (r && r.ok) { endPlace(); A.projSel = r.id; A.panels.setTab('build'); toast(`Planned. ${TYPES[P.type].name} is on the project list${keep ? ', and saved as a blueprint' : ''}.`); }
+  if (r && r.ok) { P.wasBelow = true; endPlace(); A.projSel = r.id; A.panels.setTab('build'); toast(`Planned. ${TYPES[P.type].name} is on the project list${keep ? ', and saved as a blueprint' : ''}.`); }
   else toast(r && r.why ? r.why : 'That could not be planned just now.');
 }
 // the Build tab and the map agree on which project you are looking at
@@ -310,8 +312,20 @@ function closeThing() { A.thing = null; if (A.panels) A.panels.update(); }
 function closeProject() { A.projSel = -1; if (A.panels) { A.panels.sig = ''; A.panels.update(); } }
 function projectAt(wx, wy) {
   if (!A.ui) return null;
-  for (const p of A.ui.projects) if (p.type !== 'test' && wx >= p.x - .3 && wx < p.x + p.w + .3 && wy >= p.y - .3 && wy < p.y + p.h + .3) return p;
+  const below = A.view && A.view.below, inR = (p, x, y, w, h) => wx >= x - .3 && wx < x + w + .3 && wy >= y - .3 && wy < y + h + .3;
+  for (const p of A.ui.projects) {
+    if (p.type === 'test') continue;
+    if (p.below ? (below ? inR(p, p.x, p.y, p.w, p.h) : p.door && inR(p, p.door.x, p.door.y, 1, 1)) : !below && inR(p, p.x, p.y, p.w, p.h)) return p;
+  }
+  if (below) for (const p of A.ui.projects) if (p.below && p.door && inR(p, p.door.x, p.door.y, 1, 1)) return p;
   return null;
+}
+// the view below ground, where rooms are dug: on and off by the button or U, and on by itself while one is planned
+function belowView(on) {
+  const V = A.view; if (!V) return;
+  V.below = on === undefined ? !V.below : !!on;
+  $('bBelow').classList.toggle('on', V.below); $('bBelow').setAttribute('aria-pressed', V.below ? 'true' : 'false');
+  app.classList.toggle('below', V.below);
 }
 
 // ---------- saving ----------
@@ -331,7 +345,7 @@ function newest(a, b) { if (!a) return b; if (!b) return a; return (a.savedAt ||
 // milestone 2 colonies (version 2) carry on: their shelter becomes the first project of many
 const isSave = d => d && d.v >= 2 && d.v <= 4 && d.sim && d.sim.v >= 2 && d.sim.v <= 7 && Array.isArray(d.sim.cols);
 function startColony(opts) {
-  A.phase = 'boot'; A.hold = false; endPick(); if (A.place) endPlace(); A.projSel = -1; A.thing = null;
+  A.phase = 'boot'; A.hold = false; endPick(); if (A.place) endPlace(); A.projSel = -1; A.thing = null; belowView(false);
   if (A.panels) { A.panels.show(false); A.panels.orbit(null); }
   $('loader').classList.remove('gone'); loader(opts.save ? 'Waking the colony' : 'Surveying the planet from orbit', .15);
   A.sim.send(opts.save ? { t: 'init', seed: opts.save.seed, save: opts.save } : { t: 'init', seed: opts.seed, mode: opts.mode || 'landfall', count: opts.count || 300 });
@@ -373,7 +387,7 @@ function hookInput() {
   const up = e => {
     ptrs.delete(e.pointerId); app.classList.remove('drag');
     if (A.place && A.place.drag) { A.place.drag = null; A.place.locked = true; A.panels.planCard(A.place); drag = null; return; }
-    if (drag && drag.moved <= 4) click(...local(e));
+    if (drag && drag.moved <= 4 && e.button !== 2) click(...local(e));
     if (ptrs.size < 2) pinch = null; drag = null;
   };
   app.addEventListener('pointerup', up); app.addEventListener('pointercancel', up);
@@ -395,8 +409,10 @@ function hookInput() {
     else if (e.code === 'KeyB' && colony) A.panels.toggleTab('build');
     else if (e.code === 'KeyR' && A.place) turnDoor();
     else if (e.code === 'KeyM') musicToggle();
+    else if (e.code === 'KeyU' && colony) belowView();
     else if (e.code === 'F11') { e.preventDefault(); fullscreen(); }
     else if ((e.code === 'Escape' || e.code === 'Enter') && A.news && A.news.open) { e.preventDefault(); A.news.closeLetter(); }
+    else if (e.code === 'Escape' && A.ui && A.ui.ctl >= 0 && !A.place) toggleCtl(A.ui.ctl);
     else if (e.code === 'Escape') { if (A.stats && A.stats.open) A.stats.show(false); else if (A.place) endPlace(); else if (A.pickCrew >= 0) endPick(); else if (!$('newdlg').hidden) $('newdlg').hidden = true; else if (!$('menu').hidden) menu(false); else if (A.projSel >= 0) closeProject(); else if (A.thing) closeThing(); else if (A.sel >= 0) select(-1); else if (A.panels && !A.panels.min) A.panels.fold(true); }
     else if (e.code === 'Equal' || e.code === 'NumpadAdd') V.zoomAt(1.25, V.VW / 2, V.VH / 2);
     else if (e.code === 'Minus' || e.code === 'NumpadSubtract') V.zoomAt(.8, V.VW / 2, V.VH / 2);
@@ -405,6 +421,7 @@ function hookInput() {
   window.addEventListener('blur', () => keys.clear());
   document.querySelectorAll('.speeds button').forEach(b => b.addEventListener('click', () => setSpeed(+b.dataset.s)));
   $('bHome').onclick = goHome;
+  $('bBelow').onclick = () => belowView(); $('belowUp').onclick = () => belowView(false);
   $('bFull').onclick = () => fullscreen();
   const fsIcon = () => { const on = !!(document.fullscreenElement || document.webkitFullscreenElement); $('bFull').querySelector('use').setAttribute('href', on ? '#i-unfull' : '#i-full'); $('bFull').title = on ? 'Leave fullscreen (F11)' : 'Fullscreen (F11)'; };
   document.addEventListener('fullscreenchange', fsIcon); document.addEventListener('webkitfullscreenchange', fsIcon);
@@ -421,6 +438,13 @@ function hookInput() {
   $('bClose').onclick = () => { if (A.thing) closeThing(); else closeProject(); };
   $('bList').onclick = () => { if (A.thing) { const c = A.panels.thingInfo; if (c && c.btn) A.panels.setTab(c.btn.tab); return; } const id = A.projSel; A.panels.setTab('build:list'); showProject(id); };
   $('bPause').onclick = () => { const p = A.ui && A.ui.projects.find(q => q.id === A.projSel); if (p) cmd('projPause', { id: p.id, on: !p.paused }); };
+  $('cCtl').onclick = () => toggleCtl(A.sel); $('ctlEnd').onclick = () => { if (A.ui && A.ui.ctl >= 0) toggleCtl(A.ui.ctl); };
+  // right-click gives the person under direct orders their next order
+  app.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    if (A.phase !== 'colony' || !A.ui || A.ui.ctl < 0 || A.place || e.target.closest(HUD)) return;
+    ctlOrderAt(...local(e));
+  });
   $('cFollow').onclick = () => { A.follow = !A.follow; $('cFollow').textContent = A.follow ? 'Stop following' : 'Follow'; };
   const mm = $('mm');
   const mmGo = e => { const r = mm.getBoundingClientRect(); V.fly = null; V.cam.x = (e.clientX - r.left) / r.width * MAP; V.cam.y = (e.clientY - r.top) / r.height * MAP; A.follow = false; V.clampCam(); };
@@ -472,6 +496,24 @@ function pick(sx, sy) {
   const V = A.view, [wx, wy] = V.toWorld(sx, sy); let best = -1, bd = Math.max(.7, 9 / V.cam.z);
   for (let i = 0; i < A.n; i++) { const act = A.pos[i * 4 + 3] >> 1; if (hidden(act)) continue; const d = Math.hypot(A.pos[i * 4] - wx, A.pos[i * 4 + 1] - wy); if (d < bd) { bd = d; best = i; } }
   return best;
+}
+// ---------- direct orders in an emergency ----------
+async function toggleCtl(i) {
+  if (i < 0 || !A.ui) return;
+  const mine = A.ui.ctl === i, r = await cmd(mine ? 'ctlEnd' : 'ctlTake', { person: i });
+  if (r && r.ok === false && r.why) toast(r.why);
+  else if (!mine && r && r.ok) toast(`You are directing ${A.people[i].name}. Right-click to give orders.`);
+}
+// what a right-click means: someone hurt under the pointer is helped, flames are beaten at, anywhere else is walked to
+async function ctlOrderAt(sx, sy) {
+  const U = A.ui, V = A.view, i = U.ctl, who = pick(sx, sy), [wx, wy] = V.toWorld(sx, sy), x = Math.floor(wx), y = Math.floor(wy);
+  if (x < 0 || y < 0 || x >= MAP || y >= MAP) return;
+  const t = y * MAP + x, hz = U.hz, hurt = who >= 0 && who !== i && U.p[who] && (U.p[who][6] & (2 | 256 | 512 | 16384));
+  const fire = hz && (hz.fire.some(f => Math.abs(f % MAP - x) <= 2 && Math.abs((f / MAP | 0) - y) <= 2) || U.projects.some(p => p.fire && x >= p.x - 1 && x <= p.x + p.w && y >= p.y - 1 && y <= p.y + p.h));
+  const k = hurt ? 'help' : fire ? 'fire' : 'go';
+  const r = await cmd('ctlOrder', { person: i, k, t, who: hurt ? who : -1 });
+  if (r && r.ok === false && r.why) toast(r.why);
+  else A.ctlMark = { x: wx, y: wy, k, at: performance.now() };
 }
 function goHome() { const V = A.view; if (!V || !V.W.land) return; V.flyTo(V.W.land.x + .5, V.W.land.y + 3, Math.max(V.cam.z, 24)); A.follow = false; }
 

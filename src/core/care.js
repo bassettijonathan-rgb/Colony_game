@@ -10,6 +10,7 @@ import { remember } from './life.js';
 import { dropCarry } from './work.js';
 import { diagnose, illMeal } from './illness.js';
 import { eat } from './food.js';
+import { spend } from './director.js';
 
 export const MED_KIT = { dress: 24, pk: 16, abx: 8, blood: 6 };          // what the lander carried down
 export const MED_MADE = { dress: 8, pk: 4, abx: 2, blood: 2 };           // one batch from the fabricator
@@ -29,7 +30,7 @@ const inside = c => c.where >= 0 && (c.act === ACT.INDOORS || c.act === ACT.INSI
 const atClinic = (S, c) => { const p = inside(c) ? byId(S, c.where) : null; return !!p && p.type === 'clinic'; };
 // can this person help someone else right now? emergency: wake them if they are asleep
 function free(c, emergency) {
-  if (c.dead || c.down || c.care || c.carried >= 0 || c.alone > 0 || c.act === ACT.WAKE || c.plan === 'ward') return false;
+  if (c.dead || c.down || c.care || c.ctl || c.carried >= 0 || c.alone > 0 || c.act === ACT.WAKE || c.plan === 'ward') return false;
   if (c.cap && (laidUp(c) || c.cap.consc < .6)) return false;
   if ((c.act === ACT.BED || c.act === ACT.INSIDE) && !emergency) return false;
   return true;
@@ -79,7 +80,7 @@ export function careThink(sim) {
   }
 }
 function fallDown(sim, c) {
-  c.down = true; dropCarry(sim, c);
+  c.down = true; dropCarry(sim, c); spend(sim, 1, 'down');
   if (c.care) endCare(sim, c);
   const asleep = c.act === ACT.BED || hidden(c.act);
   c.plan = 'down'; c.job = 'down'; c.mv = 0; c.timer = 0; c.wps = []; c.leg = [];
@@ -99,6 +100,8 @@ function begin(sim, o, k, c) {
   goToPatient(sim, o, c);
   S.rv++;
 }
+// a person under the player's orders sent to help someone: the same first aid, then on to a bed
+export const sendToHelp = (sim, o, c) => begin(sim, o, 'aid', c);
 export function goToPatient(sim, o, c) {
   o.job = o.care.k;
   if (inside(c)) { const p = byId(sim.S, c.where); if (p) { o.ws = p.id; sim.goTo(o, sim.doorOf(p), ACT.INDOORS); return; } }

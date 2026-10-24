@@ -65,7 +65,15 @@ export const EXPLAIN = {
   gutted: 'A building that burns out keeps its footings: the build crews rebuild it from there, like a new project, and it is out of use until they finish.',
   floodwarn: 'Floods come from a fast thaw upstream or from days of heavy rain. The water rises over the low ground by the river or lake for a day or so, stands, and falls slowly. Buildings in it are out of use until it goes down, and need repairs after; crops drown. The Seed warns when planning on low ground. The lander and its shelter stand on legs and stay dry.',
   flood: 'Buildings under water are out of use until it goes down, and need repairs after: the longer the water stands, the more work. Anyone wading through it gets cold, and deep water can knock people off their feet.',
+  wear: 'Things wear out: panels, pumps, benches and frames all fail now and then, more as they age. A broken building is out of use until a build crew repairs it, like any other project on the list.',
+  tremor: 'The ground here is not still. A tremor can crack frames and hurt the people inside; the damaged buildings go on the project list for repairs. The lander and its shelter ride it out on their legs.',
+  blight: 'Crops from the seed bank have no defences against what lives here. A blight takes part of a field’s growth; what is left still ripens.',
+  cache: 'Pieces of the Seed broke away on the way down and are scattered around the landing site. Surveyors find them now and then.',
+  glut: 'Local life has good years and bad. In a good one, every patch the foragers know fills up again at once.',
   repaired: 'Repairs are build projects like any other: they show on the project list, and a build crew sees to them in order.',
+  ore: 'Ore waits in the yard until the fabricator has nothing else to make; then it smelts three loads into two of salvage. Press U to see the ground below: the glinting seams are ore.',
+  trauma: 'The worst things leave a mark: a death, a bad injury, a fire, the flood, a tremor, a night that nearly froze them. What someone carries makes strain build faster and sleep restore less, and they break sooner; the same thing happening again brings it back. It fades over weeks, faster with friends, a bunk indoors and a steady nature. The person card shows what they carry.',
+  ctl: 'In an emergency the Seed can direct one person: right-click open ground to send them there, flames to beat them out, or someone hurt to give first aid. People who barely trust the Seed refuse, the wary hesitate, and every order costs a little trust. Esc or Release hands them back; an hour after the emergency they go back to their crew anyway.',
   unwell: 'A narrow diet shows over time. Food with a slow harm builds up in the body, and food that isn’t enough on its own leaves people short of what they need. More kinds of food, and fewer meals of the troublesome ones, put it right over some days.',
 };
 
@@ -87,6 +95,7 @@ const ALERTS = {
   nofarm: ['warn', 'No farm crew', 'Fields need a farm crew to sow and harvest them. Set one up in the Crews window (C).'],
   samples: ['info', '', 'Queue the test in the Life window (G).'],
   locked: ['warn', 'Food only a kitchen can prepare', 'Some of the larder needs leaching or fermenting before it is safe, and nobody is on kitchen work. Set up a kitchen crew in the Crews window (C).'],
+  behind: ['bad', 'The kitchen can’t keep up', 'People are going hungry while food waits to be leached, fermented or cooked. One cook feeds about ten people: put more on kitchen work in the Crews window (C).'],
   deep: ['bad', '', 'Nothing grows in Deep cold. Fill the larder before it comes: foragers, harvests, and food that keeps.'],
   hungry: ['bad', '', 'They lose health every day without a meal, and die when it runs out.'],
   down: ['bad', '', 'They can’t get up. Someone nearby comes to give first aid and carry them to a bed.'],
@@ -103,7 +112,7 @@ const ALERTS = {
   stalled: ['warn', '', ''],
   idle: ['info', 'Nothing to build', 'A build crew has nothing on the project list. Plan a building in the Build window (B), or give the crew other work.'],
 };
-const ORDER = ['fire', 'bfire', 'down', 'crisis', 'bleed', 'floodwarn', 'flooded', 'catching', 'hungry', 'cold', 'food', 'deep', 'locked', 'nofarm', 'ripe', 'unwell', 'sick', 'samples', 'print', 'feedwait', 'alone', 'hurt', 'meds', 'nomedic', 'strain', 'tired', 'trust', 'nocrew', 'stalled', 'dark', 'idle'];
+const ORDER = ['fire', 'bfire', 'down', 'crisis', 'bleed', 'floodwarn', 'flooded', 'catching', 'hungry', 'behind', 'cold', 'food', 'deep', 'locked', 'nofarm', 'ripe', 'unwell', 'sick', 'samples', 'print', 'feedwait', 'alone', 'hurt', 'meds', 'nomedic', 'strain', 'tired', 'trust', 'nocrew', 'stalled', 'dark', 'idle'];
 
 export class News {
   constructor(A, api) {
@@ -231,6 +240,7 @@ export class News {
     if (ready.length) add('samples', ready.length === 1 ? `${ready[0].name}: samples ready to test` : `${ready.length} sets of samples ready to test`, [{ tab: 'life:local' }]);
     let ids;
     if ((ids = people(p => p[6] & 8)).length) add('hungry', named(ids, 'is hungry', 'people are hungry'), ids.map(i => ({ who: i })));
+    if (ids.length && F && F.waiting >= ids.length && U.crews.some(c => !c.gone && c.work === 'kitchen' && c.members.length)) add('behind', ALERTS.behind[1], [{ tab: 'crews' }], `${Math.floor(F.waiting)} meals’ worth is waiting for the kitchen.`);
     if ((ids = people(p => p[6] & 64)).length) add('cold', named(ids, 'is dangerously cold', 'people are dangerously cold'), ids.map(i => ({ who: i })));
     if ((ids = people(p => p[6] & 128)).length) add('unwell', named(ids, 'is unwell', 'people are unwell'), ids.map(i => ({ who: i })));
     if ((ids = people(p => p[6] & 4)).length) add('alone', named(ids, 'broke down', 'people broke down'), ids.map(i => ({ who: i })));

@@ -201,18 +201,32 @@ export function mealsInStore(sim, usable = false) {
   for (const v of S.F.vats) { const f = foodOf(sim, v.src); if (f) n += v.n * f.meals; }
   return n;
 }
+// meals' worth that only the kitchen can make ready: leached loads, and raw food that has to be leached or fermented
+export function kitchenOnly(sim) {
+  const Ld = sim.S.F.larder; let n = 0;
+  for (const k in Ld.prep) { const f = foodOf(sim, k); if (f) n += Ld.prep[k] * f.meals; }
+  for (const k in Ld.raw) { const f = foodOf(sim, k); if (f && f.proc !== 'cook') n += Ld.raw[k] * f.meals; }
+  return n;
+}
 // once a day: fresh food spoils, frozen food much more slowly; fermented meals and rations keep
 export function spoil(sim) {
-  const S = sim.S, Ld = S.F.larder, cold = S.F.temp < 0 ? .2 : 1;
+  const S = sim.S, Ld = S.F.larder, cool = cellarShare(S), cold = (S.F.temp < 0 ? .2 : 1) * (1 - .7 * cool);
   for (const k in Ld.raw) { const f = foodOf(sim, k); Ld.raw[k] -= Ld.raw[k] * cold / (f ? f.keep : 10); if (Ld.raw[k] < .05) delete Ld.raw[k]; }
   for (const k in Ld.prep) { Ld.prep[k] -= Ld.prep[k] * cold / 6; if (Ld.prep[k] < .05) delete Ld.prep[k]; }
   for (const k in Ld.meals) { const f = foodOf(sim, k), keep = f && f.proc === 'ferment' ? FERMENT_KEEP : COOKED_KEEP; Ld.meals[k] -= Ld.meals[k] * cold / keep; if (Ld.meals[k] < .05) delete Ld.meals[k]; }
+}
+// how much of the larder fits in the root cellars, where it keeps cool all year
+export function cellarShare(S) {
+  let room = 0; for (const p of S.projects) if (p.type === 'cellar' && p.done && !p.gone && !p.shut) room += Math.max(0, (p.w - 2) * (p.h - 2)) * 4;   // as capacity() counts it
+  if (!room) return 0;
+  const Ld = S.F.larder; let n = 0; for (const g of [Ld.raw, Ld.prep, Ld.meals]) for (const k in g) n += g[k];
+  return n ? Math.min(1, room / n) : 1;
 }
 export const hasKitchen = sim => sim.S.crews.some(c => !c.gone && c.work === 'kitchen' && c.members.length);
 // what the kitchen should do next: empty a finished vat, cook if few meals are ready, or start a vat
 export function kitchenJob(sim, eaters) {
   const S = sim.S, F = S.F, Ld = F.larder;
-  const v = F.vats.findIndex(q => q.ready <= S.tick && !q.taken);
+  const v = F.vats.findIndex(q => q.ready <= S.tick && (!q.taken || q.taken < S.tick - 3 * HOUR));   // a cook called away mid-job leaves the claim behind
   if (v >= 0) return { k: 'unvat', v };
   const ready = sum(Ld.meals), want = Math.max(4, eaters * 2.2);
   if (ready < want) {

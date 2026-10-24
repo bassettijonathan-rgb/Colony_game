@@ -7,11 +7,12 @@ import { rnd, ri, clamp } from './rng.js';
 import { remember, trustAll } from './life.js';
 import { suggestFirst } from './founders.js';
 import {
-  TYPES, RAW, PRECISE, RECIPE, FIT_H, FAB_SLOW, STAGE_NAMES, matName, stageLoads, billOf, loadCheck, capacity, checkPlot, addProject,
+  TYPES, RAW, PRECISE, RECIPE, FIT_H, FAB_SLOW, STAGE_NAMES, matName, stageLoads, loadsOf, billOf, loadCheck, capacity, checkPlot, addProject,
   active, built, byId, capOf, powerCheck, shortOf, stockOf, sources, takeFrom, putBack, nextOrder, rawWanted, clearPlot, LANDER_KW, LABOUR, stagesOf, FEED, plantStop,
 } from './build.js';
 import { illMeal } from './illness.js';
 import { FIRE_STEP, beat } from './hazards.js';
+import { take, order, release } from './control.js';
 import { eat, analyse, labHour, kitchenJob, cookMeals, foodOf, add, patchLeft, takePatch, inSeason, cropPlan, sowUnits, harvestLoads, keyOf, isCrop, mealsInStore, hasKitchen, SAMPLES, PROC_DAYS, CROPS, CROP_KEYS } from './food.js';
 import { dayWeather, untilDeep } from './year.js';
 import { careArrive, careTimer, MED_KIT, MED_MADE, TRIAGE } from './care.js';
@@ -46,6 +47,7 @@ export function seedTick(sim) {
   if (f.job) {
     if (--f.job.left <= 0) {
       if (f.job.k === 'meds') { for (const k in MED_MADE) S.med[k] += MED_MADE[k]; sim.log('The fabricator finished a batch of medical supplies: dressings, painkillers, antibiotics and blood substitute.'); }
+      else if (f.job.k === 'refine') { S.stores.yard.salvage += REFINE.out; S.stats.refined = (S.stats.refined || 0) + REFINE.out; }
       else { S.stores.cargo[f.job.k]++; sim.log(`The fabricator finished ${matName(f.job.k, 1).replace(/^1 /, 'a ')}.`); }
       f.job = null; S.rv++;
     }
@@ -55,8 +57,11 @@ export function seedTick(sim) {
     if (M && (M.dress < MED_KIT.dress / 3 || M.abx < 3 || M.blood < 2 || M.pk < 4) && S.stores.yard.salvage >= MEDS_SALVAGE) { S.stores.yard.salvage -= MEDS_SALVAGE; f.job = { k: 'meds', left: Math.round(MEDS_H * HOUR * FAB_SLOW) }; S.rv++; return; }
     const k = nextOrder(sim);
     if (k && S.stores.yard.salvage >= RECIPE[k].salvage) { S.stores.yard.salvage -= RECIPE[k].salvage; f.job = { k, left: Math.round(RECIPE[k].h * HOUR * FAB_SLOW) }; S.rv++; }
+    else if ((S.stores.yard.ore || 0) >= REFINE.ore) { S.stores.yard.ore -= REFINE.ore; f.job = { k: 'refine', left: Math.round(REFINE.h * HOUR) }; S.rv++; }   // nothing to make: ore into salvage
   }
 }
+// three loads of ore smelt down to two of salvage in the fabricator's furnace
+export const REFINE = { ore: 3, out: 2, h: 6 };
 // ---------- the feedstock plant ----------
 // With power, each tank takes a batch of biomass and stone from the yard and over half a day turns it into an
 // eighth of a body's feedstock. What it waits for, if anything, goes on its card.
@@ -143,8 +148,8 @@ function buildNext(sim, c, cr) {
 }
 function fitJob(sim, c, p, k) {
   const spots = sim.spotsOf(p), spot = spots[(c.id * 7 + sim.S.stats.fits * 3) % spots.length];
-  c.job = 'fit'; c.want = k; c.pj = p.id; c.spot = spot; c.fx = p.x + p.w / 2; c.fy = p.y + p.h / 2;
-  sim.goTo(c, spot, k === 'test' ? ACT.TEST : k === 'dig' || (p.type === 'field' && k === 'biomass') ? ACT.FARM : ACT.BUILD, c.carry ? carryAct(c.carry) : ACT.WALK);
+  c.job = 'fit'; c.want = k; c.pj = p.id; c.spot = spot; c.fx = p.x + p.w / 2; c.fy = p.y + p.h / 2; c.where = -1;
+  sim.goTo(c, spot, p.below && p.stage > 0 ? ACT.DIG : k === 'test' ? ACT.TEST : k === 'dig' || (p.type === 'field' && k === 'biomass') ? ACT.FARM : ACT.BUILD, c.carry ? carryAct(c.carry) : ACT.WALK);
 }
 // the nearest stone or timber nobody else is already cutting: a felled tree with logs left beats a standing one
 function gatherJob(sim, c, k, pj) {
@@ -308,10 +313,20 @@ function fitted(sim, c) {
   if (!p || p.done || !(p.need[k] > (p.got[k] || 0))) { if (c.carry) putBack(S, c.carry); }
   else {
     p.got[k] = (p.got[k] || 0) + 1; S.stats.fits++;
+    if (k === 'dig' && p.below) spoilOf(sim, p);
     if (k !== 'mark' && k !== 'test') p.used[k] = (p.used[k] || 0) + 1;
     if (Object.keys(p.need).every(q => (p.got[q] || 0) >= p.need[q])) advance(sim, p);
   }
-  c.carry = ''; c.want = ''; c.pj = -1; c.job = '';
+  c.carry = ''; c.want = ''; c.pj = -1; c.job = ''; c.where = -1;
+}
+// what comes up the stairs as a room is dug: stone from stony ground, and ore where a seam runs through it
+function spoilOf(sim, p) {
+  const S = sim.S, g = p.ug || {};
+  if (rnd() < (g.stone || 0) * .6) S.stores.yard.stone++;
+  if (rnd() < (g.ore || 0) * .9) {
+    S.stores.yard.ore = (S.stores.yard.ore || 0) + 1;
+    if (!S.oreSeen) { S.oreSeen = 1; sim.log(`The diggers under ${p.name} struck a seam of metal ore. The Seed's fabricator can refine it into salvage when it has nothing else to make.`, 'good', { e: 'ore', lvl: 1, pid: p.id, title: 'Ore' }); }
+  }
 }
 function advance(sim, p) {
   const S = sim.S, st = p.stage;
@@ -323,10 +338,10 @@ function advance(sim, p) {
     trustAll(sim, 1, `Saw the Seed test the local ${p.mat} instead of guessing.`);
     return;
   }
-  if (st === 0) { if (p.type !== 'shelter') clearPlot(sim, p); if (!p.blocked) sim.block(p); }
+  if (st === 0 && !p.below) { if (p.type !== 'shelter') clearPlot(sim, p); if (!p.blocked) sim.block(p); }
   p.stage++; p.got = {};
   if (p.stage >= 5) return finish(sim, p);
-  p.need = stageLoads(S, p.type, p.w, p.h, p.stage, p.mat);
+  p.need = loadsOf(S, p, p.stage);
   const names = stagesOf(p.type);
   sim.log(`${p.name}: ${names[st].toLowerCase()} done. Next: ${names[p.stage].toLowerCase()}.`, 'good', { pid: p.id });
   if (p.type === 'shelter') trustAll(sim, 2);
@@ -348,7 +363,7 @@ function finish(sim, p) {
     sim.log(`${p.name} is ready: ${cap.tiles} tiles of made soil.${k ? ` The Seed would sow ${CROPS[k].name.toLowerCase()}.` : ' Nothing in the seed bank could ripen before Deep cold now, so it stays bare until Thaw.'}${farmers ? '' : ' It needs a farm crew to sow and harvest it.'}`, 'good', { e: 'field', lvl: 1, pid: p.id, title: 'A field of made soil' });
     trustAll(sim, 2, `Watched ${p.name} being made out of bare local ground.`);
   } else {
-    const what = { dorm: `${cap.beds} bunks`, commons: `seats for ${cap.seats}`, workshop: `${cap.benches} bench${cap.benches > 1 ? 'es' : ''}`, clinic: `${cap.beds} beds`, solar: `${cap.panels} panels making ${cap.supply} kW`, lab: `${cap.benches} bench${cap.benches > 1 ? 'es' : ''}` }[p.type];
+    const what = { cellar: `cool storage for ${cap.store} loads of food`, burrow: `${cap.beds} bunks, warm under the ground`, dorm: `${cap.beds} bunks`, commons: `seats for ${cap.seats}`, workshop: `${cap.benches} bench${cap.benches > 1 ? 'es' : ''}`, clinic: `${cap.beds} beds`, solar: `${cap.panels} panels making ${cap.supply} kW`, lab: `${cap.benches} bench${cap.benches > 1 ? 'es' : ''}` }[p.type];
     sim.log(`${p.name} is finished: ${what}.${p.type !== 'solar' && !p.powered ? ` It stays dark until the colony has ${shortOf(S, p)} kW more power.` : ''}`, 'good', { e: 'built', lvl: 1, pid: p.id, title: 'Finished' });
     trustAll(sim, 2, `Watched ${p.name} go up.`);
   }
@@ -400,8 +415,9 @@ function powerNote(sim, p) {
   if (p.powered) sim.log(`${p.name} has power.`, 'good', { pid: p.id }); else sim.log(`${p.name} went dark: the colony needs ${shortOf(sim.S, p)} kW more power.`, 'bad', { e: 'dark', lvl: 1, pid: p.id, title: 'Not enough power' });
 }
 // bunks in the shelter and the dormitories, and seats in the commons, for everyone they hold
+const HOMES = ['shelter', 'dorm', 'burrow'];
 export function assignHomes(sim) {
-  const S = sim.S, live = S.cols.filter(c => !c.dead), on = built(S).filter(p => p.powered);
+  const S = sim.S, live = S.cols.filter(c => !c.dead), on = built(S).filter(p => p.powered || (!p.shut && HOMES.includes(p.type)));   // a dark bunkhouse still has its bunks
   const fill = (types, key, capKey) => {
     const left = new Map(on.filter(p => types.includes(p.type)).map(p => [p.id, capOf(p)[capKey]]));
     const moved = [];
@@ -409,7 +425,7 @@ export function assignHomes(sim) {
     for (const c of live) if (c[key] < 0) for (const [id, n] of left) if (n > 0) { c[key] = id; left.set(id, n - 1); moved.push(c); break; }
     return moved;
   };
-  const moved = fill(['shelter', 'dorm'], 'home', 'beds');
+  const moved = fill(HOMES, 'home', 'beds');
   fill(['commons'], 'mess', 'seats');
   for (const c of moved) if (c.home > 0) remember(sim, c, `Got a bunk in ${byId(S, c.home).name}.`);
   if (moved.length) { S.rv++; if (moved.some(c => c.home > 0)) sim.log(`${moved.length} ${moved.length === 1 ? 'person has' : 'people have'} a bunk indoors now.`); }
@@ -494,7 +510,7 @@ export function onArrive(sim, c) {
   const S = sim.S;
   switch (c.job) {
     case 'fetch': c.job = 'pick'; c.act = ACT.IDLE; c.timer = PICK; break;
-    case 'fit': c.timer = Math.round(FIT_H[c.want] * HOUR / eff(sim, c)); break;
+    case 'fit': { const p = byId(S, c.pj); if (p && p.below && c.act === ACT.DIG) c.where = p.id; c.timer = Math.round(FIT_H[c.want] * HOUR / eff(sim, c)); break; }
     case 'cut': {
       const felled = c.srcKind === 0 && S.gone[c.src] > 0;
       c.timer = Math.round((felled ? .25 : c.srcKind === 0 ? .8 : c.srcKind === 3 ? .3 : .6) * HOUR / eff(sim, c, 'cut')); break;
@@ -517,6 +533,7 @@ export function onArrive(sim, c) {
     case 'bench': c.where = c.ws; c.timer = Math.round(RECIPE[c.make].h * HOUR / eff(sim, c, 'bench')); break;
     case 'plant': c.timer = Math.round(HOUR / 6); break;
     case 'fire': c.timer = FIRE_STEP; break;
+    case 'ctl': c.job = ''; c.act = ACT.IDLE; if (c.ord && c.ord.k === 'go') { c.ord.k = 'hold'; c.ord.t = c.tile; } break;   // there, or as near as they could get
     case 'eat':
       if (c.act === ACT.INDOORS) c.where = c.mess;
       if (c.ate !== sim.day) {
@@ -527,7 +544,8 @@ export function onArrive(sim, c) {
         else { if (!S.noFood) { S.noFood = true; sim.log('There is nothing left to eat. From tonight people go to bed hungry, and the hungry weaken day by day until they die.', 'bad', { e: 'nofood', lvl: 2, x: sim.W.site.fire.x, y: sim.W.site.fire.y, title: 'Nothing left to eat' }); } if (!c.hungry) sim.log(`${c.name} went to bed hungry: there is nothing left to eat.`, 'bad', { who: c.id }); c.hungry = true; c.meal = ''; }
       }
       break;
-    case 'sleep': case 'ward': if (c.act === ACT.INSIDE || c.act === ACT.INDOORS) c.where = c.ward >= 0 ? c.ward : c.home; break;
+    case 'sleep': case 'ward': if (c.act === ACT.INSIDE || c.act === ACT.INDOORS) c.where = c.ward >= 0 ? c.ward : c.home >= 0 && byId(S, c.home) && !byId(S, c.home).shut ? c.home : c.warmAt ?? -1; break;
+    case 'warm': if (c.act === ACT.INDOORS) c.where = c.warmAt; break;
     case 'aid': case 'treat': case 'carry': careArrive(sim, c); break;
     case 'tend': c.where = c.ws; c.timer = HOUR; break;
     case 'wake': break;
@@ -650,6 +668,7 @@ export function onTimer(sim, c) {
     case 'aid': case 'treat': careTimer(sim, c); break;
     case 'tend': c.job = ''; c.where = -1; c.ws = -1; break;
     case 'fire': beat(sim, c); c.job = ''; if (!(c.fight > 0)) c.plan = ''; break;
+    case 'ctl': c.job = ''; break;
   }
 }
 const MAT_ONE = { seal: 'airlock seal', pipe: 'pipe run', power: 'power unit', panel: 'solar panel' };
@@ -685,7 +704,7 @@ export function command(sim, m) {
       if (!TYPES[m.type] || TYPES[m.type].fixed) return { ok: false, why: 'That is not something the colony can plan.' };
       const chk = checkPlot(sim, m.type, m.x, m.y, m.w, m.h, m.side), cap = capacity(m.type, m.w, m.h), pw = powerPlan(S);
       const after = { supply: +(pw.supply + (cap.supply || 0)).toFixed(1), draw: +(pw.draw + cap.kw).toFixed(1) };
-      return { ...chk, bill: billOf(S, m.type, m.w, m.h), load: loadCheck(S, m.type, m.w, m.h), cap, power: after, short: +Math.max(0, after.draw - after.supply).toFixed(1) };
+      return { ...chk, bill: billOf(S, m.type, m.w, m.h, chk.ground), load: loadCheck(S, m.type, m.w, m.h), cap, power: after, short: +Math.max(0, after.draw - after.supply).toFixed(1) };
     }
     case 'place': {
       const chk = checkPlot(sim, m.type, m.x, m.y, m.w, m.h, m.side);
@@ -731,6 +750,10 @@ export function command(sim, m) {
     case 'analyse': return analyse(sim, m.o);
     case 'unanalyse': { const F = S.F, L = F.life[m.o]; if (L && L.queued && F.lab.cur !== m.o) { F.lab.queue = F.lab.queue.filter(o => o !== m.o); L.queued = false; S.rv++; } break; }
     case 'triage': if (TRIAGE[m.v]) { S.care.triage = m.v; S.rv++; } break;
+    // ---- direct orders in an emergency ----
+    case 'ctlTake': return take(sim, m.person);
+    case 'ctlOrder': return order(sim, m.person, { k: m.k, t: m.t, who: m.who });
+    case 'ctlEnd': { const c = S.cols[m.person]; if (c && c.ctl) release(sim, c, `${c.name} is back with their crew.`); return { ok: true }; }
     case 'iso': S.care.iso = !!m.v; for (const c of S.cols) if (!c.dead && c.plan === 'ward') c.plan = ''; S.rv++; break;
     case 'crop': if (p && p.crop && (m.k === 'auto' || m.k === 'fallow' || CROPS[m.k])) { p.crop.want = m.k; if (p.crop.st === 'bare') p.crop.todo = null; S.rv++; } break;
     case 'bpDel': if (S.blueprints[m.i]) { S.blueprints.splice(m.i, 1); S.rv++; } break;
@@ -744,5 +767,5 @@ function saveBlueprint(S, name, type, w, h) {
 }
 function planNote(p) {
   const c = capOf(p);
-  return { dorm: `${c.beds} bunks`, commons: `tables for ${c.seats}`, workshop: `${c.benches} bench${c.benches > 1 ? 'es' : ''}`, clinic: `${c.beds} beds`, solar: `${c.panels} panels`, field: `${c.tiles} tiles of beds`, lab: `${c.benches} bench${c.benches > 1 ? 'es' : ''}` }[p.type] || 'done';
+  return { dorm: `${c.beds} bunks`, commons: `tables for ${c.seats}`, workshop: `${c.benches} bench${c.benches > 1 ? 'es' : ''}`, clinic: `${c.beds} beds`, solar: `${c.panels} panels`, field: `${c.tiles} tiles of beds`, lab: `${c.benches} bench${c.benches > 1 ? 'es' : ''}`, cellar: `shelves for ${c.store} loads of food`, burrow: `${c.beds} bunks, dug into ${p.ug ? p.ug.name : 'the ground'}` }[p.type] || 'done';
 }
