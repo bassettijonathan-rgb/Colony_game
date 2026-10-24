@@ -117,6 +117,23 @@ The world's dangers are paced by a director the player never sees (`src/core/dir
 4. Spoil from stony ground goes to the yard as stone. Ore goes to the yard too, and the fabricator smelts three loads into two of salvage whenever it has nothing else to make.
 5. Water finds its way down: a room floods whole when the water reaches its stairs. Tremors are hardest on rooms dug in soft ground and easiest on rock.
 
+## Trauma and emergency control (milestone 4, part 7)
+
+1. The worst things leave a mark (`src/core/trauma.js`): losing a friend, seeing someone die, a bad injury, a fire, being swept by the flood, a tremor, nearly freezing. Each one has a weight that adds strain while they carry it, takes something off every night's sleep and lowers the point where they break. The same thing happening again brings it back. It fades over weeks: faster with a friend alive, a bunk indoors and a steady or cheerful nature, slower for the anxious and not at all while they are falling apart. The person card lists what they carry.
+2. In an emergency (a fire near the camp, someone down or bleeding, a flood, someone freezing or in a crisis) the person card's **Take charge** button puts one person under the Seed's direct orders (`src/core/control.js`). Right-click open ground to send them there, flames to beat them out, or someone hurt to give first aid. Trust decides how it goes: below 25 they refuse, below 50 they hesitate before each order, and every order costs a little trust. Someone the fire has marked may freeze when sent back to it. Esc releases them; an hour after the emergency they go back to their crew on their own.
+
+## Balancing with bot colonies (milestone 4, part 8)
+
+`node tools/sim.mjs` and the bot in `src/bot/runner.js` play whole colonies headless. A pass over eight worlds for 200 days each found and fixed:
+
+1. A kitchen claim that was never released when a cook got called away, which left vats full forever and starved colonies with food in the larder. Claims now lapse after three hours.
+2. Breakdown spirals: someone back from a breakdown is spent for a day (strain comes on at half the rate, and they don't break again), and comes back 30 calmer instead of 20.
+3. Cold: a bunkhouse with no power is still a roof (out of the wind, but it doesn't warm anyone), people with nothing to do go indoors when it is cold, and in a hard frost anyone without a bunk sleeps on the floor of the nearest building.
+4. Repairs reuse what survived: they take a quarter of a stage's loads, up to all of them for a building that burned out.
+5. A new alert when the kitchen can't keep up, and the bot keeps a cook for every ten people and puts the clinic first on the power list while anyone is ill or hurt.
+
+Colonies now lose 0 to 3 people in 200 days, mostly to illness, where before some lost more than half to hunger or cold.
+
 ## Stats
 
 The Stats window (`T`) is the colony's record. Headline numbers sit on top, then twelve charts of the record day by day: people (awake, hungry, unwell, hurt, sick), food in store, days of food, food brought in, meals cooked, average fatigue, strain, trust and health, low and high temperature, the worst cold, stone and timber in the yard, power, ground surveyed and local life. Seasons are shaded behind each chart, hovering shows that day's values, and the range can be the last 20 days, the last year or everything. Totals since landing and a table of every day are below. The simulation adds one row at each midnight (`src/core/history.js`, saved with the colony); today so far is the last point, drawn dashed.

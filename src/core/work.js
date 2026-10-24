@@ -7,11 +7,12 @@ import { rnd, ri, clamp } from './rng.js';
 import { remember, trustAll } from './life.js';
 import { suggestFirst } from './founders.js';
 import {
-  TYPES, RAW, PRECISE, RECIPE, FIT_H, FAB_SLOW, STAGE_NAMES, matName, stageLoads, billOf, loadCheck, capacity, checkPlot, addProject,
+  TYPES, RAW, PRECISE, RECIPE, FIT_H, FAB_SLOW, STAGE_NAMES, matName, stageLoads, loadsOf, billOf, loadCheck, capacity, checkPlot, addProject,
   active, built, byId, capOf, powerCheck, shortOf, stockOf, sources, takeFrom, putBack, nextOrder, rawWanted, clearPlot, LANDER_KW, LABOUR, stagesOf, FEED, plantStop,
 } from './build.js';
 import { illMeal } from './illness.js';
 import { FIRE_STEP, beat } from './hazards.js';
+import { take, order, release } from './control.js';
 import { eat, analyse, labHour, kitchenJob, cookMeals, foodOf, add, patchLeft, takePatch, inSeason, cropPlan, sowUnits, harvestLoads, keyOf, isCrop, mealsInStore, hasKitchen, SAMPLES, PROC_DAYS, CROPS, CROP_KEYS } from './food.js';
 import { dayWeather, untilDeep } from './year.js';
 import { careArrive, careTimer, MED_KIT, MED_MADE, TRIAGE } from './care.js';
@@ -340,7 +341,7 @@ function advance(sim, p) {
   if (st === 0 && !p.below) { if (p.type !== 'shelter') clearPlot(sim, p); if (!p.blocked) sim.block(p); }
   p.stage++; p.got = {};
   if (p.stage >= 5) return finish(sim, p);
-  p.need = stageLoads(S, p.type, p.w, p.h, p.stage, p.mat, p.ug);
+  p.need = loadsOf(S, p, p.stage);
   const names = stagesOf(p.type);
   sim.log(`${p.name}: ${names[st].toLowerCase()} done. Next: ${names[p.stage].toLowerCase()}.`, 'good', { pid: p.id });
   if (p.type === 'shelter') trustAll(sim, 2);
@@ -414,8 +415,9 @@ function powerNote(sim, p) {
   if (p.powered) sim.log(`${p.name} has power.`, 'good', { pid: p.id }); else sim.log(`${p.name} went dark: the colony needs ${shortOf(sim.S, p)} kW more power.`, 'bad', { e: 'dark', lvl: 1, pid: p.id, title: 'Not enough power' });
 }
 // bunks in the shelter and the dormitories, and seats in the commons, for everyone they hold
+const HOMES = ['shelter', 'dorm', 'burrow'];
 export function assignHomes(sim) {
-  const S = sim.S, live = S.cols.filter(c => !c.dead), on = built(S).filter(p => p.powered);
+  const S = sim.S, live = S.cols.filter(c => !c.dead), on = built(S).filter(p => p.powered || (!p.shut && HOMES.includes(p.type)));   // a dark bunkhouse still has its bunks
   const fill = (types, key, capKey) => {
     const left = new Map(on.filter(p => types.includes(p.type)).map(p => [p.id, capOf(p)[capKey]]));
     const moved = [];
@@ -423,7 +425,7 @@ export function assignHomes(sim) {
     for (const c of live) if (c[key] < 0) for (const [id, n] of left) if (n > 0) { c[key] = id; left.set(id, n - 1); moved.push(c); break; }
     return moved;
   };
-  const moved = fill(['shelter', 'dorm', 'burrow'], 'home', 'beds');
+  const moved = fill(HOMES, 'home', 'beds');
   fill(['commons'], 'mess', 'seats');
   for (const c of moved) if (c.home > 0) remember(sim, c, `Got a bunk in ${byId(S, c.home).name}.`);
   if (moved.length) { S.rv++; if (moved.some(c => c.home > 0)) sim.log(`${moved.length} ${moved.length === 1 ? 'person has' : 'people have'} a bunk indoors now.`); }
@@ -531,6 +533,7 @@ export function onArrive(sim, c) {
     case 'bench': c.where = c.ws; c.timer = Math.round(RECIPE[c.make].h * HOUR / eff(sim, c, 'bench')); break;
     case 'plant': c.timer = Math.round(HOUR / 6); break;
     case 'fire': c.timer = FIRE_STEP; break;
+    case 'ctl': c.job = ''; c.act = ACT.IDLE; if (c.ord && c.ord.k === 'go') { c.ord.k = 'hold'; c.ord.t = c.tile; } break;   // there, or as near as they could get
     case 'eat':
       if (c.act === ACT.INDOORS) c.where = c.mess;
       if (c.ate !== sim.day) {
@@ -541,7 +544,8 @@ export function onArrive(sim, c) {
         else { if (!S.noFood) { S.noFood = true; sim.log('There is nothing left to eat. From tonight people go to bed hungry, and the hungry weaken day by day until they die.', 'bad', { e: 'nofood', lvl: 2, x: sim.W.site.fire.x, y: sim.W.site.fire.y, title: 'Nothing left to eat' }); } if (!c.hungry) sim.log(`${c.name} went to bed hungry: there is nothing left to eat.`, 'bad', { who: c.id }); c.hungry = true; c.meal = ''; }
       }
       break;
-    case 'sleep': case 'ward': if (c.act === ACT.INSIDE || c.act === ACT.INDOORS) c.where = c.ward >= 0 ? c.ward : c.home; break;
+    case 'sleep': case 'ward': if (c.act === ACT.INSIDE || c.act === ACT.INDOORS) c.where = c.ward >= 0 ? c.ward : c.home >= 0 && byId(S, c.home) && !byId(S, c.home).shut ? c.home : c.warmAt ?? -1; break;
+    case 'warm': if (c.act === ACT.INDOORS) c.where = c.warmAt; break;
     case 'aid': case 'treat': case 'carry': careArrive(sim, c); break;
     case 'tend': c.where = c.ws; c.timer = HOUR; break;
     case 'wake': break;
@@ -664,6 +668,7 @@ export function onTimer(sim, c) {
     case 'aid': case 'treat': careTimer(sim, c); break;
     case 'tend': c.job = ''; c.where = -1; c.ws = -1; break;
     case 'fire': beat(sim, c); c.job = ''; if (!(c.fight > 0)) c.plan = ''; break;
+    case 'ctl': c.job = ''; break;
   }
 }
 const MAT_ONE = { seal: 'airlock seal', pipe: 'pipe run', power: 'power unit', panel: 'solar panel' };
@@ -745,6 +750,10 @@ export function command(sim, m) {
     case 'analyse': return analyse(sim, m.o);
     case 'unanalyse': { const F = S.F, L = F.life[m.o]; if (L && L.queued && F.lab.cur !== m.o) { F.lab.queue = F.lab.queue.filter(o => o !== m.o); L.queued = false; S.rv++; } break; }
     case 'triage': if (TRIAGE[m.v]) { S.care.triage = m.v; S.rv++; } break;
+    // ---- direct orders in an emergency ----
+    case 'ctlTake': return take(sim, m.person);
+    case 'ctlOrder': return order(sim, m.person, { k: m.k, t: m.t, who: m.who });
+    case 'ctlEnd': { const c = S.cols[m.person]; if (c && c.ctl) release(sim, c, `${c.name} is back with their crew.`); return { ok: true }; }
     case 'iso': S.care.iso = !!m.v; for (const c of S.cols) if (!c.dead && c.plan === 'ward') c.plan = ''; S.rv++; break;
     case 'crop': if (p && p.crop && (m.k === 'auto' || m.k === 'fallow' || CROPS[m.k])) { p.crop.want = m.k; if (p.crop.st === 'bare') p.crop.todo = null; S.rv++; } break;
     case 'bpDel': if (S.blueprints[m.i]) { S.blueprints.splice(m.i, 1); S.rv++; } break;

@@ -77,6 +77,14 @@ export function loadCheck(S, type, w, h) {
 }
 
 // ---------- the bill: what each stage needs, in loads ----------
+// what a stage takes: a repair reuses what survived, so it takes only part of the loads, more the worse the damage
+export function loadsOf(S, p, st) {
+  const L = stageLoads(S, p.type, p.w, p.h, st, p.mat, p.ug);
+  if (!p.dmg || p.rep == null) return L;
+  const r = .25 + .75 * p.rep, out = {};
+  for (const k in L) out[k] = k === 'mark' ? L[k] : Math.max(1, Math.ceil(L[k] * r));
+  return out;
+}
 export function stageLoads(S, type, w, h, st, mat, ground) {
   if (type === 'shelter') { const [k, n] = SHELTER_STAGES[st]; return { [k]: n }; }
   if (type === 'test') return st === 0 ? { [mat]: 3 } : { test: 3 };
@@ -288,7 +296,7 @@ export function nextOrder(sim) {
   for (const p of active(S)) {
     if (p.paused || p.type === 'test') continue;
     for (let st = p.stage; st < 5; st++) {
-      const L = st === p.stage ? p.need : stageLoads(S, p.type, p.w, p.h, st, p.mat, p.ug);
+      const L = st === p.stage ? p.need : loadsOf(S, p, st);
       for (const k of PRECISE) {
         const n = (L[k] || 0) - (st === p.stage ? (p.got[k] || 0) : 0); if (n <= 0) continue;
         need[k] = (need[k] || 0) + n;
@@ -319,7 +327,7 @@ export function rawWanted(S, k, plants = true) {
   for (const p of active(S)) {
     if (p.paused) continue;
     for (let st = p.stage; st < (p.type === 'test' ? 1 : 5); st++) {
-      const L = st === p.stage ? p.need : stageLoads(S, p.type, p.w, p.h, st, p.mat, p.ug);
+      const L = st === p.stage ? p.need : loadsOf(S, p, st);
       n += Math.max(0, (L[k] || 0) - (st === p.stage ? (p.got[k] || 0) : 0));
     }
   }

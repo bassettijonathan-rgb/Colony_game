@@ -353,8 +353,16 @@ select{font:600 12px var(--f-ui);color:var(--txt);background:rgba(0,0,0,.35);bor
 #toast.on{opacity:1;transform:translate(-50%,0)}
 #pickHint,#placeHint{position:absolute;left:50%;top:calc(var(--tb) + var(--top) + 96px);transform:translateX(-50%);padding:8px 10px 8px 14px;border-radius:3px;background:var(--panel);border:1px solid rgba(243,182,92,.55);border-left:3px solid var(--acc);font-size:12.5px;font-weight:600;z-index:6;pointer-events:auto;display:flex;gap:10px;align-items:center;max-width:calc(100% - 32px);box-shadow:0 10px 26px rgba(0,0,0,.45)}
 #placeHint{border-color:rgba(127,211,143,.55);border-left-color:var(--good)}
+#ctlHint{position:absolute;left:50%;bottom:calc(var(--dock, 74px) + 22px);transform:translateX(-50%);padding:8px 10px 8px 14px;border-radius:3px;background:var(--panel);border:1px solid rgba(143,224,255,.55);border-left:3px solid #8fe0ff;font-size:12.5px;font-weight:600;z-index:6;pointer-events:auto;display:flex;gap:10px;align-items:center;max-width:calc(100% - 32px);box-shadow:0 10px 26px rgba(0,0,0,.45)}
+#ctlHint[hidden]{display:none}
+#cCtl.on{color:#08131b;background:linear-gradient(180deg,#9fe6ff,#5fc1e6);border-color:#8fe0ff}
+#cCtl:disabled{opacity:.45;cursor:default}
 #belowTag{position:absolute;left:50%;top:calc(var(--tb) + var(--top) + 52px);transform:translateX(-50%);padding:6px 8px 6px 12px;border-radius:3px;background:rgba(30,22,14,.9);border:1px solid rgba(201,162,107,.6);font-size:12px;font-weight:700;color:#e9d6b4;z-index:6;display:none;gap:10px;align-items:center;pointer-events:auto;box-shadow:0 8px 20px rgba(0,0,0,.45)}
-#app.below #belowTag{display:flex}
+#app.below #ctlHint{position:absolute;left:50%;bottom:calc(var(--dock, 74px) + 22px);transform:translateX(-50%);padding:8px 10px 8px 14px;border-radius:3px;background:var(--panel);border:1px solid rgba(143,224,255,.55);border-left:3px solid #8fe0ff;font-size:12.5px;font-weight:600;z-index:6;pointer-events:auto;display:flex;gap:10px;align-items:center;max-width:calc(100% - 32px);box-shadow:0 10px 26px rgba(0,0,0,.45)}
+#ctlHint[hidden]{display:none}
+#cCtl.on{color:#08131b;background:linear-gradient(180deg,#9fe6ff,#5fc1e6);border-color:#8fe0ff}
+#cCtl:disabled{opacity:.45;cursor:default}
+#belowTag{display:flex}
 #bBelow.on{color:#ffd79a;border-color:rgba(201,162,107,.7);background:rgba(201,162,107,.14)}
 @media (min-width:981px){#pickHint,#placeHint{max-width:min(600px,calc(100% - 800px))}}
 #app.placing{cursor:crosshair}
@@ -603,7 +611,7 @@ select{font:600 12px var(--f-ui);color:var(--txt);background:rgba(0,0,0,.35);bor
       <div class="in">
         <div class="job"><span class="dot"></span><span id="cJob"></span></div>
         <div id="cBody"></div>
-        <div class="foot"><button class="pill" id="cFollow">Follow</button><select id="cMove" aria-label="Move to crew"></select></div>
+        <div class="foot"><button class="pill" id="cFollow">Follow</button><button class="pill" id="cCtl" hidden>Take charge</button><select id="cMove" aria-label="Move to crew"></select></div>
       </div>
     </div>
     <div class="glass" id="stats" hidden>
@@ -620,6 +628,7 @@ select{font:600 12px var(--f-ui);color:var(--txt);background:rgba(0,0,0,.35);bor
       </div>
     </div>
     <div class="glass" id="orbit" hidden></div>
+    <div id="ctlHint" hidden><span id="ctlTxt"></span><button class="btn" id="ctlEnd">Release (Esc)</button></div>
     <div id="pickHint" hidden><span id="pickTxt"></span><button class="btn" id="pickCancel">Cancel</button></div>
     <div id="belowTag"><span>Below ground: rooms dug under the colony, and the ground the Seed has sounded</span><button class="btn" id="belowUp">Back up (U)</button></div>
     <div id="placeHint" hidden><span id="placeTxt"></span><button class="btn" id="placeTurn">Turn door (R)</button><button class="btn" id="placeCancel">Cancel</button></div>

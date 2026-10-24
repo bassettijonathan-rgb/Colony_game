@@ -17,6 +17,7 @@ import { injure, woundText } from './body.js';
 import { catchIt, BROUGHT } from './illness.js';
 import { mealsInStore } from './food.js';
 import { remember } from './life.js';
+import { scar, relive } from './trauma.js';
 
 const GRACE = 12;                       // days after landing with nothing planned and half the budget
 const BASE = [3, 5, 6, 4];              // by season: thaw, long light, storms, deep cold
@@ -123,10 +124,15 @@ function fire(sim, k) {
     case 'tremor': {   // the ground shakes: frames crack, some people inside are hurt
       const c = builtOf(S, p => p.type !== 'field'); if (c.length < 2 || sim.day < 25) return false;
       sim.log('The ground shook this morning: a tremor, short and sharp. The Seed is checking every building for damage.', 'bad', { e: 'tremor', lvl: 2, title: 'A tremor' });
+      relive(sim, ['quake']);
       let hit = 0;
       for (const p of c) {
         if (rnd() > (p.below ? (p.ug && p.ug.kind < 2 ? .55 : .2) : .4)) continue; hit++;   // dug rooms in soft ground take it worst, in rock least
-        for (const o of S.cols) if (!o.dead && o.where === p.id && hidden(o.act) && rnd() < .3) { const ws = injure(sim, o, 'build', .2 + rnd() * .4, `when ${p.name} shook`); if (ws.length) sim.log(`${o.name} was hurt inside ${p.name} when it shook: ${ws.map(w => woundText(w).toLowerCase()).join(', and ')}.`, 'bad', { who: o.id }); remember(sim, o, `Was inside ${p.name} when the ground shook.`); }
+        for (const o of S.cols) if (!o.dead && o.where === p.id && hidden(o.act)) {
+          if (rnd() < .3) { const ws = injure(sim, o, 'build', .2 + rnd() * .4, `when ${p.name} shook`); if (ws.length) sim.log(`${o.name} was hurt inside ${p.name} when it shook: ${ws.map(w => woundText(w).toLowerCase()).join(', and ')}.`, 'bad', { who: o.id }); scar(sim, o, 'quake', 30, `Was hurt inside ${p.name} when the ground shook.`); }
+          else scar(sim, o, 'quake', 12, `Was inside ${p.name} when the ground shook.`);
+          remember(sim, o, `Was inside ${p.name} when the ground shook.`);
+        }
         damage(sim, p, .2 + rnd() * .4, 'quake');
       }
       if (!hit) sim.log('The tremor passed without damage: every frame held.', 'good', {});

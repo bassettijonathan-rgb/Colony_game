@@ -30,7 +30,7 @@ const inside = c => c.where >= 0 && (c.act === ACT.INDOORS || c.act === ACT.INSI
 const atClinic = (S, c) => { const p = inside(c) ? byId(S, c.where) : null; return !!p && p.type === 'clinic'; };
 // can this person help someone else right now? emergency: wake them if they are asleep
 function free(c, emergency) {
-  if (c.dead || c.down || c.care || c.carried >= 0 || c.alone > 0 || c.act === ACT.WAKE || c.plan === 'ward') return false;
+  if (c.dead || c.down || c.care || c.ctl || c.carried >= 0 || c.alone > 0 || c.act === ACT.WAKE || c.plan === 'ward') return false;
   if (c.cap && (laidUp(c) || c.cap.consc < .6)) return false;
   if ((c.act === ACT.BED || c.act === ACT.INSIDE) && !emergency) return false;
   return true;
@@ -100,6 +100,8 @@ function begin(sim, o, k, c) {
   goToPatient(sim, o, c);
   S.rv++;
 }
+// a person under the player's orders sent to help someone: the same first aid, then on to a bed
+export const sendToHelp = (sim, o, c) => begin(sim, o, 'aid', c);
 export function goToPatient(sim, o, c) {
   o.job = o.care.k;
   if (inside(c)) { const p = byId(sim.S, c.where); if (p) { o.ws = p.id; sim.goTo(o, sim.doorOf(p), ACT.INDOORS); return; } }

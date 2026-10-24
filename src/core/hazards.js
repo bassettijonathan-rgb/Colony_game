@@ -9,11 +9,12 @@ import { MAP, T, HOUR, ACT, hidden } from './consts.js';
 import { rnd, clamp, hash } from './rng.js';
 import { dayWeather, fireOn, seasonOf, doyOf } from './year.js';
 import { floodPlain, propsIn } from './world.js';
-import { stageLoads, powerCheck, byId } from './build.js';
+import { stageLoads, loadsOf, powerCheck, byId } from './build.js';
 import { injure, laidUp, woundText } from './body.js';
 import { assignHomes, dropCarry } from './work.js';
 import { remember } from './life.js';
 import { spend } from './director.js';
+import { scar, relive } from './trauma.js';
 
 export const FIRE_STEP = HOUR / 6;                          // the fire moves on every ten game minutes
 // how readily each ground burns, and for how many steps; water, sand, rock and scorched ground don't
@@ -151,7 +152,7 @@ function catchFire(sim, p) {
   for (const c of S.cols) if (!c.dead && c.where === p.id && hidden(c.act)) {
     const t = sim.doorOf(p); c.x = t % MAP + .5; c.y = (t / MAP | 0) + .5; c.tile = t; c.act = ACT.IDLE; c.where = -1; c.plan = ''; c.job = ''; c.mv = 0; if (c.ward === p.id) c.ward = -1;
     if (rnd() < .25) { const ws = injure(sim, c, 'fire', .1 + rnd() * .35, `getting out of ${p.name}`); sim.log(`${c.name} got out of ${p.name} with ${ws.map(w => woundText(w).toLowerCase()).join(' and ')}.`, 'bad', { who: c.id }); }
-    remember(sim, c, `Got out of ${p.name} when it caught fire.`);
+    remember(sim, c, `Got out of ${p.name} when it caught fire.`); scar(sim, c, 'fire', 14, `Got out of ${p.name} as it burned.`);
   }
   if (p.done) { p.shut = 'fire'; powerCheck(sim); assignHomes(sim); }
 }
@@ -170,8 +171,8 @@ export function damage(sim, p, frac, why) {
   if (frac < .15 || (p.type === 'field' && why === 'fire')) { if (p.shut === why) p.shut = ''; powerCheck(sim); return; }
   if (!p.done) { p.got = {}; p.shut = ''; return; }
   const st = frac >= .9 ? 2 : frac >= .5 ? 3 : 4;
-  p.done = false; p.shut = ''; p.dmg = why; p.stage = p.type === 'field' ? Math.min(st, 2) : st; p.got = {};
-  p.need = stageLoads(S, p.type, p.w, p.h, p.stage, p.mat, p.ug);
+  p.done = false; p.shut = ''; p.dmg = why; p.rep = Math.min(1, frac); p.stage = p.type === 'field' ? Math.min(st, 2) : st; p.got = {};
+  p.need = loadsOf(S, p, p.stage);
   if (p.type === 'field') p.crop = null;
   S.rv++; powerCheck(sim); assignHomes(sim);
   sim.log(`${p.name} needs repairs before it can be used again. The build crews will see to it.`, 'bad', { pid: p.id });
@@ -185,9 +186,9 @@ function fireCrews(sim) {
   const near = t => { const x = t % MAP, y = t / MAP | 0; return Math.hypot(x - L.x, y - L.y) < NEAR || homeish.some(p => inRect(p, x, y, 12)); };
   const targets = keys.filter(near), bs = S.projects.filter(p => !p.gone && p.fire);
   if (!targets.length && !bs.length) { if (H.alarm) endAlarm(sim); return; }
-  if (!H.alarm) { H.alarm = S.tick; spend(sim, 2, 'fire'); sim.log('Fire near the camp: everyone who can is going to beat it out.', 'bad', { e: 'alarm', lvl: 1, title: 'All hands to the fire' }); }
+  if (!H.alarm) { H.alarm = S.tick; spend(sim, 2, 'fire'); relive(sim, ['fire']); sim.log('Fire near the camp: everyone who can is going to beat it out.', 'bad', { e: 'alarm', lvl: 1, title: 'All hands to the fire' }); }
   const want = Math.min(12, 2 + Math.ceil((targets.length + bs.length * 6) / 4));
-  const able = c => !c.dead && !c.down && !c.care && c.carried < 0 && !(c.cap && laidUp(c)) && c.act !== ACT.WAKE && !(c.alone > 0) && !c.iso;
+  const able = c => !c.dead && !c.down && !c.care && !c.ctl && c.carried < 0 && !(c.cap && laidUp(c)) && c.act !== ACT.WAKE && !(c.alone > 0) && !c.iso;
   const spots = [...bs.map(p => sim.doorOf(p)), ...targets];
   const dist = (c, t) => Math.hypot(c.x - (t % MAP), c.y - (t / MAP | 0));
   let on = S.cols.filter(c => c.fight >= 0 && able(c));
@@ -223,7 +224,7 @@ export function beat(sim, c) {
   for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) { const t = (y + dy) * MAP + x + dx; if (H.fire[t] && rnd() < .3 * skill) { const left = H.fire[t]; delete H.fire[t]; if (left < 4) burnt(sim, t); } }
   for (const p of S.projects) if (!p.gone && p.fire && inRect(p, x, y, 2) && rnd() < .12 * skill) putOut(sim, p, `${c.name} and the others beat it out`);
   c.fat = Math.min(100, c.fat + 1.5);
-  if (rnd() < (c.traits.includes('reckless') ? .03 : .012)) { const ws = injure(sim, c, 'fire', .1 + rnd() * .3, 'fighting a fire'); sim.log(`${c.name} was burned fighting the fire: ${ws.map(w => woundText(w).toLowerCase()).join(', and ')}.`, 'bad', { who: c.id }); }
+  if (rnd() < (c.traits.includes('reckless') ? .03 : .012)) { const ws = injure(sim, c, 'fire', .1 + rnd() * .3, 'fighting a fire'); sim.log(`${c.name} was burned fighting the fire: ${ws.map(w => woundText(w).toLowerCase()).join(', and ')}.`, 'bad', { who: c.id }); scar(sim, c, 'fire', 25, 'Was burned fighting a fire.'); }
 }
 
 // ---------- floods ----------
@@ -243,6 +244,7 @@ function floodHour(sim, wx) {
     if (p.gone || p.type === 'shelter' || p.type === 'test') continue;
     const wet = wetShare(thr, p, G.lv) >= .3;
     if (wet) {
+      if (p.shut !== 'flood' && !p.wetH && !S.projects.some(q => q.wetH)) relive(sim, ['water']);
       if (p.shut !== 'flood' && !p.wetH) { sim.log(`Flood water is in ${p.name}.${p.done && p.type !== 'field' ? ' It is out of use until the water goes down.' : ''}`, 'bad', { e: 'flood', lvl: 2, pid: p.id, title: 'Flooding' }); if (p.fire) { p.fire = false; } }
       if (!p.wetH && p.done) spend(sim, 1, 'flood');
       p.wetH = (p.wetH || 0) + 1; if (p.done || p.type === 'field') { if (p.shut !== 'flood') { p.shut = 'flood'; S.rv++; powerCheck(sim); assignHomes(sim); } }
@@ -262,7 +264,7 @@ function floodHour(sim, wx) {
     if (c.dead || hidden(c.act)) continue;
     const d = G.lv - thr[c.tile]; if (d < 0) continue;
     if (d > .5) c.chill = Math.min(100, c.chill + (S.F.temp < 8 ? 3 : 1));
-    if (d > 5 && c.moving && rnd() < .03) { const ws = injure(sim, c, 'fall', .25 + rnd() * .45, 'swept off their feet by the flood'); sim.log(`${c.name} was swept off their feet by the flood: ${ws.map(w => woundText(w).toLowerCase()).join(', and ')}.`, 'bad', { e: 'hurt', lvl: 1, who: c.id, title: 'Swept away' }); }
+    if (d > 5 && c.moving && rnd() < .03) { const ws = injure(sim, c, 'fall', .25 + rnd() * .45, 'swept off their feet by the flood'); sim.log(`${c.name} was swept off their feet by the flood: ${ws.map(w => woundText(w).toLowerCase()).join(', and ')}.`, 'bad', { e: 'hurt', lvl: 1, who: c.id, title: 'Swept away' }); scar(sim, c, 'water', 30, 'Was swept off their feet by the flood.'); }
   }
   if (G.lv < .5 && G.peak >= .5) { sim.log('The flood has gone down.', 'good', { e: 'floodgone', lvl: 1, title: 'The water is down' }); G.peak = 0; }
 }

@@ -13,6 +13,8 @@ import { LETTERS } from '../render/view.js';
 import { thingCard } from './things.js';
 import { healthTab } from './health.js';
 import { TRIAGE } from '../core/care.js';
+import { EM_TXT } from '../core/control.js';
+import { TR_NAME } from '../core/trauma.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -30,7 +32,7 @@ const holds = (type, c) => ({ shelter: `${c.beds} bunks`, dorm: `${c.beds} bunks
 const UG_TXT = { soil: 'soft soil: quick to dig, but the walls need a lot of shoring', clay: 'clay: heavier digging, and it holds its shape', stone: 'stone: slow digging, little shoring, and the spoil gives stone for the yard', 'hard rock': 'hard rock: very slow digging, but it barely needs shoring and gives stone' };
 const loads = L => Object.entries(L).filter(([k, n]) => n > 0 && k !== 'mark' && k !== 'test').map(([k, n]) => matName(k, n)).join(', ');const SHIFT_TXT = SHIFTS.map(s => `${s.name} ${s.a}–${s.b}`);
 // what a crew's members are doing, in a word each
-const DOING = { [ACT.BED]: 'asleep', [ACT.INSIDE]: 'asleep', [ACT.WALK]: 'walking', [ACT.HOME]: 'walking back', [ACT.TOBED]: 'turning in', [ACT.SURVEY]: 'surveying', [ACT.PLANT]: 'planting a stake', [ACT.CARRY]: 'carrying', [ACT.BUILD]: 'building', [ACT.EAT]: 'eating', [ACT.IDLE]: 'at camp', [ACT.ALONE]: 'off alone', [ACT.WAKE]: 'waking', [ACT.QUARRY]: 'cutting stone', [ACT.FELL]: 'felling', [ACT.STONE]: 'carrying stone', [ACT.LOG]: 'carrying logs', [ACT.TEST]: 'testing', [ACT.INDOORS]: 'indoors', [ACT.BENCH]: 'at a bench', [ACT.DEAD]: 'dead', [ACT.DOWN]: 'down', [ACT.TEND]: 'tending someone', [ACT.DRAG]: 'carrying someone' };
+const DOING = { [ACT.BED]: 'asleep', [ACT.INSIDE]: 'asleep', [ACT.WALK]: 'walking', [ACT.HOME]: 'walking back', [ACT.TOBED]: 'turning in', [ACT.SURVEY]: 'surveying', [ACT.PLANT]: 'planting a stake', [ACT.CARRY]: 'carrying', [ACT.BUILD]: 'building', [ACT.EAT]: 'eating', [ACT.IDLE]: 'at camp', [ACT.ALONE]: 'off alone', [ACT.WAKE]: 'waking', [ACT.QUARRY]: 'cutting stone', [ACT.FELL]: 'felling', [ACT.STONE]: 'carrying stone', [ACT.LOG]: 'carrying logs', [ACT.TEST]: 'testing', [ACT.INDOORS]: 'indoors', [ACT.BENCH]: 'at a bench', [ACT.DEAD]: 'dead', [ACT.DOWN]: 'down', [ACT.TEND]: 'tending someone', [ACT.DRAG]: 'carrying someone', [ACT.FIGHT]: 'fighting a fire', [ACT.DIG]: 'digging' };
 const meterCol = (v, goodHigh) => { const x = goodHigh ? 100 - v : v; return x > 70 ? 'var(--bad)' : x > 45 ? 'var(--mid)' : 'var(--good)'; };
 // a row of buttons choosing a part of a window, and a numbered how-to for it
 const sub = (key, cur, items) => `<div class="seg sm sub">${items.map(([k, t]) => `<button data-act="sub" data-k="${key}" data-v="${k}" class="${cur === k ? 'on' : ''}">${t}</button>`).join('')}</div>`;
@@ -124,7 +126,16 @@ export class Panels {
       if (sig !== this.sig && !holding) { const top = body.scrollTop; body.innerHTML = html(); body.scrollTop = top; this.sig = sig; }
       if (this.tab === 'archive') this.archiveLive(U);
     }
-    this.card(); this.bcard();
+    this.card(); this.bcard(); this.ctlBar(U);
+  }
+  // the banner while someone is under direct orders
+  ctlBar(U) {
+    const el = $('ctlHint'), i = U.ctl ?? -1, A = this.A;
+    if (i < 0 || A.phase !== 'colony' || !A.people[i]) { el.hidden = true; return; }
+    const n = A.people[i].name.split(' ')[0], o = U.ord, now = !o || o.k === 'hold' ? 'waiting for orders' : o.k === 'fire' ? 'going to beat out the flames' : o.k === 'help' ? 'going to help' : 'on the way';
+    const t = `Directing ${n}, ${now}${U.emerg ? '' : ': the emergency is over, so they go back to their crew soon'}. Right-click the ground to send them there, flames to beat them out, someone hurt to help them.`;
+    if ($('ctlTxt').textContent !== t) $('ctlTxt').textContent = t;
+    el.hidden = false;
   }
   strip(U) {
     const awake = U.alive, left = U.seed.feed + U.seed.queue.length;
@@ -470,6 +481,9 @@ export class Panels {
     $('cSw').style.background = rgb(crewColour(r[1]));
     $('cCrew').textContent = crew ? `${crew.name} crew${crew.lead === i ? ', lead' : ''} · ${WORKS[crew.work].toLowerCase()} · ${SHIFT_TXT[crew.shift].toLowerCase()}` : 'Not in a crew';
     $('cJob').textContent = (flags & 16 ? 'Dead' : ACT_NAME[r[0]] || '') + (extra.length && !(flags & 16) ? ' · ' + extra.join(', ') : '');
+    { const cc = $('cCtl'), mine = U.ctl === i;
+      cc.hidden = U.mode !== 'landfall' || !!(flags & 16); cc.textContent = mine ? 'Release' : 'Take charge'; cc.classList.toggle('on', mine); cc.disabled = !mine && !U.emerg;
+      cc.title = mine ? 'Hand them back to their crew (Esc)' : U.emerg ? `Direct them yourself, for now: ${EM_TXT[U.emerg]}. Right-click to give orders` : 'Only in an emergency: a fire near the camp, someone down or bleeding, a flood, or someone freezing'; }
     const sig = JSON.stringify([i, r, d, A.names.length, this.ctab]);
     if (sig !== this.cardSig) {
       this.cardSig = sig;
@@ -487,6 +501,7 @@ export class Panels {
         h += `<div class="sec">Skills</div><div class="skills">${SKILLS.map(k => `<div>${SKILL_NAME[k]}<em>${d.skills[k].toFixed(1)}</em></div>`).join('')}</div>`;
         const ties = d.ties.filter(t => t.k);
         if (ties.length) h += `<div class="sec">People</div><div class="chips">${ties.map(t => `<span class="chip ${t.k === 'rival' ? 'b' : 'g'}">${t.k === 'friend' ? 'Friend' : t.k === 'rival' ? 'Rival' : cap1(t.k)}: ${esc(A.names[t.id] || '')}</span>`).join('')}</div>`;
+        if (d.tr && d.tr.length) h += `<div class="sec">What they carry</div>${d.tr.slice().sort((a, b) => b.w - a.w).map(t => `<div class="mm2" title="${t.w >= 50 ? 'Heavy: it adds to their strain, troubles their sleep and brings a breakdown closer' : t.w >= 20 ? 'It still weighs on them, and comes back when the same thing happens again' : 'Fading'}"><em>${t.w >= 50 ? 'Heavy' : t.w >= 20 ? 'Weighing' : 'Fading'}</em>${esc(TR_NAME[t.k])}: ${esc(t.m)}</div>`).join('')}`;
         h += `<div class="sec">Memories</div>${d.mem.slice().reverse().map(m => `<div class="mm2"><em>${m.d ? 'Day ' + m.d : 'Before'}</em>${esc(m.m)}</div>`).join('')}`;
       }
       $('cBody').innerHTML = tabs + h;

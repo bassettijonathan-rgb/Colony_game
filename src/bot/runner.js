@@ -4,8 +4,8 @@
 // looks at the building list: it tests the local stone and timber, then plans a field, a workshop, a solar field,
 // a feedstock plant, a root cellar, a commons, a second field, a clinic, dug quarters, a third field and a
 // dormitory, two at a time, each on the nearest good
-// plot. It feeds the colony too: a forager once the shelter stands, a farmer once a field is made, a cook once
-// there is food that needs the kitchen, every sample tested as soon as it is ready, and the surveyors foraging once
+// plot. It feeds the colony too: a forager once the shelter stands, a farmer once a field is made, a cook for every ten
+// people once there is food that needs the kitchen (one more while people go hungry with food waiting for it), every sample tested as soon as it is ready, and the surveyors foraging once
 // the stakes are out. Once the plant stands it puts someone on quarrying, and prints the Seed's pick whenever
 // there is feedstock.
 import { generateWorld, findSites, landAt } from '../core/world.js';
@@ -13,7 +13,7 @@ import { Pathfinder } from '../core/path.js';
 import { Sim } from '../core/sim.js';
 import { DAY_TICKS, HOUR, ACT } from '../core/consts.js';
 import { findPlot, built } from '../core/build.js';
-import { mealsInStore } from '../core/food.js';
+import { mealsInStore, kitchenOnly } from '../core/food.js';
 import { toIsolate } from '../core/illness.js';
 import { doyOf, seasonOf, dayWeather } from '../core/year.js';
 
@@ -42,6 +42,11 @@ export function botBuild(sim) {
   // a catching illness going round: keep the sick apart, once there is a clinic; lift the rule when it has passed
   const ill = S.cols.filter(c => !c.dead && toIsolate(c)).length, clinic = S.projects.some(p => p.type === 'clinic' && p.done);
   if (clinic && ill >= 2 && !S.care.iso) sim.command({ op: 'iso', v: true }); else if (S.care.iso && !ill) sim.command({ op: 'iso', v: false });
+  // short of power while someone is ill or hurt: the clinic goes up the list, ahead of everything else
+  const patients = S.cols.some(c => !c.dead && (c.cap || c.bd.ill.some(q => q.st === 1 || q.st === 2)));
+  if (patients) for (const p of S.projects.filter(q => !q.gone && q.done && q.type === 'clinic' && !q.powered && !q.shut)) {
+    for (let k = 0; k < 12 && !p.powered; k++) { const i = S.projects.indexOf(p), up = S.projects.slice(0, i).filter(q => !q.gone); if (up.length <= 1 || ['clinic', 'shelter', 'solar'].includes(up[up.length - 1].type)) break; sim.command({ op: 'projMove', id: p.id, d: -1 }); }
+  }
   if (S.projects.filter(p => !p.gone && !p.done && p.type !== 'test').length >= 2) return;
   const n = {}, next = PLAN.find(([t]) => { n[t] = (n[t] || 0) + 1; return S.projects.filter(p => !p.gone && p.type === t).length < n[t]; });
   const spot = next && findPlot(sim, next[0], next[1], next[2]);
@@ -55,9 +60,9 @@ function botFood(sim) {
   const crewOf = w => live.find(c => c.work === w), build = crewOf('build');
   // the Seed stops sorting new people into crews once the player has changed the crews: the bot puts them with the builders
   if (build && !S.autoCrews) for (const c of S.cols) if (!c.dead && c.crew < 0 && c.act !== ACT.WAKE) sim.command({ op: 'move', person: c.id, crew: build.id });
-  const want = (w, skill) => {
+  const want = (w, skill, n = 1) => {
     let cr = crewOf(w);
-    if (cr && cr.members.length) return;
+    if (cr && cr.members.length >= n) return;
     // from the build crew, or from the foragers if the builders are down to one
     const from = [build, crewOf('forage')].find(c => c && c !== cr && c.members.length >= 2);
     if (!from) return;
@@ -70,7 +75,9 @@ function botFood(sim) {
   if (built(S).some(p => p.type === 'field')) want('farm', 'botany');
   if (built(S).some(p => p.type === 'plant')) want('quarry', 'building');
   const tested = F.life.map((L, o) => L.tested && sim.kinds[o].food).filter(Boolean);
-  if (tested.some(f => f.proc !== 'cook') || F.firstHarvest) want('kitchen', 'cooking');
+  // a cook for every ten or so people, more when food is waiting on the kitchen while people go hungry
+  const eaters = S.cols.filter(c => !c.dead).length, behind = S.cols.some(c => !c.dead && c.hungry) && kitchenOnly(sim) > 4;
+  if (tested.some(f => f.proc !== 'cook') || F.firstHarvest) want('kitchen', 'cooking', Math.max(1, Math.ceil(eaters / 10)) + (behind ? 1 : 0));
   const sv = crewOf('survey');
   if (sv && S.stakes.length >= 10 && sim.day > 12) sim.command({ op: 'crewSet', crew: sv.id, work: 'forage' });
 }

@@ -201,6 +201,13 @@ export function mealsInStore(sim, usable = false) {
   for (const v of S.F.vats) { const f = foodOf(sim, v.src); if (f) n += v.n * f.meals; }
   return n;
 }
+// meals' worth that only the kitchen can make ready: leached loads, and raw food that has to be leached or fermented
+export function kitchenOnly(sim) {
+  const Ld = sim.S.F.larder; let n = 0;
+  for (const k in Ld.prep) { const f = foodOf(sim, k); if (f) n += Ld.prep[k] * f.meals; }
+  for (const k in Ld.raw) { const f = foodOf(sim, k); if (f && f.proc !== 'cook') n += Ld.raw[k] * f.meals; }
+  return n;
+}
 // once a day: fresh food spoils, frozen food much more slowly; fermented meals and rations keep
 export function spoil(sim) {
   const S = sim.S, Ld = S.F.larder, cool = cellarShare(S), cold = (S.F.temp < 0 ? .2 : 1) * (1 - .7 * cool);
@@ -219,7 +226,7 @@ export const hasKitchen = sim => sim.S.crews.some(c => !c.gone && c.work === 'ki
 // what the kitchen should do next: empty a finished vat, cook if few meals are ready, or start a vat
 export function kitchenJob(sim, eaters) {
   const S = sim.S, F = S.F, Ld = F.larder;
-  const v = F.vats.findIndex(q => q.ready <= S.tick && !q.taken);
+  const v = F.vats.findIndex(q => q.ready <= S.tick && (!q.taken || q.taken < S.tick - 3 * HOUR));   // a cook called away mid-job leaves the claim behind
   if (v >= 0) return { k: 'unvat', v };
   const ready = sum(Ld.meals), want = Math.max(4, eaters * 2.2);
   if (ready < want) {

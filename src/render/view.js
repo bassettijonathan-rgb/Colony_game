@@ -364,6 +364,25 @@ export class View {
       for (const [a, b] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { ui.moveTo(X + a * r, Y + b * (r - l)); ui.lineTo(X + a * r, Y + b * r); ui.lineTo(X + a * (r - l), Y + b * r); }
       ui.stroke(); ui.shadowBlur = 0; label(F.sel, true);
     }
+    // the person under direct orders: a pulsing ring, and a line to where they were sent
+    const C = F.colony;
+    if (C && C.ctl >= 0 && C.ctl < F.n && !this.below) {
+      const o = C.ctl * 4, X = sx(F.pos[o]), Y = sy(F.pos[o + 1]), r = Math.max(11, z * .7) + Math.sin(F.time * 5) * 1.5;
+      if (C.ord && C.ord.k !== 'hold' && C.ord.t >= 0) {
+        const tx = sx(C.ord.t % MAP + .5), ty = sy((C.ord.t / MAP | 0) + .5);
+        ui.setLineDash([5, 5]); ui.lineDashOffset = -F.time * 10; ui.strokeStyle = C.ord.k === 'fire' ? 'rgba(255,150,80,.85)' : 'rgba(143,224,255,.8)'; ui.lineWidth = 1.6;
+        ui.beginPath(); ui.moveTo(X, Y); ui.lineTo(tx, ty); ui.stroke(); ui.setLineDash([]);
+        ui.beginPath(); ui.arc(tx, ty, Math.max(5, z * .35), 0, 6.3); ui.stroke();
+      }
+      ui.strokeStyle = 'rgba(143,224,255,.95)'; ui.lineWidth = 2.2; ui.shadowColor = 'rgba(0,0,0,.6)'; ui.shadowBlur = 5;
+      ui.beginPath(); ui.arc(X, Y, r, 0, 6.3); ui.stroke(); ui.shadowBlur = 0;
+    }
+    // a right-click order lands with a ripple where it was given
+    if (F.ctlMark && performance.now() - F.ctlMark.at < 700) {
+      const M = F.ctlMark, a = (performance.now() - M.at) / 700, X = sx(M.x), Y = sy(M.y);
+      ui.strokeStyle = M.k === 'fire' ? `rgba(255,150,80,${1 - a})` : M.k === 'help' ? `rgba(127,211,143,${1 - a})` : `rgba(143,224,255,${1 - a})`; ui.lineWidth = 2;
+      ui.beginPath(); ui.arc(X, Y, 6 + a * 18, 0, 6.3); ui.stroke();
+    }
     // the brackets around a thing picked on the map: the Seed, the fire, a tree, a patch of local life
     if (F.thing) {
       const T = F.thing, X = sx(T.x), Y = sy(T.y), r = Math.max(9, T.r * z) + Math.sin(F.time * 4) * 1.2, l = Math.max(5, r * .3);
