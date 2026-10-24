@@ -6,6 +6,7 @@ import { View } from './render/view.js';
 import { PersonArt } from './render/people.js';
 import { Panels } from './ui/panels.js';
 import { News } from './ui/news.js';
+import { Guide } from './ui/guide.js';
 import { thingAt } from './ui/things.js';
 import { Stats } from './ui/stats.js';
 import { Music, moodFor } from './ui/music.js';
@@ -16,7 +17,7 @@ import { LAYERS } from './render/terrain.js';
 import { Store, initStorage, saveLocal, loadLocal, saveAccount, loadAccount, exportFile, importFile } from './ui/storage.js';
 
 const $ = id => document.getElementById(id);
-const HUD = '.glass,.topbar,#bar,#dock,.nc,.al';   // the interface over the map: clicks and the wheel there are not for the map
+const HUD = '.glass,.topbar,#bar,#dock,.lt,.al';   // the interface over the map: clicks and the wheel there are not for the map
 const app = $('app');
 const A = {
   sim: null, view: null, panels: null, phase: 'boot', W: null, sites: null, siteSel: 0, mode: 'landfall', tag: '',
@@ -64,6 +65,7 @@ function ensureView(W) {
     A.panels = new Panels(A, { cmd, select, toast, pickArea, land, siteSelect, startPlace, showProject });
     A.stats = new Stats(A);
     A.news = new News(A, { select, showProject, setSpeed, toast, when, flyTo: (x, y) => { A.view.flyTo(x, y, Math.max(A.view.cam.z, 18)); A.follow = false; }, tab: t => A.panels.setTab(t) });
+    A.guide = new Guide(A, { tab: t => A.panels.setTab(t) });
     hookInput();
   } else A.view.setWorld(W);
   if (!A.raf) A.raf = requestAnimationFrame(frame);
@@ -139,7 +141,7 @@ function onState(m) {
   A.ui = m.ui;
   if (m.hist) A.hist.push(...m.hist);
   if (m.log.length) { A.log.push(...m.log); if (A.log.length > 300) A.log.splice(0, A.log.length - 300); A.news.add(m.log); }
-  recolour(); A.panels.update(); A.news.alerts(A.ui); A.stats.update();
+  recolour(); A.panels.update(); A.news.alerts(A.ui); A.guide.update(A.ui); A.stats.update();
   if (A.projSel >= 0 && !A.ui.projects.some(p => p.id === A.projSel)) A.projSel = -1;
 }
 

@@ -1,15 +1,18 @@
-// Telling the player what happens, so nothing important waits in the log to be found. Three ways:
-// - cards: notable events on the right of the screen for a while, with a click that takes the camera there;
-// - letters: big events in the middle of the screen, with the game paused until they are read;
-// - alerts: problems that last (rations running low, people hungry, buildings dark), shown until they are fixed.
-// The first time each kind of event happens, its card or letter also says what it means and what can be done.
+// Telling the player what happens, so nothing important waits in the log to be found. Two ways, as in RimWorld:
+// - letters: every notable event drops down the right edge of the screen onto a stack, coloured by what kind of news
+//   it is. Hover one for a preview, click it to read it in full (with a button that takes the camera there), right-
+//   click to throw it away. Small news leaves the stack on its own after a while of play; big news stays until it
+//   is read, glows until then, and can pause the game when it arrives;
+// - alerts: problems that last (rations running low, people hungry, buildings dark), listed under the letters until
+//   they are fixed.
+// The first time each kind of event happens, its letter also says what it means and what can be done.
 // The log keeps everything; this only decides what is worth interrupting for.
 import { ACT } from '../core/consts.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 const KEY = 'colony-news';
-const CARD_S = 22, CARD_NEW_S = 45, MAX_CARDS = 4;
+const SMALL_S = 90, SMALL_NEW_S = 180, MAX_LETTERS = 12;   // seconds of play a small letter stays; how many fit
 
 // what an event means, said once, the first time it happens
 export const EXPLAIN = {
@@ -86,19 +89,16 @@ const ORDER = ['down', 'bleed', 'hungry', 'cold', 'food', 'deep', 'locked', 'nof
 
 export class News {
   constructor(A, api) {
-    this.A = A; this.api = api; this.cards = []; this.letters = []; this.resume = 0; this.cycle = {}; this.sig = '';
+    this.A = A; this.api = api; this.stack = []; this.cur = null; this.resume = 0; this.cycle = {}; this.sig = '';
     let st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { /* private window */ }
     this.seen = new Set(st.seen || []); this.pause = st.pause !== false; this.explain = st.explain !== false;
-    $('cards').addEventListener('click', e => {
-      const c = e.target.closest('[data-n]'); if (!c) return;
-      const card = this.cards.find(k => k.n === +c.dataset.n); if (!card) return;
-      if (!e.target.closest('.x')) this.go(card.e);
-      this.drop(card);
-    });
-    $('cards').addEventListener('pointerover', e => { const c = e.target.closest('[data-n]'); const k = c && this.cards.find(q => q.n === +c.dataset.n); if (k) k.hold = true; });
-    $('cards').addEventListener('pointerout', e => { const c = e.target.closest('[data-n]'); const k = c && this.cards.find(q => q.n === +c.dataset.n); if (k) { k.hold = false; k.until = Math.max(k.until, performance.now() + 4000); } });
+    const L = $('letters'), at = e => { const el = e.target.closest('.lt'); return el && this.stack.find(k => k.n === +el.dataset.n); };
+    L.addEventListener('click', e => { const k = at(e); if (k) this.openLetter(k); });
+    L.addEventListener('contextmenu', e => { const k = at(e); if (!k) return; e.preventDefault(); this.remove(k, true); });
+    L.addEventListener('pointerover', e => { const k = at(e); if (k) { k.hold = true; this.tip(k); } });
+    L.addEventListener('pointerout', e => { const k = at(e); if (k) { k.hold = false; this.tip(null); } });
     $('alerts').addEventListener('click', e => { const a = e.target.closest('[data-a]'); if (a) this.goAlert(a.dataset.a); });
-    $('lGo').onclick = () => { const l = this.letters[0]; this.closeLetter(); if (l) this.go(l); };
+    $('lGo').onclick = () => { const k = this.cur; this.closeLetter(); if (k) this.go(k.e); };
     $('lOk').onclick = () => this.closeLetter();
     $('nPause').onchange = e => { this.pause = e.target.checked; this.keep(); };
     $('nExplain').onchange = e => { this.explain = e.target.checked; this.keep(); };
@@ -112,60 +112,77 @@ export class News {
     if (!this.explain || !EXPLAIN[e] || this.seen.has(e)) return '';
     this.seen.add(e); this.keep(); return EXPLAIN[e];
   }
-  reset() { this.cards = []; this.letters = []; this.resume = 0; this.cycle = {}; this.sig = ''; $('cards').innerHTML = ''; $('alerts').innerHTML = ''; $('letter').hidden = true; }
+  reset() { this.stack = []; this.cur = null; this.resume = 0; this.cycle = {}; this.sig = ''; $('letters').innerHTML = ''; $('alerts').innerHTML = ''; $('letter').hidden = true; this.tip(null); }
 
-  // ---------- events, as the log entries come in ----------
-  add(entries) {
-    for (const e of entries) {
-      if (!e.lvl) continue;
-      if (e.lvl >= 2) this.letter(e); else this.card(e);
-    }
+  // ---------- letters: each one falls down the right edge onto the stack ----------
+  add(entries) { for (const e of entries) if (e.lvl) this.push(e); }
+  push(e) {
+    const big = e.lvl >= 2, why = this.why(e.e);
+    const k = { n: e.n, e, why, big, life: (why ? SMALL_NEW_S : SMALL_S) * 1000, hold: false, el: null };
+    this.stack.unshift(k);
+    // too many: the oldest small letter goes first, then the oldest of all
+    while (this.stack.length > MAX_LETTERS) this.remove([...this.stack].reverse().find(q => !q.big) || this.stack[this.stack.length - 1]);
+    const el = k.el = document.createElement('div');
+    el.className = `lt ${tone(e)}${big ? ' big' : ''}`; el.dataset.n = e.n;
+    el.innerHTML = `<span class="lb">${esc(e.title || 'News')}</span><i><svg class="ic"><use href="#i-letter"/></svg></i>`;
+    $('letters').prepend(el);
+    const drop = el.getBoundingClientRect().top + 40;
+    el.animate([{ transform: `translateY(${-drop}px)`, easing: 'cubic-bezier(.5,0,1,1)' }, { transform: 'translateY(0)', offset: .82, easing: 'ease-out' }, { transform: 'translateY(-5px)', offset: .92, easing: 'ease-in' }, { transform: 'none' }], { duration: 420 + drop * .45 });
+    if (big && this.pause && this.A.speed > 0) { this.resume = this.A.speed; this.api.setSpeed(0); }
   }
-  card(e) {
-    const now = performance.now(), why = this.why(e.e);
-    this.cards.unshift({ n: e.n, e, why, until: now + (why ? CARD_NEW_S : CARD_S) * 1000, hold: false });
-    while (this.cards.length > MAX_CARDS) this.cards.pop();
-    this.drawCards();
+  // take a letter off the stack; the ones above it slide down into the gap
+  remove(k, fade = false) {
+    const i = this.stack.indexOf(k); if (i < 0) return;
+    this.stack.splice(i, 1);
+    if (this.cur === k) { this.cur = null; $('letter').hidden = true; }
+    const gone = () => {
+      const above = this.stack.filter(q => q.el.compareDocumentPosition(k.el) & Node.DOCUMENT_POSITION_FOLLOWING).map(q => [q, q.el.getBoundingClientRect().top]);
+      k.el.remove();
+      for (const [q, y] of above) { const d = y - q.el.getBoundingClientRect().top; if (d) q.el.animate([{ transform: `translateY(${d}px)` }, { transform: 'none' }], { duration: 240, easing: 'ease-out' }); }
+    };
+    if (fade) { k.el.style.pointerEvents = 'none'; k.el.animate([{ opacity: 1 }, { opacity: 0, transform: 'translateX(24px)' }], { duration: 220, easing: 'ease-in', fill: 'forwards' }).onfinish = gone; } else gone();
+    if (this.tipFor === k) this.tip(null);
+    this.after();
   }
-  drop(card) { this.cards = this.cards.filter(k => k !== card); this.drawCards(); }
-  drawCards() {
-    $('cards').innerHTML = this.cards.map(k => {
-      const e = k.e, aim = target(e);
-      return `<div class="nc ${e.k || 'info'}${aim ? ' aim' : ''}" data-n="${e.n}" title="${aim ? 'Click to look' : ''}">
-        <div class="nh"><b>${esc(e.title || '')}</b><em>${this.api.when(e.t)}</em><button class="x" aria-label="Dismiss"><svg class="ic"><use href="#i-close"/></svg></button></div>
-        <p>${esc(e.m)}</p>${k.why ? `<div class="why"><i>New</i>${esc(k.why)}</div>` : ''}</div>`;
-    }).join('');
-  }
+  // small letters leave on their own after a while of play; nothing goes while the game is paused or a letter is open
   tick() {
-    const now = performance.now(), before = this.cards.length;
-    this.cards = this.cards.filter(k => k.hold || k.until > now);
-    if (this.cards.length !== before) this.drawCards();
+    if (!(this.A.speed > 0) || this.cur) return;
+    for (const k of [...this.stack]) if (!k.big && !k.hold && (k.life -= 500) <= 0) this.remove(k, true);
+  }
+  // the preview beside a letter, while the pointer is on it
+  tip(k) {
+    const t = $('lTip'); this.tipFor = k;
+    if (!k) { t.hidden = true; return; }
+    const r = k.el.getBoundingClientRect(), e = k.e;
+    t.innerHTML = `<div class="nh"><b>${esc(e.title || 'News')}</b><em>${this.api.when(e.t)}</em></div><p>${esc(e.m)}</p>${k.why ? `<div class="why"><i>New</i>${esc(k.why)}</div>` : ''}<small>Click to read${target(e) ? ' and look' : ''} · right-click to dismiss</small>`;
+    t.hidden = false;
+    t.style.right = Math.round(innerWidth - r.left + 10) + 'px';
+    t.style.top = Math.round(Math.max(8, Math.min(r.top - 6, innerHeight - t.offsetHeight - 8))) + 'px';
   }
 
-  // ---------- letters: the game waits until they are read ----------
-  letter(e) {
-    this.letters.push({ ...e, why: this.why(e.e) });
-    if (this.letters.length === 1) this.showLetter();
-    if (this.pause && this.A.speed > 0) { this.resume = this.A.speed; this.api.setSpeed(0); }
-  }
-  showLetter() {
-    const l = this.letters[0]; if (!l) { $('letter').hidden = true; return; }
-    $('lTitle').textContent = l.title || 'News'; $('lWhen').textContent = this.api.when(l.t);
-    $('lText').textContent = l.m;
-    $('lWhy').hidden = !l.why; $('lWhyT').textContent = l.why || '';
-    $('lGo').hidden = !target(l);
-    $('lMore').textContent = this.letters.length > 1 ? `${this.letters.length - 1} more after this` : '';
-    $('letter').className = 'glass ' + (l.k || 'info'); $('letter').hidden = false;
+  // ---------- reading a letter ----------
+  openLetter(k) {
+    this.tip(null); this.cur = k; k.el.classList.add('read');
+    const e = k.e;
+    $('lTitle').textContent = e.title || 'News'; $('lWhen').textContent = this.api.when(e.t);
+    $('lText').textContent = e.m;
+    $('lWhy').hidden = !k.why; $('lWhyT').textContent = k.why || '';
+    $('lGo').hidden = !target(e);
+    const more = this.stack.length - 1; $('lMore').textContent = more > 0 ? `${more} more on the right` : '';
+    $('letter').className = 'glass ' + tone(e); $('letter').hidden = false;
     $('lPaused').hidden = !this.resume;
   }
-  closeLetter() {
-    this.letters.shift(); this.showLetter();
-    // the game picks up again once the last letter is read, unless the player has set a speed meanwhile
-    if (!this.letters.length && this.resume) { if (this.A.speed === 0) this.api.setSpeed(this.resume); this.resume = 0; }
+  closeLetter() { if (this.cur) this.remove(this.cur); }
+  get open() { return !!this.cur; }
+  // the game picks up again once every big letter that paused it has been read or thrown away, unless the
+  // player has set a speed meanwhile
+  after() {
+    if (!this.resume || this.cur || this.stack.some(q => q.big && !q.el.classList.contains('read'))) return;
+    if (this.A.speed === 0) this.api.setSpeed(this.resume);
+    this.resume = 0;
   }
-  get open() { return this.letters.length > 0; }
 
-  // ---------- looking at what a card is about ----------
+  // ---------- looking at what a letter is about ----------
   go(e) {
     const A = this.A;
     if (e.who != null && e.who >= 0) this.api.select(e.who, true);
@@ -233,3 +250,5 @@ export class News {
   }
 }
 const target = e => (e.who != null && e.who >= 0) || e.pid != null || e.x != null;
+// a letter's colour: red for bad news that matters, amber for smaller trouble, green for good news, blue for the rest
+const tone = e => e.k === 'bad' ? (e.lvl >= 2 ? 'bad' : 'warn') : e.k === 'good' ? 'good' : 'info';

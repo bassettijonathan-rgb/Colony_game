@@ -95,7 +95,7 @@ export class Panels {
 
   // ---------- the colony ----------
   show(on) {
-    this.on = on; if (!on) $('stats').hidden = true; $('side').hidden = !on || this.min; $('colony').hidden = !on; $('dock').hidden = !on; $('track').hidden = !on; $('news').hidden = !on;
+    this.on = on; if (!on) $('stats').hidden = true; $('side').hidden = !on || this.min; $('colony').hidden = !on; $('dock').hidden = !on; $('track').hidden = !on; $('news').hidden = !on; if (!on) $('guide').hidden = true;
     if (!on) { $('card').hidden = true; $('bar').hidden = true; $('bcard').hidden = true; }
     this.dock();
   }
