@@ -10,6 +10,7 @@ import {
   TYPES, RAW, PRECISE, RECIPE, FIT_H, FAB_SLOW, STAGE_NAMES, matName, stageLoads, billOf, loadCheck, capacity, checkPlot, addProject,
   active, built, byId, capOf, powerCheck, shortOf, stockOf, sources, takeFrom, putBack, nextOrder, rawWanted, clearPlot, LANDER_KW, LABOUR, stagesOf, FEED, plantStop,
 } from './build.js';
+import { illMeal } from './illness.js';
 import { eat, analyse, labHour, kitchenJob, cookMeals, foodOf, add, patchLeft, takePatch, inSeason, cropPlan, sowUnits, harvestLoads, keyOf, isCrop, mealsInStore, hasKitchen, SAMPLES, PROC_DAYS, CROPS, CROP_KEYS } from './food.js';
 import { dayWeather, untilDeep } from './year.js';
 import { careArrive, careTimer, MED_KIT, MED_MADE, TRIAGE } from './care.js';
@@ -514,7 +515,7 @@ export function onArrive(sim, c) {
         c.ate = sim.day;
         const had = S.food >= 1, got = eat(sim, c);
         if (had && S.food < 1 && !S.F.rationsOut) { S.F.rationsOut = true; sim.log('The last of the lander’s rations was eaten tonight. From now on the colony lives on what it grows and gathers.', 'bad', { e: 'rations', lvl: 1, x: sim.W.site.cargo.x + .5, y: sim.W.site.cargo.y + .5, title: 'The rations are gone' }); }
-        if (got) { c.meal = got; c.hungry = false; S.noFood = false; if (got !== 'ration') S.stats.meals++; }
+        if (got) { c.meal = got; c.hungry = false; S.noFood = false; if (got !== 'ration') S.stats.meals++; illMeal(sim, c, c.act === ACT.INDOORS && c.mess >= 0 ? 'm' + c.mess : 'fire', got); }
         else { if (!S.noFood) { S.noFood = true; sim.log('There is nothing left to eat. From tonight people go to bed hungry, and the hungry weaken day by day until they die.', 'bad', { e: 'nofood', lvl: 2, x: sim.W.site.fire.x, y: sim.W.site.fire.y, title: 'Nothing left to eat' }); } if (!c.hungry) sim.log(`${c.name} went to bed hungry: there is nothing left to eat.`, 'bad', { who: c.id }); c.hungry = true; c.meal = ''; }
       }
       break;
@@ -721,6 +722,7 @@ export function command(sim, m) {
     case 'analyse': return analyse(sim, m.o);
     case 'unanalyse': { const F = S.F, L = F.life[m.o]; if (L && L.queued && F.lab.cur !== m.o) { F.lab.queue = F.lab.queue.filter(o => o !== m.o); L.queued = false; S.rv++; } break; }
     case 'triage': if (TRIAGE[m.v]) { S.care.triage = m.v; S.rv++; } break;
+    case 'iso': S.care.iso = !!m.v; for (const c of S.cols) if (!c.dead && c.plan === 'ward') c.plan = ''; S.rv++; break;
     case 'crop': if (p && p.crop && (m.k === 'auto' || m.k === 'fallow' || CROPS[m.k])) { p.crop.want = m.k; if (p.crop.st === 'bare') p.crop.todo = null; S.rv++; } break;
     case 'bpDel': if (S.blueprints[m.i]) { S.blueprints.splice(m.i, 1); S.rv++; } break;
   }

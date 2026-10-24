@@ -6,6 +6,8 @@
 // role, the ground it grows on, how thickly, the seasons it can be gathered in, what a patch yields and how fast
 // it grows back, what it is as food (null if it isn't), its worth as compost, its look, what people notice when
 // they first see it, and what a test of it shows.
+//
+// Local illness: what people can catch from the land itself, with the fields src/core/illness.js reads.
 const plain = (id, name, role, where, food, bio, a, b, shape) => ({
   id, name, role, where, dens: .006, season: [1, 1, 1, 0], yield: 3, regrow: 8, food, bio,
   look: { a, b, shape, size: .5 }, seen: `A stand-in for local life (${name.toLowerCase()}).`, result: 'Stand-in test result.',
@@ -20,5 +22,9 @@ export const SEALED = {
     plain('s5', 'Stand-in reed', 'lack', ['marsh', 'shallow'], { meals: 3, proc: 'cook', keep: 10, slow: 0, lacks: true }, 1, [170, 170, 140], [120, 120, 100], 'reed'),
     plain('s6', 'Stand-in burr', 'slow', ['meadow'], { meals: 3, proc: 'cook', keep: 25, slow: .35, lacks: false }, 1, [160, 120, 90], [120, 90, 70], 'tuft'),
     plain('s7', 'Stand-in cap', 'extra', ['forest'], { meals: 2, proc: 'cook', keep: 4, slow: 0, lacks: false }, 1, [180, 160, 130], [120, 100, 80], 'cap'),
+  ],
+  ill: [
+    { id: 'sx1', name: 'Stand-in fever', sym: 'A stand-in fever after a day in the wet', src: { out: { terr: ['marsh', 'shallow'], season: [1, 1, 1, 0], p: .0016 } }, spread: null, incub: [48, 96], sick: [48, 96], crisis: [12, 24], sev: 1, crisisAt: .6, hits: { move: .3, consc: .1 }, fever: .8, kill: .3, abx: false, after: 'immune', imm: .8, text: 'Stand-in text for a local illness.' },
+    { id: 'sx2', name: 'Stand-in rash', sym: 'A stand-in rash after gathering', src: { out: { act: ['gather'], season: [1, 1, 1, 0], p: .002 } }, spread: null, incub: [2, 6], sick: [24, 48], crisis: [1, 2], sev: .5, crisisAt: 2, hits: { manip: .4 }, fever: .1, kill: 0, abx: false, after: 'none', text: 'Stand-in text for a local illness.' },
   ],
 };

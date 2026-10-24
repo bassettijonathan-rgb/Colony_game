@@ -8,6 +8,7 @@ import { lookAround, dietDay } from './food.js';
 import { dayWeather, fireOn } from './year.js';
 import { ailing, bodyTick, laidUp, needs, injure, danger, downed, woundText } from './body.js';
 import { endCare, restFor, goToPatient } from './care.js';
+import { toIsolate, illDay, ILL } from './illness.js';
 
 const WORKING = a => a === ACT.BUILD || a === ACT.CARRY || a === ACT.SURVEY || a === ACT.PLANT || a === ACT.QUARRY || a === ACT.FELL || a === ACT.STONE || a === ACT.LOG || a === ACT.TEST || a === ACT.BENCH || a === ACT.GATHER || a === ACT.FARM || a === ACT.COOK || a === ACT.SAMPLE || a === ACT.SACK;
 // a finished building with its lights on
@@ -23,8 +24,10 @@ export function want(sim, c) {
   if (c.care) return 'care';
   if (c.act === ACT.WAKE && c.timer > 0) return 'wake';
   if (c.alone > 0) return 'alone';
+  // the clinic's rule: the sick with something catching stay apart until it has passed
+  if (S.care && S.care.iso && toIsolate(c)) return 'ward';
   // the hurt rest in a clinic bed if there is one, or their own; so does anyone waiting to be treated
-  if (c.cap && (laidUp(c) || (S.care && S.care.medics > 0 && needs(c).some(n => TREAT.has(n.k))))) return 'ward';
+  if (c.cap && (laidUp(c) || (S.care && S.care.medics > 0 && needs(c, sim).some(n => TREAT.has(n.k))))) return 'ward';
   if (h >= c.bed || h < sh.a - .7) return 'sleep';
   if (cr && cr.work !== 'rest' && h >= sh.a && h < endOf(c, sh)) {
     const off = h >= 16.5 ? 'eat' : 'idle';
@@ -36,7 +39,7 @@ export function want(sim, c) {
   }
   return h >= 17 ? 'eat' : 'idle';
 }
-const TREAT = new Set(['close', 'dress', 'set', 'surgery', 'abx']);
+const TREAT = new Set(['close', 'dress', 'set', 'surgery', 'abx', 'dx', 'nurse']);
 // people who no longer trust the Seed go home at the end of a normal day, whatever the shift says
 const endOf = (c, sh) => c.tru < 35 && sh.b > 18 ? 18 : sh.b;
 
@@ -155,7 +158,7 @@ export function mindTick(sim, c) {
     const rest = asleep || ward || a === ACT.DOWN || c.plan === 'ward';
     const heal = (rest ? 1.5 : working ? .6 : 1) * (ward ? 1.25 : 1) * (c.hungry ? .4 : 1) * (c.chill > 35 ? .7 : 1) * (c.unwell ? .7 : 1) * (c.fat > 80 ? .8 : 1);
     const weak = (c.fat > 80 ? 1.3 : 1) * (c.unwell ? 1.25 : 1) * (c.hungry ? 1.3 : 1) * (c.fresh > 0 ? 1.3 : 1);   // a new body has no resistance to anything
-    const why = bodyTick(sim, c, dt, { heal, weak, lying: rest, hungry: c.hungry, chill: c.chill });
+    const why = bodyTick(sim, c, dt, { heal, weak, lying: rest, hungry: c.hungry, chill: c.chill, ward });
     c.hurt = c.bd.w.length ? 1 : 0;
     if (why) return die(sim, c, why);
     if (!c.hurt && c.ward >= 0 && !c.cap) { c.ward = -1; if (c.plan === 'ward') c.plan = ''; }
@@ -250,7 +253,7 @@ export function daily(sim, c) {
   if (c.hungry) d -= 2;
   c.tru = clamp(c.tru + d * k, 0, 100);
   c.worked = 0; c.dark = 0;
-  if (S.mode === 'landfall') dietDay(sim, c);
+  if (S.mode === 'landfall') { dietDay(sim, c); illDay(sim, c); }
   // keep only the ties that matter
   const ids = Object.keys(c.ties);
   if (ids.length > 10) { ids.sort((a, b) => (c.ties[b].k ? 200 : 0) + c.ties[b].f - (c.ties[a].k ? 200 : 0) - c.ties[a].f); for (const id of ids.slice(10)) delete c.ties[id]; }
@@ -263,7 +266,8 @@ const DIED = { starved: ' of hunger', froze: ' of the cold', diet: ' after a lon
 function die(sim, c, why) {
   if (c.care) endCare(sim, c);
   dropCarry(sim, c); c.dead = true; c.act = ACT.DEAD; c.mv = 0; c.home = c.mess = c.ward = -1; c.carried = -1; c.down = false; sim.S.stats.deaths++;
-  sim.log(`${c.name} died${DIED[why] || ''}.`, 'bad', { e: 'death', lvl: 2, who: c.id, title: `${c.name} died` });
+  const ill = why.startsWith('ill:') && why.split(':');
+  sim.log(`${c.name} died${ill ? (ill[2] === '1' ? ` of ${ILL[ill[1]].name.toLowerCase()}` : ' of an illness nobody had named') : DIED[why] || ''}.`, 'bad', { e: 'death', lvl: 2, who: c.id, title: `${c.name} died` });
   for (const o of sim.S.cols) if (!o.dead) { const t = o.ties[c.id]; o.str = Math.min(100, o.str + (t && t.k === 'friend' ? 25 : 8)); if (t && t.k) remember(sim, o, `Lost ${c.name}.`); }
   const cr = c.crew >= 0 ? sim.S.crews[c.crew] : null;
   if (cr) { cr.members = cr.members.filter(i => i !== c.id); if (cr.lead === c.id) cr.lead = cr.members[0] ?? -1; }

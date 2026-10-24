@@ -68,6 +68,7 @@ export class Panels {
     this.ctab = 'about';
     $('cBody').addEventListener('click', e => { const b = e.target.closest('[data-ctab]'); if (b) { this.ctab = b.dataset.ctab; this.cardSig = ''; this.card(); } });
     $('bBody').addEventListener('click', e => this.onClick(e));
+    $('bBody').addEventListener('change', e => this.onChange(e));
     body.addEventListener('change', e => this.onChange(e));
     $('cMove').onchange = e => { const v = +e.target.value; this.api.cmd('move', { person: this.A.sel, crew: v }); };
     $('orbit').addEventListener('click', e => {
@@ -419,6 +420,7 @@ export class Panels {
     const el = e.target, act = el.dataset.act, crew = +el.dataset.crew;
     if (act === 'rule') this.api.cmd('crewSet', { crew, rule: el.dataset.rule, on: el.checked });
     else if (act === 'lead') { this.api.cmd('crewSet', { crew, lead: +el.value }); el.blur(); }
+    else if (act === 'iso') this.api.cmd('iso', { v: el.checked });
   }
 
   // open projects, top left: click one for its card
@@ -442,7 +444,7 @@ export class Panels {
     this.barSig = sig;
     el.innerHTML = who.map(i => {
       const p = A.people[i], r = U.p[i], cond = Math.min(100 - r[2], 100 - r[3], r[5]), f = r[6], act = r[0];
-      const asleep = act === ACT.BED || act === ACT.INSIDE, st = f & 512 ? ['!', 'down', 'Down'] : f & 256 ? ['+', 'bleed', 'Bleeding'] : f & 2 ? ['+', 'hurt', f & 2048 ? 'Hurt, getting worse' : 'Hurt'] : f & 8 ? ['!', 'hungry', 'Hungry'] : asleep ? ['z', '', 'Asleep'] : null;
+      const asleep = act === ACT.BED || act === ACT.INSIDE, st = f & 512 ? ['!', 'down', 'Down'] : f & 16384 ? ['!', 'sick', 'Gravely ill'] : f & 256 ? ['+', 'bleed', 'Bleeding'] : f & 4096 ? ['~', 'sick', f & 8192 ? 'Sick, kept apart' : 'Sick'] : f & 2 ? ['+', 'hurt', f & 2048 ? 'Hurt, getting worse' : 'Hurt'] : f & 8 ? ['!', 'hungry', 'Hungry'] : asleep ? ['z', '', 'Asleep'] : null;
       const tip = `${p.name} · ${DOING[act] || ACT_NAME[act] || ''}${st && st[2] !== 'Asleep' ? ' · ' + st[2].toLowerCase() : ''}\nFatigue ${r[2]} · strain ${r[3]} · trust ${r[4]} · health ${r[5]}\nDouble-click to look at them`;
       return `<button class="pc${A.sel === i ? ' on' : ''}${f & 1024 ? ' care' : ''}${act === ACT.INSIDE || act === ACT.INDOORS || act === ACT.BENCH ? ' out' : ''}" data-i="${i}" title="${esc(tip)}"><img src="${portrait(p, r[1])}" alt="">${st ? `<em class="${st[1]}">${st[0]}</em>` : ''}<span>${esc(p.name.split(' ')[0])}</span><u><i style="width:${cond}%;background:${meterCol(cond, true)}"></i></u></button>`;
     }).join('');
@@ -454,7 +456,7 @@ export class Panels {
     const A = this.A, U = A.ui, i = A.sel, card = $('card');
     if (i < 0 || !U || !U.p[i] || !A.people[i]) { card.hidden = true; return; }
     const p = A.people[i], r = U.p[i], d = U.detail && U.detail.id === i ? U.detail : null, crew = r[1] >= 0 ? U.crews[r[1]] : null;
-    const flags = r[6], extra = [flags & 16 ? 'dead' : '', flags & 1 ? 'getting used to a new body' : '', flags & 512 && r[0] !== ACT.DOWN ? 'down' : '', flags & 256 ? 'bleeding' : flags & 2 ? 'hurt' : '', flags & 2048 ? 'getting worse' : '', flags & 1024 && !(flags & 512) ? 'in care' : '', flags & 8 ? 'hungry' : '', flags & 64 ? 'cold' : '', flags & 128 ? 'unwell' : ''].filter(Boolean);
+    const flags = r[6], extra = [flags & 16 ? 'dead' : '', flags & 1 ? 'getting used to a new body' : '', flags & 512 && r[0] !== ACT.DOWN ? 'down' : '', flags & 256 ? 'bleeding' : flags & 2 ? 'hurt' : '', flags & 2048 ? 'getting worse' : '', flags & 16384 ? 'gravely ill' : flags & 4096 ? 'sick' : '', flags & 8192 ? 'kept apart' : '', flags & 1024 && !(flags & 512) ? 'in care' : '', flags & 8 ? 'hungry' : '', flags & 64 ? 'cold' : '', flags & 128 ? 'unwell' : ''].filter(Boolean);
     $('cName').textContent = p.name; const pic = portrait(p, r[1]); if ($('cPic').getAttribute('src') !== pic) $('cPic').src = pic;
     $('cMeta').textContent = `${p.age} · former ${p.trade.toLowerCase()}`;
     $('cSw').style.background = rgb(crewColour(r[1]));
@@ -497,7 +499,7 @@ export class Panels {
     const A = this.A, U = A.ui, el = $('bcard'), p = U && A.projSel >= 0 ? U.projects.find(q => q.id === A.projSel) : null;
     if (!p && A.thing && U && A.phase === 'colony') return this.tcard(A.thing);
     if (!p || A.phase !== 'colony') { el.hidden = true; this.bSig = ''; return; }
-    const sig = JSON.stringify([p, this.confirm === p.id, p.type === 'clinic' && [U.care, U.med], p.type === 'plant' && [U.seed.feed, U.seed.fb]]); if (sig === this.bSig) { el.hidden = false; return; }
+    const sig = JSON.stringify([p, this.confirm === p.id, p.type === 'clinic' && [U.care, U.med, U.ill], p.type === 'plant' && [U.seed.feed, U.seed.fb]]); if (sig === this.bSig) { el.hidden = false; return; }
     this.bSig = sig;
     const T = TYPES[p.type], test = p.type === 'test', names = stagesOf(p.type), n = names.length;
     const f = progress(p), all = p.done ? 1 : (p.stage + f) / n;
@@ -512,6 +514,12 @@ export class Panels {
       const C = U.care, M = U.med, here = C.ward.filter(q => q[1] === p.id).map(q => q[0]);
       h += `<div class="sec">Patients</div>${here.length ? `<div class="chips">${here.map(id => `<button class="chip" data-act="person" data-id="${id}">${esc(A.people[id] ? A.people[id].name : '')}</button>`).join('')}</div>` : '<div class="note" style="margin:0">No one is in here.</div>'}`;
       h += `<div class="note" style="margin:6px 0 0">${C.medics ? `${C.medics} ${C.medics === 1 ? 'person is' : 'people are'} skilled enough to work as a medic.` : 'Nobody is skilled in medicine yet: others will do what they can, worse.'} A crew set to clinic work stays close by.</div>`;
+      const I = U.ill;
+      if (I) {
+        h += `<div class="sec">Keeping the sick apart</div><div class="rules"><label><input type="checkbox" data-act="iso"${I.iso ? ' checked' : ''}>Isolate anyone with a catching illness</label></div>`;
+        h += `<div class="note" style="margin:4px 0 0">The sick stay in a clinic bed, or their own bunk if the clinic is full, until it passes, and eat there. It stops the spread at meals and in shared rooms, but being shut away adds to their strain and costs trust. Only illnesses a medic has named as catching count.</div>`;
+        if (I.kinds.length) h += `<div class="sec">Illness seen here</div>${I.kinds.map(k => `<div class="wd"><b>${esc(k.name || 'Not yet named')}</b><div class="sub">${esc(k.sym)}. ${k.cases} case${k.cases === 1 ? '' : 's'}${k.deaths ? `, ${k.deaths} dead` : ''}.${k.name ? '' : ` What the medics know: ${Math.round(k.seen * 100)}%. Every examination adds to it, faster in a clinic and with a lab.`}</div>${k.name ? `<div class="sub">${esc(k.text)}</div><div class="chips">${k.catching ? '<span class="chip b">Catching</span>' : '<span class="chip g">Not catching</span>'}${k.abx ? '<span class="chip g">Antibiotics work</span>' : '<span class="chip m">Antibiotics don’t help</span>'}</div>` : ''}</div>`).join('')}`;
+      }
       h += `<div class="sec">When there are more patients than medics</div><div class="seg sm wrap">${Object.entries(TRIAGE).map(([k, t]) => `<button data-act="triage" data-v="${k}" class="${C.triage === k ? 'on' : ''}">${t}</button>`).join('')}</div>`;
       if (M) h += `<div class="note" style="margin:6px 0 0">Supplies: ${M.dress} dressings, ${M.pk} painkillers, ${M.abx} antibiotic courses, ${M.blood} units of blood substitute.</div>`;
     }

@@ -3,6 +3,7 @@
 // wound being deadly. Work speed, walking speed and accident risk come from the capacities, never from a single
 // health number. Only people with something wrong are worked on, so a healthy colony costs nothing here.
 import { rnd, clamp } from './rng.js';
+import { sickNow, illHits, illPain, illDanger, illLaid, illNeeds, illTick } from './illness.js';
 
 export const CAPS = ['consc', 'sight', 'breath', 'flow', 'digest', 'carry', 'manip', 'move'];
 export const CAP_NAME = { consc: 'Consciousness', sight: 'Sight', breath: 'Breathing', flow: 'Blood flow', digest: 'Digestion', carry: 'Carrying', manip: 'Hands', move: 'Moving' };
@@ -38,9 +39,9 @@ const INNER = new Set([PART.torso, PART.chest, PART.gut]);
 const HANDS = new Set([PART.handL, PART.handR]);
 const cap1 = s => s[0].toUpperCase() + s.slice(1);
 
-export const newBody = () => ({ blood: 1, shock: 0, pain: 0, bleed: 0, inf: 0, w: [], marks: [], pk: 0, abx: 0, st: 0, wid: 0, ex: null, worse: 0 });
-// anything to work on: wounds, lost blood, shock, a painkiller wearing off
-export const ailing = b => b.w.length > 0 || b.blood < 1 || b.shock > 0 || b.pk > 0 || b.marks.some(m => m.pain);
+export const newBody = () => ({ blood: 1, shock: 0, pain: 0, bleed: 0, inf: 0, w: [], marks: [], pk: 0, abx: 0, st: 0, wid: 0, ex: null, worse: 0, ill: [], imm: {}, hx: [], nu: 0 });
+// anything to work on: wounds, lost blood, shock, a painkiller wearing off, an illness (even one not showing yet)
+export const ailing = b => b.w.length > 0 || b.blood < 1 || b.shock > 0 || b.pk > 0 || b.ill.length > 0 || b.marks.some(m => m.pain);
 
 // ---------- getting hurt ----------
 // A new wound. Most are seen at once; a crush to the body can hide internal bleeding, and a small crush can hide
@@ -71,11 +72,12 @@ function partHarm(b, p) {
   for (const m of b.marks) if (m.p === p) d += m.loss;
   return Math.min(1, d);
 }
-// the eight capacities, 0 to 1, with blood loss, shock and pain on top of the wounds themselves
+// the eight capacities, 0 to 1, with illness, blood loss, shock and pain on top of the wounds themselves
 export function caps(c) {
-  const b = c.bd; if (!b.w.length && !b.marks.length && b.blood >= 1 && b.shock <= 0) return null;
+  const b = c.bd; if (!b.w.length && !b.marks.length && b.blood >= 1 && b.shock <= 0 && !sickNow(b)) return null;
   const o = {}; for (const k of CAPS) o[k] = 1;
   for (let p = 0; p < PARTS.length; p++) { const h = partHarm(b, p); if (!h) continue; for (const k in PARTS[p].caps) o[k] -= PARTS[p].caps[k] * h; }
+  illHits(b, o);
   const bf = b.blood < .8 ? clamp((b.blood - .45) / .35, 0, 1) : 1, pn = Math.min(1, b.pain);
   o.consc *= bf * (1 - .7 * Math.min(1, b.shock)) * (b.pain > 1 ? Math.max(0, 1 - (b.pain - 1) * .8) : 1) * (b.inf > 1 ? .7 : 1);
   o.flow = Math.min(o.flow, .3 + .7 * bf);
@@ -87,16 +89,17 @@ export const capOf = (c, k) => c.cap ? c.cap[k] : 1;
 // down where they are: unconscious, in too much pain to stand, or unable to walk
 export const downed = c => !!c.cap && (c.cap.consc < .3 || c.bd.pain > 1.25 || c.cap.move < .15);
 // too hurt to work: they should be resting in a bed until it passes
-export const laidUp = c => { const b = c.bd; return !!c.cap && (b.blood < .8 || b.shock > .2 || b.pain > .6 || b.inf > .55 || c.cap.move < .35 || c.cap.consc < .6 || b.w.some(w => w.k === 'frac' && !w.set && w.kn)); };
+export const laidUp = c => { const b = c.bd; return !!c.cap && (illLaid(b) || b.blood < .8 || b.shock > .2 || b.pain > .6 || b.inf > .55 || c.cap.move < .35 || c.cap.consc < .6 || b.w.some(w => w.k === 'frac' && !w.set && w.kn)); };
 // how close to death, 0 to 1: what triage sorts by
 export function danger(c) {
   const b = c.bd; if (!ailing(b)) return 0;
   let ib = 0; for (const w of b.w) ib += w.bl + w.ib;
-  return clamp(Math.max((1 - b.blood) * 2, b.shock, b.inf / 1.3, ib * 4, partHarm(b, PART.head) * .9, b.pain * .45), 0, 1);
+  return clamp(Math.max((1 - b.blood) * 2, b.shock, b.inf / 1.3, ib * 4, partHarm(b, PART.head) * .9, b.pain * .45, illDanger(b)), 0, 1);
 }
 // what the colony knows needs doing for someone, most urgent first
-export function needs(c) {
+export function needs(c, sim) {
   const b = c.bd, out = [];
+  if (sim) illNeeds(sim, b, out);
   for (const w of b.w) {
     if (w.ib && w.ikn) out.push({ k: 'surgery', w: w.id, u: 9 });
     if (!w.kn) continue;
@@ -111,8 +114,8 @@ export function needs(c) {
 }
 
 // ---------- hour by hour ----------
-// ctx: heal (how fast wounds mend now), weak (how easily they go bad), lying, hungry, chill. Returns why they
-// died, or ''.
+// ctx: heal (how fast wounds mend now), weak (how easily they go bad), lying, hungry, chill, ward. Returns why
+// they died, or ''.
 export function bodyTick(sim, c, dt, ctx) {
   const b = c.bd;
   let bleed = 0, pain = 0, inf = 0;
@@ -129,6 +132,7 @@ export function bodyTick(sim, c, dt, ctx) {
   }
   for (const w of done) healed(sim, c, w);
   if (inf > .5) pain += (inf - .5) * .5;                                   // fever
+  if (b.ill.length) { const why = illTick(sim, c, dt, ctx); if (why) return why; pain += illPain(b); }
   for (const m of b.marks) pain += m.pain || 0;
   if (b.pk > 0) { b.pk -= dt; pain *= .45; }
   if (b.abx > 0) b.abx -= dt / 24;
