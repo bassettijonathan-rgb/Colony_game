@@ -3,7 +3,7 @@
 // people who cut, carry and fit are in work.js.
 import { MAP, T } from './consts.js';
 import { hash, clamp } from './rng.js';
-import { propsIn } from './world.js';
+import { propsIn, floodPlain, FLOOD_LINE } from './world.js';
 
 // ---------- materials ----------
 export const MAT = {
@@ -142,18 +142,20 @@ export function checkPlot(sim, type, x, y, w, h, side) {
     if (!bad.length && (!W.cost[t] || !W.reach[t] || reservedAt(sim, d.x, d.y, 0))) { bad.push(t); why.set('The door would open onto blocked ground. Turn it to another side.', 1); }
   }
   if (bad.length) { out.why = [...why.keys()][0]; out.bad = bad.slice(0, 400); return out; }
+  // low ground by the water: allowed, but the Seed says so
+  { const thr = floodPlain(W); let n = 0; for (let ty = y; ty < y + h; ty++) for (let tx = x; tx < x + w; tx++) if (thr[ty * MAP + tx] <= FLOOD_LINE) n++; if (n >= w * h * .3) out.warn = 'Low ground by the water: a flood could reach it. The Seed would build higher up.'; }
   out.ok = true; return out;
 }
 // the nearest good place for a building of this size, facing the camp: for the bot, and for the Seed's own suggestions
 export function findPlot(sim, type, w, h) {
   const L = sim.W.land;
-  for (let r = 9; r <= 48; r += 1.5) {
+  for (const wet of [false, true]) for (let r = 9; r <= 48; r += 1.5) {
     const n = Math.max(8, Math.floor(r * 2.2));
     for (let k = 0; k < n; k++) {
       const a = k / n * 6.2832 + r * .37;
       for (const [ww, hh] of w === h ? [[w, h]] : [[w, h], [h, w]]) {
         const x = Math.round(L.x + Math.cos(a) * r - ww / 2), y = Math.round(L.y + Math.sin(a) * r - hh / 2), side = facing(sim.W, x, y, ww, hh);
-        if (checkPlot(sim, type, x, y, ww, hh, side).ok) return { x, y, w: ww, h: hh, side };
+        const c = checkPlot(sim, type, x, y, ww, hh, side); if (c.ok && (!c.warn || wet)) return { x, y, w: ww, h: hh, side };
       }
     }
   }
@@ -192,10 +194,11 @@ export const capOf = p => capacity(p.type, p.w, p.h);
 export function powerCheck(sim) {
   const S = sim.S; let supply = LANDER_KW, draw = 0; const changed = [];
   const sun = S.F ? S.F.sun : 1;
-  for (const p of built(S)) if (p.type === 'solar') { supply += capOf(p).supply * sun; if (!p.powered) { p.powered = true; changed.push(p); } }
+  // a building on fire or under water is out of use: it makes and takes nothing
+  for (const p of built(S)) if (p.type === 'solar') { const on = !p.shut; if (on) supply += capOf(p).supply * sun; if (p.powered !== on) { p.powered = on; changed.push(p); } }
   for (const p of built(S)) {
     if (p.type === 'solar') continue;
-    const kw = capOf(p).kw, on = draw + kw <= supply + 1e-9;
+    const kw = capOf(p).kw, on = !p.shut && draw + kw <= supply + 1e-9;
     if (on) draw += kw;
     if (on !== p.powered) { p.powered = on; changed.push(p); }
   }

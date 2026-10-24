@@ -91,7 +91,19 @@ Generated live with Web Audio, with no audio files: a pad changing chord every t
 5. Diagnosis is a belief. Until a medic examines someone, an illness is only its symptoms. An illness the databank knows is named by a good enough medic. A local one has to be worked out: every examination and every case that runs its course adds to what is known, faster in a clinic and with a lab, and once it is understood every case is named at once. Medics try antibiotics on an unnamed fever once; they only help against illnesses they are made for.
 6. The clinic's card has a rule to isolate anyone with a named catching illness: they stay in a clinic bed (their bunk if the clinic is full) and eat there until it passes. It stops the spread, but being shut away adds strain and costs trust. The card also lists the illness seen so far, named or not, with what the medics know.
 7. Anyone laid up is brought supper where they lie. The Health tab shows each illness, its stage, whether it is catching and whether antibiotics work, plus past illnesses and resistance. The colonist bar and the alerts mark the sick, the gravely ill, and a catching illness with nobody kept apart. The Stats window charts the sick and counts illnesses caught and deaths from them.
-8. Saves are version 6; version 5 saves continue, with everyone healthy and counted as a seasoned body.
+8. Version 5 saves continue, with everyone healthy and counted as a seasoned body.
+
+## Fire and floods (milestone 4, part 4)
+
+1. Fire needs fuel and dry ground (`src/core/hazards.js`). The ground dries in sun, warmth and wind and soaks up rain and snow; it is driest late in Long light. Woodland burns hottest and longest, meadow fast, marsh and bare ground hardly at all. Water, sand, rock and scorched ground don't burn.
+2. Fires start from lightning: on storm days in the morning, before the rain arrives in the afternoon, and now and then from a dry thunderstorm on a hot afternoon in Long light. Sparks from the campfire can also blow into dry grass on a windy evening. A fire spreads every ten game minutes, faster downwind and in dry weather, slower at night; rain and snow put it out.
+3. Burnt ground is scorched: its trees and bushes are gone, local life on it is lost until it grows back, and it greens over as meadow after a season.
+4. A fire that comes near the camp, the fields or a building raises the alarm: everyone able drops their work to beat it out, the sleepers are woken, and the nearest flames are taken first, burning buildings before grass. Firefighting is tiring and can burn people; anyone caught in the flames is burned.
+5. Buildings catch from flames next to them. Everyone inside gets out, and the building is out of use while it burns. The longer it burns, the further back it goes: a fire put out early needs a small repair, a building that burns out keeps only its footings. Repairs are ordinary build projects. Fields lose their crop. The shelter's lander modules don't burn.
+6. Floods come from snowmelt upstream and from days of heavy rain. The Seed's sensors give a day's warning. The water rises over the low ground by the river or lake for about a day, stands, and falls slowly. How low a tile is comes from its height above the nearest water and its distance from it (`floodPlain` in `src/core/world.js`).
+7. Buildings and fields in the water are out of use until it goes down, then need repairs: the longer it stood, the more work. Crops drown, loose biomass washes out of the yard, people wading get cold, and deep water can knock them off their feet. Planning on low ground shows a warning, and the Seed's own suggestions avoid it.
+8. The map draws the flames, smoke and the glow they cast, scorched ground, and the flood water over the land; the minimap marks fires. Letters and alerts cover fires near the camp, burning buildings, flood warnings and flooded buildings; the weather tooltip says when the ground is dry and when the river is high. Stats count fires and floods.
+9. Saves are version 7; version 6 saves continue with dry ground at a middle value and no fire or flood under way.
 
 ## Stats
 

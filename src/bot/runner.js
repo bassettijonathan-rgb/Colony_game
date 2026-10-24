@@ -52,6 +52,8 @@ function botFood(sim) {
   for (let o = 0; o < F.life.length; o++) if (F.life[o].samples >= 3 && !F.life[o].tested && !F.life[o].queued) sim.command({ op: 'analyse', o });
   if (!S.projects[0].done || sim.policy === 'nofood') return;
   const crewOf = w => live.find(c => c.work === w), build = crewOf('build');
+  // the Seed stops sorting new people into crews once the player has changed the crews: the bot puts them with the builders
+  if (build && !S.autoCrews) for (const c of S.cols) if (!c.dead && c.crew < 0 && c.act !== ACT.WAKE) sim.command({ op: 'move', person: c.id, crew: build.id });
   const want = (w, skill) => {
     let cr = crewOf(w);
     if (cr && cr.members.length) return;

@@ -11,6 +11,7 @@ import {
   active, built, byId, capOf, powerCheck, shortOf, stockOf, sources, takeFrom, putBack, nextOrder, rawWanted, clearPlot, LANDER_KW, LABOUR, stagesOf, FEED, plantStop,
 } from './build.js';
 import { illMeal } from './illness.js';
+import { FIRE_STEP, beat } from './hazards.js';
 import { eat, analyse, labHour, kitchenJob, cookMeals, foodOf, add, patchLeft, takePatch, inSeason, cropPlan, sowUnits, harvestLoads, keyOf, isCrop, mealsInStore, hasKitchen, SAMPLES, PROC_DAYS, CROPS, CROP_KEYS } from './food.js';
 import { dayWeather, untilDeep } from './year.js';
 import { careArrive, careTimer, MED_KIT, MED_MADE, TRIAGE } from './care.js';
@@ -334,7 +335,11 @@ function finish(sim, p) {
   const S = sim.S; p.done = true; p.stage = 5; p.need = {}; S.rv++;
   powerCheck(sim);
   const cap = capOf(p), more = active(S).some(q => q.type !== 'test' && !q.paused);
-  if (p.type === 'shelter') {
+  if (p.dmg) {   // a repair after a fire or a flood
+    p.dmg = '';
+    if (p.type === 'field') p.crop = { k: '', st: 'bare', g: 0, h: 1, want: 'auto', todo: null, sowK: '', left: null, total: 0, ripe: 0, sown: 0 };
+    sim.log(`${p.name} is repaired and back in use.`, 'good', { e: 'repaired', lvl: 1, pid: p.id, title: 'Repaired' });
+  } else if (p.type === 'shelter') {
     sim.log(`The shelter is finished: twelve bunks, walls and a roof made from the lander.${more ? '' : ' Nothing else is planned yet, so the build crew is free.'}`, 'good', { e: 'shelter', lvl: 2, pid: p.id, title: 'A roof at last' });
     trustAll(sim, 6, 'Slept under a roof again.');
   } else if (p.type === 'field') {
@@ -353,6 +358,8 @@ function finish(sim, p) {
 function waitReason(sim, p) {
   const S = sim.S;
   if (p.paused) return 'Paused';
+  if (p.fire) return 'On fire';
+  if (p.shut === 'flood' || p.wetH) return 'Under water';
   if (p.done) return p.type !== 'solar' && !p.powered ? `Dark: needs ${shortOf(S, p)} kW more power` : '';
   let miss = null;
   for (const k in p.need) {
@@ -509,6 +516,7 @@ export function onArrive(sim, c) {
     case 'salv': c.job = 'salvpick'; c.act = ACT.IDLE; c.timer = PICK; break;
     case 'bench': c.where = c.ws; c.timer = Math.round(RECIPE[c.make].h * HOUR / eff(sim, c, 'bench')); break;
     case 'plant': c.timer = Math.round(HOUR / 6); break;
+    case 'fire': c.timer = FIRE_STEP; break;
     case 'eat':
       if (c.act === ACT.INDOORS) c.where = c.mess;
       if (c.ate !== sim.day) {
@@ -641,6 +649,7 @@ export function onTimer(sim, c) {
     case 'lab': labHour(sim, eff(sim, c, 'lab')); c.job = ''; c.where = -1; c.ws = -1; c.act = ACT.IDLE; break;
     case 'aid': case 'treat': careTimer(sim, c); break;
     case 'tend': c.job = ''; c.where = -1; c.ws = -1; break;
+    case 'fire': beat(sim, c); c.job = ''; if (!(c.fight > 0)) c.plan = ''; break;
   }
 }
 const MAT_ONE = { seal: 'airlock seal', pipe: 'pipe run', power: 'power unit', panel: 'solar panel' };

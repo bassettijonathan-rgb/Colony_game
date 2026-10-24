@@ -13,6 +13,7 @@ import { fireOn, skyAt, doyOf, seasonOf } from '../core/year.js';
 import { drawLife, placeLife } from '../core/food.js';
 import { drawPatch, drawKitchen } from './life.js';
 import { drawPerson, drawDot, makeSeed, crewColour } from './people.js';
+import { floodPlain } from '../core/world.js';
 
 const mul3 = (a, f) => [a[0] * f, a[1] * f, a[2] * f];
 const rgb = (c, a = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
@@ -154,7 +155,12 @@ export class View {
     if (C) {
       drawMarks(dc, hRect, this.W, vis);
       this.drawLife(dc, hDisc, C, L, Tp, R, B, k, E, F.time);
-      for (const p of C.projects) if (p.type !== 'test' && vis(p.x + p.w / 2, p.y + p.h / 2, Math.max(p.w, p.h))) drawBuilding(dc, hRect, p, E, F.time);
+      if (C.hz && C.hz.lv > .3) this.drawFlood(dc, C.hz.lv, F.time);
+      for (const p of C.projects) if (p.type !== 'test' && vis(p.x + p.w / 2, p.y + p.h / 2, Math.max(p.w, p.h))) {
+        drawBuilding(dc, hRect, p, E, F.time);
+        if (p.wet) { dc.fillStyle = `rgba(66,78,80,${.42 + .04 * Math.sin(F.time * 1.3 + p.id)})`; dc.fillRect(p.x, p.y, p.w, p.h); }   // standing in the flood
+        if (p.dmg && !p.fire && p.dmg === 'fire') { dc.fillStyle = 'rgba(20,14,10,.38)'; dc.fillRect(p.x, p.y, p.w, p.h); }      // charred, waiting for repairs
+      }
     }
     if (C && vis(Ld.x, Ld.y, 24)) {
       drawCargo(dc, hRect, site, C.stores);
@@ -193,7 +199,47 @@ export class View {
       const r = Math.max(.35, 2.2 / k);
       for (const i of order) drawDot(dc, arts[i], pos[i * 4], pos[i * 4 + 1], r);
     }
+    if (C && C.hz) this.drawFlames(dc, hDisc, C, vis, k, F.time);
     hc.globalCompositeOperation = 'source-over';
+  }
+
+  // flood water over the low ground: a map-sized picture of where it stands, made again when the level moves
+  drawFlood(g, lv, t) {
+    const key = Math.round(lv * 4) / 4;
+    if (this.floodKey !== key) {
+      this.floodKey = key; const thr = floodPlain(this.W), cv = this.floodCv || (this.floodCv = mk(MAP, MAP)), c = cv.getContext('2d'), id = c.createImageData(MAP, MAP), D = id.data;
+      for (let i = 0; i < MAP * MAP; i++) { const d = key - thr[i]; if (d < 0) continue; const a = Math.min(.86, .5 + d * .08), o = i * 4; D[o] = 92 - Math.min(34, d * 6); D[o + 1] = 104 - Math.min(20, d * 4); D[o + 2] = 96 + Math.min(16, d * 3); D[o + 3] = a * 255; }   // muddy at the edge, darker and bluer where it is deep
+      c.putImageData(id, 0, 0);
+    }
+    g.save(); g.imageSmoothingEnabled = true; g.globalAlpha = .92 + .05 * Math.sin(t * 1.3); g.drawImage(this.floodCv, 0, 0, MAP, MAP); g.restore();
+  }
+  // the fire: flames on each burning tile and on burning buildings, smoke blown downwind
+  drawFlames(g, hDisc, C, vis, k, t) {
+    const H = C.hz, wx = Math.cos(H.wa), wy = Math.sin(H.wa), spots = [];
+    for (const tl of H.fire) { const x = tl % MAP + .5, y = (tl / MAP | 0) + .5; if (vis(x, y, 4)) spots.push([x, y, tl]); }
+    for (const p of C.projects) if (p.fire && vis(p.x + p.w / 2, p.y + p.h / 2, Math.max(p.w, p.h))) for (let y = p.y; y < p.y + p.h; y++) for (let x = p.x; x < p.x + p.w; x++) if (hash(x, y, 77) < .25 + p.burn * .6) spots.push([x + .5, y + .5, y * MAP + x]);
+    if (!spots.length) return;
+    if (k < 6) { for (const [x, y] of spots) { g.fillStyle = `rgba(255,${120 + 60 * Math.sin(t * 6 + x)},40,.9)`; g.fillRect(x - .5, y - .5, 1, 1); } return; }
+    for (const [x, y, tl] of spots) {   // the ground under it, charred and glowing
+      g.fillStyle = 'rgba(28,12,6,.5)'; g.beginPath(); g.ellipse(x, y + .1, .6, .5, 0, 0, 6.3); g.fill();
+      g.fillStyle = `rgba(255,80,20,${.22 + .1 * Math.sin(t * 5 + tl)})`; g.beginPath(); g.ellipse(x, y + .1, .42, .34, 0, 0, 6.3); g.fill();
+    }
+    // tongues of flame: teardrops licking upward and leaning downwind, added up so the middle burns white
+    g.save(); g.globalCompositeOperation = 'lighter';
+    const tongue = (bx, by, w, h, lean) => { g.beginPath(); g.moveTo(bx - w, by); g.quadraticCurveTo(bx - w * .9, by - h * .55, bx + lean, by - h); g.quadraticCurveTo(bx + w * .9, by - h * .55, bx + w, by); g.quadraticCurveTo(bx, by + w * .6, bx - w, by); g.fill(); };
+    for (const [x, y, tl] of spots) for (let i = 0; i < 3; i++) {
+      const h1 = hash(tl, i, 5), h2 = hash(tl, i, 9), f = .5 + .5 * Math.sin(t * (8 + h1 * 6) + h2 * 6), f2 = .5 + .5 * Math.sin(t * (13 + h2 * 5) + h1 * 4);
+      const bx = x + (h1 - .5) * .7, by = y + (h2 - .5) * .5 + .2, h = (.45 + h1 * .4) * (.75 + .4 * f), lean = wx * .25 * h + (f2 - .5) * .12;
+      g.fillStyle = 'rgba(200,60,10,.55)'; tongue(bx, by, .2, h, lean);
+      g.fillStyle = 'rgba(255,150,40,.5)'; tongue(bx, by, .13, h * .72, lean * .7);
+      g.fillStyle = 'rgba(255,235,160,.45)'; tongue(bx, by, .07, h * .4, lean * .4);
+      if (i === 0) hDisc(bx, by - h * .3, .2, 1.6);
+    }
+    g.restore();
+    for (const [x, y, tl] of spots) {   // smoke rising and blown away downwind
+      if (hash(tl, 2, 13) > .6) continue;
+      for (let j = 0; j < 3; j++) { const ph = (t * .12 + hash(tl, j, 17)) % 1, d = ph * 6, r = .35 + ph * 2.2; g.fillStyle = `rgba(58,55,52,${.3 * (1 - ph) * sstep(0, .12, ph)})`; g.beginPath(); g.arc(x + wx * d + Math.sin(t * .7 + tl + j) * .4, y + wy * d - .6 - ph * 2.2, r, 0, 6.3); g.fill(); }
+    }
   }
 
   // the local life the colony knows about, patch by patch; placed exactly as the simulation places it
@@ -237,6 +283,13 @@ export class View {
     if (!C) return out;
     const site = this.W.site, f = site.fire, b = fireOn(F.hour);
     if (b > .05) out.push({ x: f.x, y: f.y, z: .8, r: 4 + 7 * b, c: mul3([1, .55, .25], (.8 + 2.2 * Math.max(on, .25)) * b * fl(1, 9)), g: .35 * b });
+    // wildfire and burning buildings: one light for each patch of flames, by day as well as by night
+    if (C.hz && (C.hz.fire.length || C.projects.some(p => p.fire))) {
+      const cells = new Map(), add = (x, y) => { const key = (y / 6 | 0) * 200 + (x / 6 | 0), c = cells.get(key) || [0, 0, 0]; c[0] += x; c[1] += y; c[2]++; cells.set(key, c); };
+      for (const tl of C.hz.fire) add(tl % MAP + .5, (tl / MAP | 0) + .5);
+      for (const p of C.projects) if (p.fire) for (let i = 0; i < 6; i++) add(p.x + p.w / 2, p.y + p.h / 2);
+      let n = 0; for (const [key, c] of cells) { if (n++ > 40) break; out.push({ x: c[0] / c[2], y: c[1] / c[2], z: 1, r: 4 + Math.min(8, Math.sqrt(c[2]) * 2), c: mul3([1, .5, .2], (1.2 + 2 * Math.max(on, .2)) * fl(key, 8)), g: .4 }); }
+    }
     if (on > .01) {
       for (let i = 0; i < 4; i++) { const an = i * Math.PI / 2 + Math.PI / 4, blink = (Math.sin(t * 2.2 + i * 1.3) > .6) ? 1 : .15; out.push({ x: Ld.x + Math.cos(an) * 2.1, y: Ld.y + Math.sin(an) * 2.1, z: .6, r: 2.6, c: mul3([1, .25, .2], 1.4 * on * blink), g: .15 }); }
       buildingLights(out, C.projects, on, mul3);
@@ -321,7 +374,7 @@ export class View {
     const ui = this.ui;
     for (const p of F.colony.projects) {
       if (p.type === 'test') continue;
-      const stuck = !!p.stall || (p.done && p.type !== 'solar' && !p.powered), show = stuck || (!p.done && z >= 5) || (this.labels && z >= 8) || p.id === F.projSel;
+      const stuck = !!p.stall || p.fire || p.wet || (p.done && p.type !== 'solar' && !p.powered), show = stuck || (!p.done && z >= 5) || (this.labels && z >= 8) || p.id === F.projSel;
       if (!show) continue;
       const X = sx(p.x + p.w / 2), Y = sy(p.y) - 10; if (X < -150 || X > this.VW + 150 || Y < -40 || Y > this.VH + 60) continue;
       const head = p.done ? p.name : `${p.name} · ${p.paused ? 'paused' : stagesOf(p.type)[p.stage].toLowerCase() + ' ' + Math.round(progress(p) * 100) + '%'}`;
@@ -366,6 +419,7 @@ export class View {
     if (F.orbit) F.orbit.sites.forEach((s, i) => { g.strokeStyle = i === F.orbit.sel ? '#8fe0ff' : 'rgba(255,255,255,.7)'; g.lineWidth = 1.5 * D; g.beginPath(); g.arc(s.x * k, s.y * k, 40 * k, 0, 6.3); g.stroke(); g.fillStyle = g.strokeStyle; g.font = `800 ${10 * D}px Manrope,system-ui,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(LETTERS[i], s.x * k, s.y * k); });
     if (F.colony) for (const s of F.colony.stakes) { g.fillStyle = '#9ff0ff'; g.fillRect(s.x * k - 1.5 * D, s.y * k - 1.5 * D, 3 * D, 3 * D); }
     if (F.colony) for (const p of F.colony.projects) if (p.type !== 'test') { g.fillStyle = p.done ? 'rgba(220,226,232,.95)' : 'rgba(243,182,92,.9)'; g.fillRect(p.x * k, p.y * k, Math.max(2 * D, p.w * k), Math.max(2 * D, p.h * k)); }
+    if (F.colony && F.colony.hz) { g.fillStyle = '#ff7a2a'; for (const tl of F.colony.hz.fire) g.fillRect((tl % MAP) * k - D, (tl / MAP | 0) * k - D, 2 * D, 2 * D); }
     for (let i = 0; i < F.n; i++) { const act = F.pos[i * 4 + 3] >> 1; if (hidden(act)) continue; const c = F.arts[i].L.app; g.fillStyle = `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`; g.fillRect(F.pos[i * 4] * k - D, F.pos[i * 4 + 1] * k - D, 2 * D, 2 * D); }
     const Ld = this.W.land; if (Ld) { g.strokeStyle = '#8fe0ff'; g.lineWidth = 1.5 * D; g.beginPath(); g.arc(Ld.x * k, Ld.y * k, 4 * D, 0, 6.3); g.stroke(); }
     const [L, T, R, B] = this.rect; g.strokeStyle = 'rgba(255,236,190,.9)'; g.lineWidth = 1.2 * D; g.strokeRect(L * k, T * k, (R - L) * k, (B - T) * k);
