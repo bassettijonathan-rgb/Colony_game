@@ -8,6 +8,7 @@ import { lookAround, dietDay } from './food.js';
 import { dayWeather, fireOn } from './year.js';
 import { ailing, bodyTick, laidUp, needs, injure, danger, downed, woundText } from './body.js';
 import { endCare, restFor, goToPatient } from './care.js';
+import { spend } from './director.js';
 import { toIsolate, illDay, ILL } from './illness.js';
 import { fightSpot } from './hazards.js';
 
@@ -268,7 +269,7 @@ export function trustAll(sim, v, why) {
 const DIED = { starved: ' of hunger', froze: ' of the cold', diet: ' after a long sickness from what they ate', bled: ': they lost too much blood', shock: ' of shock from their injuries', infection: ' of an infection that got into their wounds', head: ' of a head injury' };
 function die(sim, c, why) {
   if (c.care) endCare(sim, c);
-  dropCarry(sim, c); c.dead = true; c.act = ACT.DEAD; c.mv = 0; c.home = c.mess = c.ward = -1; c.carried = -1; c.down = false; sim.S.stats.deaths++;
+  dropCarry(sim, c); c.dead = true; c.act = ACT.DEAD; c.mv = 0; c.home = c.mess = c.ward = -1; c.carried = -1; c.down = false; sim.S.stats.deaths++; spend(sim, 4, 'death');
   const ill = why.startsWith('ill:') && why.split(':');
   sim.log(`${c.name} died${ill ? (ill[2] === '1' ? ` of ${ILL[ill[1]].name.toLowerCase()}` : ' of an illness nobody had named') : DIED[why] || ''}.`, 'bad', { e: 'death', lvl: 2, who: c.id, title: `${c.name} died` });
   for (const o of sim.S.cols) if (!o.dead) { const t = o.ties[c.id]; o.str = Math.min(100, o.str + (t && t.k === 'friend' ? 25 : 8)); if (t && t.k) remember(sim, o, `Lost ${c.name}.`); }

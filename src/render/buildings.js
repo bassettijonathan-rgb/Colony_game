@@ -287,10 +287,44 @@ function chips(g, cx, cy, n, x, y) {
   for (let i = 0; i < n; i++) { const a = hash(x, y, 60 + i) * 6.283, r = .25 + hash(x, y, 70 + i) * .45; g.fillStyle = i % 2 ? '#a69e90' : '#8d867a'; g.beginPath(); g.arc(cx + Math.cos(a) * r, cy + Math.sin(a) * r, .045 + hash(x, y, 80 + i) * .05, 0, 6.3); g.fill(); }
 }
 
+// a room below ground shows on the surface only as its way down: a timber-framed hatch with steps going into the
+// dark, a spoil heap beside it while it is being dug, and a vent pipe once the air is run down
+export function drawHatch(g, hRect, p, t) {
+  const d = p.door; if (!d) return;
+  const x = d.x, y = d.y, stage = p.done ? 5 : p.stage, f = progress(p), [nx, ny] = NORMAL[p.side];
+  if (stage < 1) { g.strokeStyle = 'rgba(240,226,190,.7)'; g.lineWidth = .05; g.setLineDash([.15, .12]); g.strokeRect(x + .1, y + .1, .8, .8); g.setLineDash([]); return; }
+  // the heap of dug earth to one side, growing as the digging goes on and carted off once it is done
+  const heap = stage === 1 ? f : stage < 5 ? 1 - .2 * (stage - 1) : .2, hx = x + .5 - ny * 1.4 + nx * .3, hy = y + .5 + nx * 1.4 + ny * .3;
+  if (heap > .05) {
+    const r = .35 + heap * .55, col = p.ug && p.ug.kind >= 2 ? ['#8b867e', '#a39d93'] : p.ug && p.ug.kind === 1 ? ['#8a5a3c', '#a36d4a'] : ['#6b5139', '#83654a'];
+    g.fillStyle = 'rgba(0,0,0,.25)'; g.beginPath(); g.ellipse(hx + .12, hy + .1, r * 1.1, r * .8, 0, 0, 6.3); g.fill();
+    g.fillStyle = col[0]; g.beginPath(); g.ellipse(hx, hy, r, r * .75, 0, 0, 6.3); g.fill();
+    g.fillStyle = col[1]; g.beginPath(); g.ellipse(hx - r * .2, hy - r * .2, r * .55, r * .4, 0, 0, 6.3); g.fill();
+    hRect(hx - r * .6, hy - r * .5, r * 1.2, r, .3 + heap * .3);
+  }
+  // the opening: a dark shaft with steps going down away from the door side, in a rim of trodden stone
+  g.fillStyle = 'rgba(0,0,0,.3)'; g.fillRect(x - .12, y - .02, 1.36, 1.3);
+  g.fillStyle = '#857d70'; g.fillRect(x - .18, y - .18, 1.36, 1.36); hRect(x - .18, y - .18, 1.36, 1.36, .12);
+  g.fillStyle = '#3a2e22'; g.fillRect(x + .04, y + .04, .92, .92);
+  g.fillStyle = '#0e0b09'; g.fillRect(x + .14, y + .14, .72, .72);
+  g.strokeStyle = 'rgba(150,128,100,.55)'; g.lineWidth = .05;
+  for (let i = 1; i <= 3; i++) { const k = i / 4.2; g.beginPath(); if (nx) { const sx = nx > 0 ? x + .86 - k * .72 : x + .14 + k * .72; g.moveTo(sx, y + .18); g.lineTo(sx, y + .82); } else { const sy = ny > 0 ? y + .86 - k * .72 : y + .14 + k * .72; g.moveTo(x + .18, sy); g.lineTo(x + .82, sy); } g.stroke(); }
+  if (stage >= 2) {   // a timber frame round the hatch once the shoring starts
+    g.strokeStyle = '#7d5d3e'; g.lineWidth = .1; g.strokeRect(x + .08, y + .08, .84, .84); hRect(x, y, 1, .12, .35); hRect(x, y + .88, 1, .12, .35);
+  }
+  if (stage >= 4 || p.done) {   // the vent stack beside it
+    const vx = x + .5 + ny * .95, vy = y + .5 - nx * .95;
+    g.fillStyle = '#6a737b'; g.beginPath(); g.arc(vx, vy, .16, 0, 6.3); g.fill(); g.fillStyle = '#2a2f34'; g.beginPath(); g.arc(vx, vy, .08, 0, 6.3); g.fill(); hRect(vx - .15, vy - .15, .3, .3, .9);
+    if (p.done && p.powered && t) { const a = .5 + .5 * Math.sin(t * 1.5 + p.id); g.fillStyle = `rgba(210,210,215,${.12 * a})`; g.beginPath(); g.arc(vx + .2, vy - .4 - a * .3, .22 + a * .12, 0, 6.3); g.fill(); }
+  }
+  if (p.done && p.powered) { g.fillStyle = 'rgba(255,196,120,.35)'; g.fillRect(x + .2, y + .2, .6, .6); }   // lamplight coming up the stairs
+}
+
 // lights: windows and a lamp over the door of every lit building, and a work lamp over every site after dark
 export function buildingLights(out, projects, on, mul3) {
   for (const p of projects) {
     if (p.type === 'test') continue;
+    if (p.below) { if (p.door && (p.done ? p.powered : p.stage > 0 && !p.paused)) out.push({ x: p.door.x + .5, y: p.door.y + .5, z: .6, r: 3.2, c: mul3([1, .74, .45], 1.3 * on), g: .2 }); continue; }
     if (p.done && p.powered && p.type !== 'solar' && p.type !== 'field') {
       if (p.door) out.push({ x: p.door.x + .5, y: p.door.y + .5, z: 1.2, r: 5, c: mul3([1, .78, .5], 1.6 * on), g: .25 });
       const long = p.w >= p.h; for (const k of [.3, .7]) out.push({ x: long ? p.x + p.w * k : p.x - .6, y: long ? p.y - .6 : p.y + p.h * k, z: 1, r: 4, c: mul3([1, .8, .55], 1.1 * on), g: .1 }), out.push({ x: long ? p.x + p.w * k : p.x + p.w + .6, y: long ? p.y + p.h + .6 : p.y + p.h * k, z: 1, r: 4, c: mul3([1, .8, .55], 1.1 * on), g: .1 });

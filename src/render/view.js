@@ -3,7 +3,7 @@
 // the view from orbit before the landing, the landing itself, and the minimap.
 import { MAP, CH, ACT, hidden } from '../core/consts.js';
 import { clamp, sstep, hash } from '../core/rng.js';
-import { drawBuilding, drawYard, drawCargo, drawMarks, buildingLights, progress } from './buildings.js';
+import { drawBuilding, drawHatch, drawYard, drawCargo, drawMarks, buildingLights, progress } from './buildings.js';
 import { stagesOf, TYPES } from '../core/build.js';
 import { createGL } from './gl.js';
 import { FS_H, FS_L, FS_C } from './shaders.js';
@@ -13,7 +13,7 @@ import { fireOn, skyAt, doyOf, seasonOf } from '../core/year.js';
 import { drawLife, placeLife } from '../core/food.js';
 import { drawPatch, drawKitchen } from './life.js';
 import { drawPerson, drawDot, makeSeed, crewColour } from './people.js';
-import { floodPlain } from '../core/world.js';
+import { floodPlain, underOf, ORE } from '../core/world.js';
 
 const mul3 = (a, f) => [a[0] * f, a[1] * f, a[2] * f];
 const rgb = (c, a = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
@@ -23,6 +23,8 @@ const ease = t => 1 - Math.pow(1 - t, 3);
 export const ZMIN = 1.2, ZMAX = 72;
 export const LETTERS = 'ABC';
 const LAND_MS = 2600;
+// the ground below, as the Seed's soundings show it: soil, clay, stone, hard rock, waterlogged, solid
+const UGC = [[92, 70, 50], [124, 82, 56], [98, 95, 92], [66, 68, 76], [38, 54, 62], [26, 26, 30]];
 
 export class View {
   constructor(app, W) {
@@ -40,21 +42,21 @@ export class View {
     }
     this.seed = makeSeed();
     this.LP = new Float32Array(96); this.LC = new Float32Array(96);
-    this.labels = false; this.stats = { lights: 0, lightsInView: 0, people: 0 }; this.order = [];
+    this.labels = false; this.below = false; this.stats = { lights: 0, lightsInView: 0, people: 0 }; this.order = [];
     this.fly = null; this.anim = null; this.fog = !!W.land;
     this.mm = app.querySelector('#mm'); this.mmBase = this.minimapBase(); this.mmFog = this.fogBase();
     this.resize();
   }
   // a new planet, same window
   setWorld(W) {
-    this.W = W; this.life = null; this.terrain.dispose(); this.terrain = new Terrain(this.G, W);
+    this.W = W; this.life = null; this.ugCv = null; this.terrain.dispose(); this.terrain = new Terrain(this.G, W);
     this.cam = W.land ? { x: W.land.x + .5, y: W.land.y + 3, z: Math.max(this.cam.z, 24) } : { x: MAP / 2, y: MAP / 2, z: 1 };
     this.fly = null; this.anim = null; this.fog = !!W.land;
     this.mmBase = this.minimapBase(); this.mmFog = this.fogBase(); this.clampCam();
   }
   // the lander comes down where the player chose: the ground it changed is painted again, and it descends
   land(W, rect) {
-    this.W = W; this.life = null; this.terrain.patch(W, rect); this.fog = true;
+    this.W = W; this.life = null; this.ugCv = null; this.terrain.patch(W, rect); this.fog = true;
     this.mmBase = this.minimapBase(); this.mmFog = this.fogBase();
     this.anim = { t0: performance.now() };
     this.flyTo(W.land.x + .5, W.land.y + 2, 26);
@@ -156,7 +158,8 @@ export class View {
       drawMarks(dc, hRect, this.W, vis);
       this.drawLife(dc, hDisc, C, L, Tp, R, B, k, E, F.time);
       if (C.hz && C.hz.lv > .3) this.drawFlood(dc, C.hz.lv, F.time);
-      for (const p of C.projects) if (p.type !== 'test' && vis(p.x + p.w / 2, p.y + p.h / 2, Math.max(p.w, p.h))) {
+      for (const p of C.projects) if (p.below) { if (p.door && vis(p.door.x, p.door.y, 3)) drawHatch(dc, hRect, p, F.time); }
+      else if (p.type !== 'test' && vis(p.x + p.w / 2, p.y + p.h / 2, Math.max(p.w, p.h))) {
         drawBuilding(dc, hRect, p, E, F.time);
         if (p.wet) { dc.fillStyle = `rgba(66,78,80,${.42 + .04 * Math.sin(F.time * 1.3 + p.id)})`; dc.fillRect(p.x, p.y, p.w, p.h); }   // standing in the flood
         if (p.dmg && !p.fire && p.dmg === 'fire') { dc.fillStyle = 'rgba(20,14,10,.38)'; dc.fillRect(p.x, p.y, p.w, p.h); }      // charred, waiting for repairs
@@ -331,8 +334,9 @@ export class View {
       });
       return;
     }
+    if (this.below && F.colony) this.drawBelow(F, sx, sy, z);
     // where survey crews have been sent
-    if (F.colony) for (const cr of F.colony.crews) {
+    if (F.colony && !this.below) for (const cr of F.colony.crews) {
       if (cr.gone || cr.work !== 'survey' || cr.target < 0) continue;
       const tx = cr.target % MAP + .5, ty = (cr.target / MAP | 0) + .5, X = sx(tx), Y = sy(ty), col = crewColour(cr.id);
       ui.setLineDash([6, 6]); ui.lineDashOffset = -F.time * 8; ui.strokeStyle = rgb(col, .95); ui.lineWidth = 2; ui.beginPath(); ui.arc(X, Y, Math.max(10, 12 * z), 0, 6.3); ui.stroke(); ui.setLineDash([]);
@@ -369,14 +373,96 @@ export class View {
     }
   }
 
+  // ---------- below ground ----------
+  // a map of the ground under the surface, made once: the colour of what is there, with seams of ore glinting
+  underBase() {
+    if (this.ugCv) return this.ugCv;
+    const U = underOf(this.W), cv = mk(MAP, MAP), g = cv.getContext('2d'), id = g.createImageData(MAP, MAP), D = id.data;
+    for (let i = 0; i < MAP * MAP; i++) {
+      const u = U[i], c = UGC[u & 7], x = i % MAP, y = i / MAP | 0, n = .93 + hash(x, y, 5) * .12, o = i * 4;
+      if (u & ORE && hash(x, y, 9) < .4) { D[o] = 172; D[o + 1] = 134; D[o + 2] = 80; } else { D[o] = c[0] * n; D[o + 1] = c[1] * n; D[o + 2] = c[2] * n; }
+      D[o + 3] = 255;
+    }
+    g.putImageData(id, 0, 0); return (this.ugCv = cv);
+  }
+  // the view below ground: the soundings, the rooms dug into them, and whoever is down there
+  drawBelow(F, sx, sy, z) {
+    const ui = this.ui, C = F.colony, t = F.time;
+    ui.save(); ui.imageSmoothingEnabled = true; ui.imageSmoothingQuality = 'high';
+    ui.drawImage(this.underBase(), sx(0), sy(0), MAP * z, MAP * z);
+    if (this.fog) { ui.globalAlpha = .9; ui.drawImage(this.mmFog, sx(0), sy(0), MAP * z, MAP * z); ui.drawImage(this.mmFog, sx(0), sy(0), MAP * z, MAP * z); ui.globalAlpha = 1; }
+    ui.imageSmoothingEnabled = true;
+    ui.fillStyle = 'rgba(8,8,12,.4)'; ui.fillRect(0, 0, this.VW, this.VH);
+    // what stands above, faintly, for bearings
+    ui.strokeStyle = 'rgba(220,226,232,.28)'; ui.lineWidth = 1; ui.setLineDash([4, 4]);
+    for (const p of C.projects) if (!p.below && p.type !== 'test') ui.strokeRect(sx(p.x), sy(p.y), p.w * z, p.h * z);
+    const Ld = this.W.land; ui.beginPath(); ui.arc(sx(Ld.x), sy(Ld.y), 1.6 * z, 0, 6.3); ui.stroke(); ui.setLineDash([]);
+    const rooms = C.projects.filter(p => p.below);
+    for (const p of rooms) this.drawRoom(p, sx, sy, z, t);
+    // people below: at their room's stairs as the simulation has them, drawn spread through the room
+    const r = Math.max(3, z * .32);
+    for (let i = 0; i < F.n; i++) {
+      const o = i * 4, act = F.pos[o + 3] >> 1; if (!hidden(act) || act === ACT.DEAD) continue;
+      const px = F.pos[o], py = F.pos[o + 1], p = rooms.find(q => q.door && Math.abs(q.door.x + .5 - px) < .9 && Math.abs(q.door.y + .5 - py) < .9); if (!p) continue;
+      const asleep = act === ACT.INSIDE, cols = Math.max(1, p.w - 2), k = asleep ? i % Math.max(1, p.cap.beds || 1) : (i * 7 + (t * .05 | 0)) % (cols * Math.max(1, p.h - 2));
+      const X = sx(p.x + 1.5 + (k % cols)), Y = sy(p.y + 1.5 + ((k / cols | 0) % Math.max(1, p.h - 2))), c = F.arts[i].L.app;
+      ui.fillStyle = `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`; ui.strokeStyle = 'rgba(10,8,6,.9)'; ui.lineWidth = 1.2;
+      ui.beginPath(); if (asleep) ui.ellipse(X, Y, r * 1.2, r * .7, 0, 0, 6.3); else ui.arc(X, Y, r, 0, 6.3); ui.fill(); ui.stroke();
+      if (act === ACT.DIG && Math.sin(t * 6 + i) > .3) { ui.fillStyle = 'rgba(200,180,150,.6)'; ui.beginPath(); ui.arc(X + r, Y - r, r * .4, 0, 6.3); ui.fill(); }
+    }
+    ui.restore();
+  }
+  drawRoom(p, sx, sy, z, t) {
+    const ui = this.ui, X = sx(p.x), Y = sy(p.y), Wd = p.w * z, Hd = p.h * z, stage = p.done ? 5 : p.stage, f = progress(p), [nx, ny] = [[0, -1], [1, 0], [0, 1], [-1, 0]][p.side];
+    if (X > this.VW + 40 || Y > this.VH + 40 || X + Wd < -40 || Y + Hd < -40) return;
+    // how much is dug out, from the stairs inward
+    const dug = stage === 0 ? 0 : stage === 1 ? f : 1;
+    if (dug > 0) { ui.strokeStyle = 'rgba(12,8,4,.85)'; ui.lineWidth = Math.max(3, z * .3); ui.strokeRect(X, Y, Wd, Hd); }   // the cut face of the walls
+    ui.setLineDash(stage ? [] : [5, 4]); ui.strokeStyle = 'rgba(240,226,190,.75)'; ui.lineWidth = 1.5; ui.strokeRect(X, Y, Wd, Hd); ui.setLineDash([]);
+    if (dug > 0) {
+      ui.fillStyle = p.wet ? '#2c3e46' : '#75604a';
+      if (nx > 0) ui.fillRect(X + Wd * (1 - dug), Y, Wd * dug, Hd); else if (nx < 0) ui.fillRect(X, Y, Wd * dug, Hd); else if (ny > 0) ui.fillRect(X, Y + Hd * (1 - dug), Wd, Hd * dug); else ui.fillRect(X, Y, Wd, Hd * dug);
+    }
+    if (dug >= 1 && p.done && (p.powered || p.type === 'cellar')) {   // lamplight in a finished room
+      const g = ui.createRadialGradient(X + Wd / 2, Y + Hd / 2, 0, X + Wd / 2, Y + Hd / 2, Math.max(Wd, Hd) * .7);
+      g.addColorStop(0, p.type === 'cellar' ? 'rgba(150,190,210,.22)' : 'rgba(255,190,110,.32)'); g.addColorStop(1, 'rgba(255,190,110,0)');
+      ui.fillStyle = g; ui.fillRect(X, Y, Wd, Hd);
+    }
+    if (p.wet) { ui.fillStyle = `rgba(70,110,130,${.35 + .08 * Math.sin(t * 1.4)})`; ui.fillRect(X, Y, Wd, Hd); }
+    // shoring: posts along the walls and beams across
+    if (stage >= 2) {
+      const n = stage === 2 ? f : 1; ui.fillStyle = '#7d5d3e'; const ps = Math.max(2, z * .22);
+      for (let i = 0; i <= p.w * n; i += 2) { ui.fillRect(X + i * z - ps / 2, Y - ps / 2, ps, ps); ui.fillRect(X + i * z - ps / 2, Y + Hd - ps / 2, ps, ps); }
+      for (let j = 0; j <= p.h * n; j += 2) { ui.fillRect(X - ps / 2, Y + j * z - ps / 2, ps, ps); ui.fillRect(X + Wd - ps / 2, Y + j * z - ps / 2, ps, ps); }
+      ui.strokeStyle = 'rgba(125,93,62,.55)'; ui.lineWidth = Math.max(1, z * .1);
+      for (let i = 2; i < p.w * n; i += 2) { ui.beginPath(); ui.moveTo(X + i * z, Y); ui.lineTo(X + i * z, Y + Hd); ui.stroke(); }
+    }
+    // the fittings: bunks in quarters, shelves and bins in a cellar
+    if (stage >= 4) {
+      const n = stage === 4 ? f : 1, cols = Math.max(1, p.w - 2), rows = Math.max(1, p.h - 2), all = cols * rows;
+      for (let k = 0; k < all * n; k++) {
+        const cx = X + (1 + k % cols) * z, cy = Y + (1 + (k / cols | 0)) * z;
+        if (p.type === 'burrow') { if ((k / cols | 0) % 3 === 2) continue; ui.fillStyle = '#6f5a44'; ui.fillRect(cx + z * .1, cy + z * .2, z * .8, z * .6); ui.fillStyle = '#b8ad98'; ui.fillRect(cx + z * .18, cy + z * .28, z * .64, z * .44); }
+        else { const edge = k % cols === 0 || k % cols === cols - 1 || (k / cols | 0) === 0 || (k / cols | 0) === rows - 1; if (!edge) continue; ui.fillStyle = '#5d4632'; ui.fillRect(cx + z * .08, cy + z * .08, z * .84, z * .84); ui.fillStyle = hash(k, p.id, 3) < .5 ? '#9a7a4a' : '#7d8a52'; ui.fillRect(cx + z * .22, cy + z * .22, z * .56, z * .56); }
+      }
+    }
+    // the stairs up
+    const d = p.door; if (d) {
+      const dx = sx(d.x), dy = sy(d.y);
+      ui.fillStyle = '#5a4a3a'; ui.fillRect(dx, dy, z, z); ui.strokeStyle = '#c9b48f'; ui.lineWidth = Math.max(1, z * .06);
+      for (let i = 1; i <= 3; i++) { const k = i / 4; ui.beginPath(); if (nx) { ui.moveTo(dx + k * z, dy + z * .15); ui.lineTo(dx + k * z, dy + z * .85); } else { ui.moveTo(dx + z * .15, dy + k * z); ui.lineTo(dx + z * .85, dy + k * z); } ui.stroke(); }
+    }
+  }
+
   // names over building sites, with what they wait for; dark buildings say so
   projectLabels(F, sx, sy, z) {
     const ui = this.ui;
     for (const p of F.colony.projects) {
       if (p.type === 'test') continue;
+      if (this.below && !p.below) continue;   // below ground, only the rooms down there are named
       const stuck = !!p.stall || p.fire || p.wet || (p.done && p.type !== 'solar' && !p.powered), show = stuck || (!p.done && z >= 5) || (this.labels && z >= 8) || p.id === F.projSel;
       if (!show) continue;
-      const X = sx(p.x + p.w / 2), Y = sy(p.y) - 10; if (X < -150 || X > this.VW + 150 || Y < -40 || Y > this.VH + 60) continue;
+      const up = p.below && !this.below && p.door, X = up ? sx(p.door.x + .5) : sx(p.x + p.w / 2), Y = (up ? sy(p.door.y) : sy(p.y)) - 10; if (X < -150 || X > this.VW + 150 || Y < -40 || Y > this.VH + 60) continue;
       const head = p.done ? p.name : `${p.name} · ${p.paused ? 'paused' : stagesOf(p.type)[p.stage].toLowerCase() + ' ' + Math.round(progress(p) * 100) + '%'}`;
       const sub = stuck ? p.wait : '';
       ui.font = '700 11.5px Manrope,system-ui,sans-serif';
@@ -395,7 +481,7 @@ export class View {
     ui.strokeStyle = ok ? 'rgba(127,211,143,.95)' : 'rgba(238,107,95,.95)'; ui.lineWidth = 2; ui.setLineDash([6, 4]); ui.strokeRect(X, Y, Wd, Hd); ui.setLineDash([]);
     if (P.check && P.check.bad) { ui.fillStyle = 'rgba(238,107,95,.45)'; for (const t of P.check.bad) ui.fillRect(sx(t % MAP), sy(t / MAP | 0), z, z); }
     if (!TYPES[P.type].open) {
-      const d = P.door; if (d) { const dx = sx(d.x + .5), dy = sy(d.y + .5), r = Math.max(5, z * .45); ui.fillStyle = '#ffd79a'; ui.beginPath(); ui.arc(dx, dy, r, 0, 6.3); ui.fill(); ui.fillStyle = '#1a1206'; ui.font = `800 ${Math.max(9, Math.min(12, z * .5))}px Manrope,system-ui,sans-serif`; ui.fillText('D', dx, dy + .5); }
+      const d = P.door; if (d) { const dx = sx(d.x + .5), dy = sy(d.y + .5), r = Math.max(5, z * .45); ui.fillStyle = '#ffd79a'; ui.beginPath(); ui.arc(dx, dy, r, 0, 6.3); ui.fill(); ui.fillStyle = '#1a1206'; ui.font = `800 ${Math.max(9, Math.min(12, z * .5))}px Manrope,system-ui,sans-serif`; ui.fillText(TYPES[P.type].below ? 'S' : 'D', dx, dy + .5); }
     }
     ui.font = '700 12px Manrope,system-ui,sans-serif'; const t = `${TYPES[P.type].name} · ${P.w} × ${P.h}`, tw = ui.measureText(t).width + 14;
     ui.fillStyle = 'rgba(10,14,20,.8)'; ui.beginPath(); ui.roundRect(X + Wd / 2 - tw / 2, Y - 28, tw, 20, 10); ui.fill(); ui.fillStyle = '#f2f4f8'; ui.fillText(t, X + Wd / 2, Y - 17.5);
@@ -418,7 +504,7 @@ export class View {
     g.fillStyle = 'rgba(8,12,18,.18)'; g.fillRect(0, 0, m.width, m.height);
     if (F.orbit) F.orbit.sites.forEach((s, i) => { g.strokeStyle = i === F.orbit.sel ? '#8fe0ff' : 'rgba(255,255,255,.7)'; g.lineWidth = 1.5 * D; g.beginPath(); g.arc(s.x * k, s.y * k, 40 * k, 0, 6.3); g.stroke(); g.fillStyle = g.strokeStyle; g.font = `800 ${10 * D}px Manrope,system-ui,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(LETTERS[i], s.x * k, s.y * k); });
     if (F.colony) for (const s of F.colony.stakes) { g.fillStyle = '#9ff0ff'; g.fillRect(s.x * k - 1.5 * D, s.y * k - 1.5 * D, 3 * D, 3 * D); }
-    if (F.colony) for (const p of F.colony.projects) if (p.type !== 'test') { g.fillStyle = p.done ? 'rgba(220,226,232,.95)' : 'rgba(243,182,92,.9)'; g.fillRect(p.x * k, p.y * k, Math.max(2 * D, p.w * k), Math.max(2 * D, p.h * k)); }
+    if (F.colony) for (const p of F.colony.projects) if (p.below) { if (p.door) { g.fillStyle = '#c9a26b'; g.fillRect(p.door.x * k - D, p.door.y * k - D, 2 * D, 2 * D); } } else if (p.type !== 'test') { g.fillStyle = p.done ? 'rgba(220,226,232,.95)' : 'rgba(243,182,92,.9)'; g.fillRect(p.x * k, p.y * k, Math.max(2 * D, p.w * k), Math.max(2 * D, p.h * k)); }
     if (F.colony && F.colony.hz) { g.fillStyle = '#ff7a2a'; for (const tl of F.colony.hz.fire) g.fillRect((tl % MAP) * k - D, (tl / MAP | 0) * k - D, 2 * D, 2 * D); }
     for (let i = 0; i < F.n; i++) { const act = F.pos[i * 4 + 3] >> 1; if (hidden(act)) continue; const c = F.arts[i].L.app; g.fillStyle = `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`; g.fillRect(F.pos[i * 4] * k - D, F.pos[i * 4 + 1] * k - D, 2 * D, 2 * D); }
     const Ld = this.W.land; if (Ld) { g.strokeStyle = '#8fe0ff'; g.lineWidth = 1.5 * D; g.beginPath(); g.arc(Ld.x * k, Ld.y * k, 4 * D, 0, 6.3); g.stroke(); }

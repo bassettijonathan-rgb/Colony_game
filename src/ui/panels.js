@@ -23,10 +23,11 @@ const cap1 = s => s.charAt(0).toUpperCase() + s.slice(1);
 const SIDE = ['north', 'east', 'south', 'west'];
 const pct = f => Math.round(f * 100) + '%';
 const icon = (id, cls = 'ic') => `<svg class="${cls}"><use href="#i-${id}"/></svg>`;
-const TICON = { shelter: 'seed', dorm: 'dorm', commons: 'commons', workshop: 'tool', clinic: 'clinic', solar: 'solar', test: 'test', field: 'field', lab: 'lab', plant: 'tank' };
+const TICON = { shelter: 'seed', dorm: 'dorm', commons: 'commons', workshop: 'tool', clinic: 'clinic', solar: 'solar', test: 'test', field: 'field', lab: 'lab', plant: 'tank', cellar: 'cellar', burrow: 'below' };
 const TAB = { archive: ['Archive', 'archive'], crews: ['Crews', 'crews'], build: ['Build', 'build'], life: ['Food and local life', 'life'], log: ['Log', 'log'] };
 // what a building holds, in a few words
-const holds = (type, c) => ({ shelter: `${c.beds} bunks`, dorm: `${c.beds} bunks`, commons: `seats for ${c.seats}`, workshop: `${c.benches} bench${c.benches > 1 ? 'es' : ''}`, clinic: `${c.beds} beds`, solar: `${c.panels} panels, ${c.supply} kW`, field: `${c.tiles} tiles of beds`, lab: `${c.benches} lab bench${c.benches > 1 ? 'es' : ''}`, plant: `${c.tanks} tank${c.tanks > 1 ? 's' : ''}` })[type] || '';
+const holds = (type, c) => ({ shelter: `${c.beds} bunks`, dorm: `${c.beds} bunks`, commons: `seats for ${c.seats}`, workshop: `${c.benches} bench${c.benches > 1 ? 'es' : ''}`, clinic: `${c.beds} beds`, solar: `${c.panels} panels, ${c.supply} kW`, field: `${c.tiles} tiles of beds`, lab: `${c.benches} lab bench${c.benches > 1 ? 'es' : ''}`, plant: `${c.tanks} tank${c.tanks > 1 ? 's' : ''}`, cellar: `cool shelves for ${c.store} loads of food`, burrow: `${c.beds} bunks` })[type] || '';
+const UG_TXT = { soil: 'soft soil: quick to dig, but the walls need a lot of shoring', clay: 'clay: heavier digging, and it holds its shape', stone: 'stone: slow digging, little shoring, and the spoil gives stone for the yard', 'hard rock': 'hard rock: very slow digging, but it barely needs shoring and gives stone' };
 const loads = L => Object.entries(L).filter(([k, n]) => n > 0 && k !== 'mark' && k !== 'test').map(([k, n]) => matName(k, n)).join(', ');const SHIFT_TXT = SHIFTS.map(s => `${s.name} ${s.a}–${s.b}`);
 // what a crew's members are doing, in a word each
 const DOING = { [ACT.BED]: 'asleep', [ACT.INSIDE]: 'asleep', [ACT.WALK]: 'walking', [ACT.HOME]: 'walking back', [ACT.TOBED]: 'turning in', [ACT.SURVEY]: 'surveying', [ACT.PLANT]: 'planting a stake', [ACT.CARRY]: 'carrying', [ACT.BUILD]: 'building', [ACT.EAT]: 'eating', [ACT.IDLE]: 'at camp', [ACT.ALONE]: 'off alone', [ACT.WAKE]: 'waking', [ACT.QUARRY]: 'cutting stone', [ACT.FELL]: 'felling', [ACT.STONE]: 'carrying stone', [ACT.LOG]: 'carrying logs', [ACT.TEST]: 'testing', [ACT.INDOORS]: 'indoors', [ACT.BENCH]: 'at a bench', [ACT.DEAD]: 'dead', [ACT.DOWN]: 'down', [ACT.TEND]: 'tending someone', [ACT.DRAG]: 'carrying someone' };
@@ -51,6 +52,7 @@ const SEASON_PICK = [
   ['Storms', 'Wind and storms from the start, and Deep cold twenty days away.'],
   ['Deep cold', 'The hardest start: twenty days of frost, snow and blizzards before the thaw.'],
 ];
+const DMG = { fire: 'the fire', flood: 'the flood', wear: 'a breakdown', quake: 'the tremor' };
 export class Panels {
   constructor(A, api) {
     this.A = A; this.api = api; this.tab = 'archive'; this.chosen = new Set(); this.touched = false; this.sig = ''; this.cardSig = ''; this.moveSig = '';
@@ -133,7 +135,7 @@ export class Panels {
     kf.className = U.mode !== 'stress' && eaters && days < 10 ? (days < 3 ? 'bad' : 'warn') : '';
     const pw = U.power, dark = U.projects.filter(p => p.done && p.type !== 'solar' && !p.powered).length;
     $('kPower').innerHTML = `${pw.draw}/${pw.supply}<small>kW${dark ? ` · ${dark} dark` : ''}</small>`; $('rPower').classList.toggle('warn', !!dark);
-    const y = U.stores.yard; $('kStone').textContent = y.stone; $('kTimber').textContent = y.timber; $('kSalvage').textContent = y.salvage;
+    const y = U.stores.yard; $('kStone').textContent = y.stone; $('kTimber').textContent = y.timber; $('kSalvage').innerHTML = y.ore ? `${y.salvage}<small>+${y.ore} ore</small>` : `${y.salvage}`;
     $('kKnown').innerHTML = `${(U.known / (MAP * MAP) * 100).toFixed(1)}%`; $('kKnown').parentNode.title = `Ground surveyed: ${(U.known / (MAP * MAP) * 100).toFixed(1)}%. Sensor stakes planted: ${U.stakes.length} of 10`;
     this.tracker(U); this.colbar(U);
     void left;
@@ -244,6 +246,7 @@ export class Panels {
         h += list(F.meals, n => `${Math.floor(n)} cooked`, 1) + list(F.prep, n => `${n.toFixed(1)} loads leached`) + list(F.raw, n => `${n.toFixed(1)} loads`);
         if (F.vats.length) h += F.vats.map(v => `<div class="row2 li"><span class="grow">Vat: ${nm(v.src)}, ${v.proc === 'leach' ? 'leaching' : 'fermenting'}</span><span class="num">${v.left <= 0 ? 'ready' : Math.ceil(v.left / DAY_TICKS * 24) + ' h left'}</span></div>`).join('');
         h += `</div><div class="note">Foragers bring in tested wild food, a kitchen crew cooks it and runs the vats, and fields grow the seed bank's crops. Food that hasn't been tested is never eaten: see Local life.</div>`;
+        h += `<div class="note">Raw and cooked food spoils day by day, much slower when it freezes. ${F.cool > 0 ? `The root cellars hold ${F.cool >= 1 ? 'all of it' : `about ${Math.round(F.cool * 100)}% of it`} cool, where it keeps three times as long.` : 'A root cellar, dug below ground (Build window), keeps it three times as long.'}</div>`;
         return h;
       }
       // fields
@@ -294,7 +297,7 @@ export class Panels {
       const open = list.filter(p => !p.done), done = list.filter(p => p.done), bt = this.btab;
       let h = sub('btab', bt, [['plan', 'Plan'], ['list', `Projects · ${open.length}`], ['mat', 'Materials']]);
       if (bt === 'plan') {
-        h += how(['Pick a building below.', 'Drag on the map to draw it. <kbd>R</kbd> turns the door; the card shows what it needs. Confirm to add it to the projects.', 'Build crews (Crews window, <kbd>C</kbd>) work through the projects from the top, cutting stone and felling trees for what each needs.', 'A finished building only works with power: see Materials.']);
+        h += how(['Pick a building below.', 'Drag on the map to draw it. <kbd>R</kbd> turns the door; the card shows what it needs. Confirm to add it to the projects.', 'Build crews (Crews window, <kbd>C</kbd>) work through the projects from the top, cutting stone and felling trees for what each needs.', 'A finished building only works with power: see Materials.', 'Root cellars and dug quarters go below ground: the map switches to the view underneath (<kbd>U</kbd>), where the Seed’s soundings show what can be dug.']);
         h += `<div class="types">${PLANNABLE.map(t => `<button data-act="plan" data-type="${t}"><i class="bi">${icon(TICON[t])}</i><b>${TYPES[t].name}</b><span>${esc(TYPES[t].use)}</span></button>`).join('')}</div>`;
         if (U.blueprints.length) h += `<div class="sec">Blueprints</div><div class="note" style="margin:0 0 6px">Buildings you saved to place again, same size and layout.</div>` + U.blueprints.map((b, i) => `<div class="q"><span>${esc(b.name)} <em class="dim">${TYPES[b.type].name.toLowerCase()} · ${b.w} × ${b.h}</em></span><button class="btn" data-act="bp" data-i="${i}">Place</button><button data-act="bpDel" data-i="${i}" title="Forget this blueprint">Forget</button></div>`).join('');
         return h;
@@ -347,7 +350,7 @@ export class Panels {
     this.planSig = sig;
     const c = P.check, T = TYPES[P.type];
     $('plName').textContent = T.name; $('plPic').innerHTML = icon(TICON[P.type] || 'build');
-    $('plMeta').textContent = `${P.w} × ${P.h} tiles${T.open ? '' : ` · door on the ${SIDE[P.side]} side`}`;
+    $('plMeta').textContent = `${P.w} × ${P.h} tiles${T.open ? '' : T.below ? ` · stairs on the ${SIDE[P.side]} side` : ` · door on the ${SIDE[P.side]} side`}`;
     let h = '';
     if (!c.ok) h += `<div class="pw bad">${esc(c.why)}</div>`;
     else if (c.warn) h += `<div class="pw">${esc(c.warn)}</div>`;
@@ -356,8 +359,12 @@ export class Panels {
       h += `<div class="sec">What it takes</div><div class="bill">` + c.bill.stages.map((L, i) => `<div><em>${stagesOf(P.type)[i]}</em>${esc(loads(L) || (i === 0 ? 'pegs and string' : '-'))}</div>`).join('') + `</div>`;
       h += `<div class="note" style="margin-top:4px">In all: ${esc(loads(c.bill.total))}. Stone and timber are worked out again when each stage starts, so a load test before then makes later stages cheaper.</div>`;
     }
+    if (T.below && c.ground) {
+      const g = c.ground;
+      h += `<div class="sec">The ground below</div><div class="note">The Seed's soundings show ${esc(UG_TXT[g.name] || g.name)}.${g.dig > 1.05 ? ` Digging takes ${Math.round((g.dig - 1) * 100)}% longer than in soil.` : ''}${g.ore > .05 ? ' A seam of metal ore runs through it: the diggers will bring it up, and the fabricator refines it into salvage.' : ''} Below ground there is nothing to burn and the cold doesn't reach, but water finds its way down the stairs.</div>`;
+    }
     const L = c.load;
-    if (L && !T.open) {
+    if (L && !T.open && !T.below) {
       h += `<div class="sec">Load check</div><div class="note">`;
       h += L.posts ? `The roof spans ${L.span} tiles, more than ${L.timber ? 'this' : 'untested'} timber can carry (${L.limit}), so ${L.posts} posts go down the middle.` : `The roof spans ${L.span} tiles: timber beams carry that${L.timber ? '' : ' even untested'}.`;
       h += ` ${L.stone ? 'Stone is tested.' : 'Stone is untested: 40% extra as a margin.'} ${L.timber ? 'Timber is tested.' : 'Timber is untested: 40% extra as a margin.'}</div>`;
@@ -505,17 +512,17 @@ export class Panels {
     const T = TYPES[p.type], test = p.type === 'test', names = stagesOf(p.type), n = names.length;
     const f = progress(p), all = p.done ? 1 : (p.stage + f) / n;
     $('bName').textContent = p.name; $('bPic').innerHTML = icon(TICON[p.type] || 'build');
-    $('bMeta').textContent = test ? `At the rig in the yard` : `${T.name} · ${p.w} × ${p.h} tiles${T.open ? '' : ` · door on the ${SIDE[p.side]} side`}`;
+    $('bMeta').textContent = test ? `At the rig in the yard` : `${T.name} · ${p.w} × ${p.h} tiles${T.open ? '' : T.below ? ` · dug into ${p.ug || 'the ground'}` : ` · door on the ${SIDE[p.side]} side`}`;
     $('bJob').textContent = p.done ? (p.type === 'solar' ? `Finished · making ${p.cap.supply} kW` : !p.cap.kw ? 'Finished · in use' : `Finished · ${p.powered ? 'has power' : 'dark: not enough power'}`)
       : p.paused ? `Paused at ${names[p.stage].toLowerCase()}` : p.stall ? 'Stalled' : p.crews.length ? `Being built · ${names[p.stage].toLowerCase()}` : `Waiting · ${names[p.stage].toLowerCase()}`;
     if (p.fire) $('bJob').textContent = `On fire · ${Math.round(p.burn * 100)}% burned`;
     else if (p.wet) $('bJob').textContent = 'Under water';
-    else if (p.dmg && !p.done) $('bJob').textContent = `Repairing after the ${p.dmg} · ${names[p.stage].toLowerCase()}`;
+    else if (p.dmg && !p.done) $('bJob').textContent = `Repairing after ${DMG[p.dmg] || 'damage'} · ${names[p.stage].toLowerCase()}`;
     $('bDot').className = 'dot' + (p.fire || p.wet ? ' bad' : p.done ? (p.powered || p.type === 'solar' ? ' ok' : ' off') : p.paused || p.stall || !p.crews.length ? ' off' : '');
     let h = '';
     if (p.fire) h += `<div class="pw bad">It is burning. Everyone inside got out, and anyone who can is beating it out. The longer it burns, the more of it the build crews will have to put back.</div>`;
     else if (p.wet) h += `<div class="pw">Flood water is standing in it${p.done || p.type === 'field' ? ': it is out of use until the water goes down' : ': building waits until the water goes down'}. The longer it stands, the more repairs it will need.</div>`;
-    else if (p.dmg && !p.done) h += `<div class="note" style="margin:0 0 6px">Damaged by the ${p.dmg}: it is out of use until the build crews finish the repairs below.</div>`;
+    else if (p.dmg && !p.done) h += `<div class="note" style="margin:0 0 6px">Damaged by ${DMG[p.dmg] || 'damage'}: it is out of use until the build crews finish the repairs below.</div>`;
     if (!test) h += `<div class="note" style="margin:8px 0 0">${esc(T.use || 'Twelve bunks in the lander\'s own modules, the first roof on this world')}. It holds ${esc(holds(p.type, p.cap))}${p.type === 'solar' || !p.cap.kw ? '' : ` and draws ${p.cap.kw} kW`}.</div>`;
     if (p.type === 'clinic' && p.done && U.care) {
       const C = U.care, M = U.med, here = C.ward.filter(q => q[1] === p.id).map(q => q[0]);
@@ -546,7 +553,8 @@ export class Panels {
       }).join('') + `</div>`;
       const rows = Object.entries(p.need).filter(([k, q]) => q > 0 && k !== 'mark' && k !== 'test');
       if (rows.length) h += `<div class="sec">This stage takes</div><div class="bill">` + rows.map(([k, q]) => { const g = Math.min(q, p.got[k] || 0); return `<div><em>${esc(cap1(matName(k, 2).replace(/^2 /, '')))}</em>${g} of ${q} in place</div>`; }).join('') + `</div>`;
-      else if (p.stage === 0 && !test) h += `<div class="note" style="margin-top:6px">Marking out needs only pegs and string; the crew walks the plot and clears what stands on it.</div>`;
+      else if (p.stage === 0 && !test) h += `<div class="note" style="margin-top:6px">${T.below ? 'Marking out needs only pegs and string; the crew paces out the room above it and sets the stairs.' : 'Marking out needs only pegs and string; the crew walks the plot and clears what stands on it.'}</div>`;
+      if (T.below && !p.done) h += `<div class="note" style="margin-top:6px">Press <kbd>U</kbd> to see it below ground.${p.ore > .05 ? ' There is ore in this ground.' : ''}</div>`;
       if (p.wait) h += `<div class="pw">${esc(p.wait)}</div>`;
       else if (p.crews.length) h += `<div class="ps" style="margin-top:6px">${esc(p.crews.join(', '))} crew${p.crews.length > 1 ? 's are' : ' is'} on it.</div>`;
     } else if (p.wait) h += `<div class="pw">${esc(p.wait)}</div>`;

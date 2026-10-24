@@ -105,6 +105,18 @@ Generated live with Web Audio, with no audio files: a pad changing chord every t
 8. The map draws the flames, smoke and the glow they cast, scorched ground, and the flood water over the land; the minimap marks fires. Letters and alerts cover fires near the camp, burning buildings, flood warnings and flooded buildings; the weather tooltip says when the ground is dry and when the river is high. Stats count fires and floods.
 9. Saves are version 7; version 6 saves continue with dry ground at a middle value and no fire or flood under way.
 
+## The director (milestone 4, part 5)
+
+The world's dangers are paced by a director the player never sees (`src/core/director.js`). Each season it sets a danger budget from the season, the colony's strength (people, food in store, how many are hurt or ill) and the year, with an easy first stretch after landing. Every fire, flood, crisis, collapse and death spends from it. It plans a few events of its own, each with a cause in the world and only when the world allows it: lightning in dry weather, a cloudburst upstream, a breakdown, a tremor, a blight, an illness brought in. After a death or a heavy blow it holds back for a few days, and once the budget is spent it damps the world's own hazards. A colony that is struggling can get relief instead: salvage found, a wild crop fruiting heavily. Damaged buildings are repaired like any other project. Saves from before the director get one on load.
+
+## Below ground (milestone 4, part 6)
+
+1. The Seed sounds the ground under the map (`underOf` in `src/core/world.js`): soil, clay, stone, hard rock, waterlogged ground, and solid rock under the heights, with seams of metal ore in the stone. The Below ground view (`U`, or the button in the top bar) shows it, with the rooms dug into it and whoever is down there; the surface shows only each room's stairs.
+2. Two rooms can be dug: a **root cellar**, where the larder keeps three times as long (no power), and **dug quarters**, bunks that the earth keeps warm and that fire can't reach (a little power for light). Planning one switches to the view below. It can go under surface buildings, but not under water, into solid rock, or next to another room; its stairs come up on open ground.
+3. Digging is labour, not loads: harder ground takes longer to dig and needs less shoring (timber and stone). The stages are marking out, digging, shoring, venting and fit-out. Diggers work out of sight below the stairs.
+4. Spoil from stony ground goes to the yard as stone. Ore goes to the yard too, and the fabricator smelts three loads into two of salvage whenever it has nothing else to make.
+5. Water finds its way down: a room floods whole when the water reaches its stairs. Tremors are hardest on rooms dug in soft ground and easiest on rock.
+
 ## Stats
 
 The Stats window (`T`) is the colony's record. Headline numbers sit on top, then twelve charts of the record day by day: people (awake, hungry, unwell, hurt, sick), food in store, days of food, food brought in, meals cooked, average fatigue, strain, trust and health, low and high temperature, the worst cold, stone and timber in the yard, power, ground surveyed and local life. Seasons are shaded behind each chart, hovering shows that day's values, and the range can be the last 20 days, the last year or everything. Totals since landing and a table of every day are below. The simulation adds one row at each midnight (`src/core/history.js`, saved with the colony); today so far is the last point, drawn dashed.

@@ -267,14 +267,16 @@ function endPick() { A.pickCrew = -1; A.pickAt = null; $('pickHint').hidden = tr
 function startPlace(type, w, h, name) {
   if (A.phase !== 'colony' || !TYPES[type]) return;
   endPick(); select(-1);
-  A.place = { type, w: w || 0, h: h || 0, fixed: !!w, name: name || '', x: null, y: null, side: 0, turned: false, check: null, locked: false, seq: 0 };
+  A.place = { type, w: w || 0, h: h || 0, fixed: !!w, name: name || '', x: null, y: null, side: 0, turned: false, check: null, locked: false, seq: 0, wasBelow: !!(A.view && A.view.below) };
+  if (TYPES[type].below) belowView(true);
   $('placeTxt').textContent = w ? `Move the ${name || TYPES[type].name} where it should go and click to put it down` : `Drag on the map to draw the ${TYPES[type].name.toLowerCase()}: at least ${TYPES[type].min} by ${TYPES[type].min} tiles, at most ${TYPES[type].max} long`;
   $('placeTurn').hidden = !!TYPES[type].open; $('plTurn').hidden = !!TYPES[type].open;
+  $('placeTurn').textContent = TYPES[type].below ? 'Turn stairs (R)' : 'Turn door (R)'; $('plTurn').textContent = TYPES[type].below ? 'Turn stairs' : 'Turn door';
   $('placeHint').hidden = false; app.classList.add('placing');
   $('plKeep').checked = false; $('plName2').value = name || ''; delete $('plName2').dataset.auto;
   A.panels.planCard(null);
 }
-function endPlace() { A.place = null; $('placeHint').hidden = true; app.classList.remove('placing'); A.panels.planCard(null); }
+function endPlace() { if (A.place && TYPES[A.place.type].below && !A.place.wasBelow) belowView(false); A.place = null; $('placeHint').hidden = true; app.classList.remove('placing'); A.panels.planCard(null); }
 function placeRect(x, y, w, h) {
   const P = A.place; if (!P) return;
   if (P.x === x && P.y === y && P.w === w && P.h === h) return;
@@ -295,7 +297,7 @@ async function confirmPlace() {
   const P = A.place; if (!P || !P.check || !P.check.ok) return;
   const keep = $('plKeep').checked, name = $('plName2').value.trim();
   const r = await cmd('place', { type: P.type, x: P.x, y: P.y, w: P.w, h: P.h, side: P.side, save: keep ? name || TYPES[P.type].name : undefined });
-  if (r && r.ok) { endPlace(); A.projSel = r.id; A.panels.setTab('build'); toast(`Planned. ${TYPES[P.type].name} is on the project list${keep ? ', and saved as a blueprint' : ''}.`); }
+  if (r && r.ok) { P.wasBelow = true; endPlace(); A.projSel = r.id; A.panels.setTab('build'); toast(`Planned. ${TYPES[P.type].name} is on the project list${keep ? ', and saved as a blueprint' : ''}.`); }
   else toast(r && r.why ? r.why : 'That could not be planned just now.');
 }
 // the Build tab and the map agree on which project you are looking at
@@ -310,8 +312,20 @@ function closeThing() { A.thing = null; if (A.panels) A.panels.update(); }
 function closeProject() { A.projSel = -1; if (A.panels) { A.panels.sig = ''; A.panels.update(); } }
 function projectAt(wx, wy) {
   if (!A.ui) return null;
-  for (const p of A.ui.projects) if (p.type !== 'test' && wx >= p.x - .3 && wx < p.x + p.w + .3 && wy >= p.y - .3 && wy < p.y + p.h + .3) return p;
+  const below = A.view && A.view.below, inR = (p, x, y, w, h) => wx >= x - .3 && wx < x + w + .3 && wy >= y - .3 && wy < y + h + .3;
+  for (const p of A.ui.projects) {
+    if (p.type === 'test') continue;
+    if (p.below ? (below ? inR(p, p.x, p.y, p.w, p.h) : p.door && inR(p, p.door.x, p.door.y, 1, 1)) : !below && inR(p, p.x, p.y, p.w, p.h)) return p;
+  }
+  if (below) for (const p of A.ui.projects) if (p.below && p.door && inR(p, p.door.x, p.door.y, 1, 1)) return p;
   return null;
+}
+// the view below ground, where rooms are dug: on and off by the button or U, and on by itself while one is planned
+function belowView(on) {
+  const V = A.view; if (!V) return;
+  V.below = on === undefined ? !V.below : !!on;
+  $('bBelow').classList.toggle('on', V.below); $('bBelow').setAttribute('aria-pressed', V.below ? 'true' : 'false');
+  app.classList.toggle('below', V.below);
 }
 
 // ---------- saving ----------
@@ -331,7 +345,7 @@ function newest(a, b) { if (!a) return b; if (!b) return a; return (a.savedAt ||
 // milestone 2 colonies (version 2) carry on: their shelter becomes the first project of many
 const isSave = d => d && d.v >= 2 && d.v <= 4 && d.sim && d.sim.v >= 2 && d.sim.v <= 7 && Array.isArray(d.sim.cols);
 function startColony(opts) {
-  A.phase = 'boot'; A.hold = false; endPick(); if (A.place) endPlace(); A.projSel = -1; A.thing = null;
+  A.phase = 'boot'; A.hold = false; endPick(); if (A.place) endPlace(); A.projSel = -1; A.thing = null; belowView(false);
   if (A.panels) { A.panels.show(false); A.panels.orbit(null); }
   $('loader').classList.remove('gone'); loader(opts.save ? 'Waking the colony' : 'Surveying the planet from orbit', .15);
   A.sim.send(opts.save ? { t: 'init', seed: opts.save.seed, save: opts.save } : { t: 'init', seed: opts.seed, mode: opts.mode || 'landfall', count: opts.count || 300 });
@@ -395,6 +409,7 @@ function hookInput() {
     else if (e.code === 'KeyB' && colony) A.panels.toggleTab('build');
     else if (e.code === 'KeyR' && A.place) turnDoor();
     else if (e.code === 'KeyM') musicToggle();
+    else if (e.code === 'KeyU' && colony) belowView();
     else if (e.code === 'F11') { e.preventDefault(); fullscreen(); }
     else if ((e.code === 'Escape' || e.code === 'Enter') && A.news && A.news.open) { e.preventDefault(); A.news.closeLetter(); }
     else if (e.code === 'Escape') { if (A.stats && A.stats.open) A.stats.show(false); else if (A.place) endPlace(); else if (A.pickCrew >= 0) endPick(); else if (!$('newdlg').hidden) $('newdlg').hidden = true; else if (!$('menu').hidden) menu(false); else if (A.projSel >= 0) closeProject(); else if (A.thing) closeThing(); else if (A.sel >= 0) select(-1); else if (A.panels && !A.panels.min) A.panels.fold(true); }
@@ -405,6 +420,7 @@ function hookInput() {
   window.addEventListener('blur', () => keys.clear());
   document.querySelectorAll('.speeds button').forEach(b => b.addEventListener('click', () => setSpeed(+b.dataset.s)));
   $('bHome').onclick = goHome;
+  $('bBelow').onclick = () => belowView(); $('belowUp').onclick = () => belowView(false);
   $('bFull').onclick = () => fullscreen();
   const fsIcon = () => { const on = !!(document.fullscreenElement || document.webkitFullscreenElement); $('bFull').querySelector('use').setAttribute('href', on ? '#i-unfull' : '#i-full'); $('bFull').title = on ? 'Leave fullscreen (F11)' : 'Fullscreen (F11)'; };
   document.addEventListener('fullscreenchange', fsIcon); document.addEventListener('webkitfullscreenchange', fsIcon);

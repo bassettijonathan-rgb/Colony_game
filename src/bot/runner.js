@@ -2,7 +2,8 @@
 // The bot plays the opening the way a sensible player would: it lands on the most promising of the three
 // sites, wakes the six founders the Seed suggests, keeps the Seed's crews, and lets the days run. Every morning it
 // looks at the building list: it tests the local stone and timber, then plans a field, a workshop, a solar field,
-// a feedstock plant, a commons, a second field, a clinic and a dormitory, two at a time, each on the nearest good
+// a feedstock plant, a root cellar, a commons, a second field, a clinic, dug quarters, a third field and a
+// dormitory, two at a time, each on the nearest good
 // plot. It feeds the colony too: a forager once the shelter stands, a farmer once a field is made, a cook once
 // there is food that needs the kitchen, every sample tested as soon as it is ready, and the surveyors foraging once
 // the stakes are out. Once the plant stands it puts someone on quarrying, and prints the Seed's pick whenever
@@ -29,7 +30,7 @@ export function landColony(seed, mode = 'landfall', count = 300, season = +(glob
   return { W, P, sim, site, timing: { world: t1 - t0, land: t2 - t1, graph: t3 - t2, field: t4 - t3 } };
 }
 
-const PLAN = [['field', 8, 6], ['workshop', 6, 7], ['solar', 6, 6], ['plant', 5, 6], ['commons', 7, 8], ['field', 8, 7], ['clinic', 5, 6], ['field', 8, 6], ['dorm', 6, 8]];
+const PLAN = [['field', 8, 6], ['workshop', 6, 7], ['solar', 6, 6], ['plant', 5, 6], ['cellar', 5, 6], ['commons', 7, 8], ['field', 8, 7], ['clinic', 5, 6], ['burrow', 6, 8], ['field', 8, 6], ['dorm', 6, 8]];
 export function botBuild(sim) {
   const S = sim.S;
   botFood(sim);
@@ -113,6 +114,6 @@ export function runColony(seed, days = 1, mode = 'landfall', count = 300, onTick
     seed, mode, days, site: run.site, timing: run.timing, nodes: P.nodes.length, reachable: run.W.reachable,
     tickMs: total / ticks, worstTickMs: worst, realtimeX: (1000 / 30) / (total / ticks),
     policy, paths: { ...P.stats }, nights, noons, daysOut, wornTiles: worn, stats: { ...S.stats }, stakes: S.stakes.length, people: S.cols.length,
-    log: S.log,
+    log: S.log, sim,
   };
 }
