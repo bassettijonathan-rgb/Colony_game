@@ -325,7 +325,7 @@ async function autosave(now) {
 }
 function newest(a, b) { if (!a) return b; if (!b) return a; return (a.savedAt || 0) >= (b.savedAt || 0) ? a : b; }
 // milestone 2 colonies (version 2) carry on: their shelter becomes the first project of many
-const isSave = d => d && d.v >= 2 && d.v <= 4 && d.sim && d.sim.v >= 2 && d.sim.v <= 5 && Array.isArray(d.sim.cols);
+const isSave = d => d && d.v >= 2 && d.v <= 4 && d.sim && d.sim.v >= 2 && d.sim.v <= 6 && Array.isArray(d.sim.cols);
 function startColony(opts) {
   A.phase = 'boot'; A.hold = false; endPick(); if (A.place) endPlace(); A.projSel = -1; A.thing = null;
   if (A.panels) { A.panels.show(false); A.panels.orbit(null); }

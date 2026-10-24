@@ -55,6 +55,10 @@ export const EXPLAIN = {
   blizzard: 'Nobody works outside in a blizzard. Crews wait it out in camp, and the day’s outside work waits too.',
   snap: 'A cold snap lasts a few days. People outside get cold far faster, and crops left in the fields freeze.',
   cold: 'People get cold outside below freezing, faster in the wind. Indoors, or by the lit fire, they warm up again. The very cold work slower, strain more and have accidents, and someone left dangerously cold too long can die.',
+  sickfirst: 'Illness comes from two directions: the microbes that came down with the Seed’s own starter cultures, which the databank knows, and whatever lives here, which nobody knows yet. The sick work slower, or not at all, and the worst cases go through a crisis where a clinic bed and a medic decide a lot. A new body has no resistance to anything in its first season. A person’s Health tab shows what is known.',
+  illknown: 'A medic names an illness the databank knows. From now on its card on the clinic says what helps: antibiotics work only against the illnesses they are made for. If it is catching, the clinic has a rule to keep the sick apart.',
+  illfound: 'A local illness has to be worked out from the cases themselves: every examination adds to what the medics know, faster in a clinic and faster still with a lab. Now that it is understood, every case is named on sight.',
+  crisis: 'A crisis is the dangerous part of an illness. A clinic bed, a medic sitting with them, the right medicine, food and warmth all make it far more likely they pull through.',
   unwell: 'A narrow diet shows over time. Food with a slow harm builds up in the body, and food that isn’t enough on its own leaves people short of what they need. More kinds of food, and fewer meals of the troublesome ones, put it right over some days.',
 };
 
@@ -64,6 +68,9 @@ const ALERTS = {
   feedwait: ['warn', '', 'Its tanks have stopped. Its card says what it waits for.'],
   food: ['warn', '', 'Foragers bring in wild food the Life window (G) shows is safe; fields feed more once they are made and sown.'],
   cold: ['bad', '', 'They need to get indoors or to the fire. The very cold work slower and have accidents, and can die if it lasts.'],
+  crisis: ['bad', '', 'A clinic bed and a medic sitting with them give them the best chance.'],
+  sick: ['warn', '', 'The sick work slower, or rest until it passes. Their Health tab shows what is known about it.'],
+  catching: ['warn', 'A catching illness', 'Someone has an illness that spreads, and nobody is kept apart. The clinic’s card has a rule to isolate the sick, at a cost to their strain and trust.'],
   unwell: ['warn', '', 'Something in their diet. More kinds of food in the larder put it right over some days.'],
   ripe: ['info', '', 'Ripe crops start to spoil after about a week in the field. A farm crew brings them in.'],
   nofarm: ['warn', 'No farm crew', 'Fields need a farm crew to sow and harvest them. Set one up in the Crews window (C).'],
@@ -85,7 +92,7 @@ const ALERTS = {
   stalled: ['warn', '', ''],
   idle: ['info', 'Nothing to build', 'A build crew has nothing on the project list. Plan a building in the Build window (B), or give the crew other work.'],
 };
-const ORDER = ['down', 'bleed', 'hungry', 'cold', 'food', 'deep', 'locked', 'nofarm', 'ripe', 'unwell', 'samples', 'print', 'feedwait', 'alone', 'hurt', 'meds', 'nomedic', 'strain', 'tired', 'trust', 'nocrew', 'stalled', 'dark', 'idle'];
+const ORDER = ['down', 'crisis', 'bleed', 'catching', 'hungry', 'cold', 'food', 'deep', 'locked', 'nofarm', 'ripe', 'unwell', 'sick', 'samples', 'print', 'feedwait', 'alone', 'hurt', 'meds', 'nomedic', 'strain', 'tired', 'trust', 'nocrew', 'stalled', 'dark', 'idle'];
 
 export class News {
   constructor(A, api) {
@@ -122,6 +129,7 @@ export class News {
     this.stack.unshift(k);
     // too many: the oldest small letter goes first, then the oldest of all
     while (this.stack.length > MAX_LETTERS) this.remove([...this.stack].reverse().find(q => !q.big) || this.stack[this.stack.length - 1]);
+    if (!this.stack.includes(k)) return;
     const el = k.el = document.createElement('div');
     el.className = `lt ${tone(e)}${big ? ' big' : ''}`; el.dataset.n = e.n;
     el.innerHTML = `<span class="lb">${esc(e.title || 'News')}</span><i><svg class="ic"><use href="#i-letter"/></svg></i>`;
@@ -136,7 +144,8 @@ export class News {
     this.stack.splice(i, 1);
     if (this.cur === k) { this.cur = null; $('letter').hidden = true; }
     const gone = () => {
-      const above = this.stack.filter(q => q.el.compareDocumentPosition(k.el) & Node.DOCUMENT_POSITION_FOLLOWING).map(q => [q, q.el.getBoundingClientRect().top]);
+      if (!k.el) return;
+      const above = this.stack.filter(q => q.el && q.el.compareDocumentPosition(k.el) & Node.DOCUMENT_POSITION_FOLLOWING).map(q => [q, q.el.getBoundingClientRect().top]);
       k.el.remove();
       for (const [q, y] of above) { const d = y - q.el.getBoundingClientRect().top; if (d) q.el.animate([{ transform: `translateY(${d}px)` }, { transform: 'none' }], { duration: 240, easing: 'ease-out' }); }
     };
@@ -217,7 +226,11 @@ export class News {
     if ((ids = people(p => p[6] & 512)).length) add('down', named(ids, 'is down', 'people are down'), ids.map(i => ({ who: i })));
     if ((ids = people(p => p[6] & 256 && !(p[6] & 512))).length) add('bleed', named(ids, 'is bleeding', 'people are bleeding'), ids.map(i => ({ who: i })));
     if ((ids = people(p => p[6] & 2 && !(p[6] & 768))).length) add('hurt', named(ids, 'is hurt', 'people are hurt'), ids.map(i => ({ who: i })));
-    const hurtN = people(p => p[6] & 2).length, M = U.med;
+    if ((ids = people(p => p[6] & 16384)).length) add('crisis', named(ids, 'is gravely ill', 'people are gravely ill'), ids.map(i => ({ who: i })));
+    if ((ids = people(p => p[6] & 4096 && !(p[6] & 16384))).length) add('sick', named(ids, 'is sick', 'people are sick'), ids.map(i => ({ who: i })));
+    const clinic = U.projects.find(p => p.type === 'clinic' && p.done);
+    if (U.care && !U.care.iso && (ids = people(p => p[6] & 32768 && !(p[6] & 8192))).length) add('catching', ALERTS.catching[1], clinic ? [{ pid: clinic.id }] : ids.map(i => ({ who: i })), clinic ? '' : 'There is no clinic yet to set the rule on: build one.');
+    const hurtN = people(p => p[6] & 4098).length, M = U.med;
     if (hurtN && U.care && !U.care.medics) add('nomedic', ALERTS.nomedic[1], []);
     if (M) { const out = [M.dress ? '' : 'dressings', M.pk ? '' : 'painkillers', M.abx ? '' : 'antibiotics', M.blood ? '' : 'blood substitute'].filter(Boolean); if (out.length) add('meds', `Out of ${out.join(', ')}`, []); }
     if ((ids = people(p => p[3] >= 70 && !(p[6] & 4))).length) add('strain', named(ids, 'is near breaking point', 'people are near breaking point'), ids.map(i => ({ who: i })));

@@ -13,6 +13,7 @@ import { Sim } from '../core/sim.js';
 import { DAY_TICKS, HOUR, ACT } from '../core/consts.js';
 import { findPlot, built } from '../core/build.js';
 import { mealsInStore } from '../core/food.js';
+import { toIsolate } from '../core/illness.js';
 import { doyOf, seasonOf, dayWeather } from '../core/year.js';
 
 const now = () => performance.now();
@@ -37,6 +38,9 @@ export function botBuild(sim) {
   // new feedstock wakes the Seed's pick from the archive
   const sd = S.seedc;
   if (sd.feed > 0 && !sd.queue.length && !sd.printing) sim.command({ op: 'print', ids: sim.command({ op: 'suggest' }).slice(0, sd.feed) });
+  // a catching illness going round: keep the sick apart, once there is a clinic; lift the rule when it has passed
+  const ill = S.cols.filter(c => !c.dead && toIsolate(c)).length, clinic = S.projects.some(p => p.type === 'clinic' && p.done);
+  if (clinic && ill >= 2 && !S.care.iso) sim.command({ op: 'iso', v: true }); else if (S.care.iso && !ill) sim.command({ op: 'iso', v: false });
   if (S.projects.filter(p => !p.gone && !p.done && p.type !== 'test').length >= 2) return;
   const n = {}, next = PLAN.find(([t]) => { n[t] = (n[t] || 0) + 1; return S.projects.filter(p => !p.gone && p.type === t).length < n[t]; });
   const spot = next && findPlot(sim, next[0], next[1], next[2]);
@@ -93,7 +97,7 @@ export function runColony(seed, days = 1, mode = 'landfall', count = 300, onTick
         season: seasonOf(doyOf(sim.cal)), wx: dayWeather(sim.W.seed, sim.cal).k, temp: S.F.temp.toFixed(0), meals: Math.round(mealsInStore(sim)), rations: Math.round(S.food),
         life: `${S.F.life.filter(l => l.seen).length} seen ${S.F.life.filter(l => l.tested).length} tested`, larder: JSON.stringify(Object.fromEntries(Object.entries({ ...S.F.larder.raw }).map(([k, v]) => [k, +v.toFixed(1)]))), cooked: Math.round(Object.values(S.F.larder.meals).reduce((a, b) => a + b, 0)),
         fields: built(S).filter(p => p.type === 'field').map(p => `${p.crop.st}${p.crop.k ? ':' + p.crop.k + ' ' + Math.round(p.crop.g * 100) + '%' : ''}`).join(' '), crews: S.crews.filter(c => !c.gone).map(c => c.work.slice(0, 2) + c.members.length).join(' '),
-        chill: Math.round(peak), foraged: (S.stats.foraged || 0) - foraged, unwell: live.filter(c => c.unwell).length, dead: S.cols.length - live.length,
+        chill: Math.round(peak), foraged: (S.stats.foraged || 0) - foraged, unwell: live.filter(c => c.unwell).length, sick: live.filter(c => c.bd.ill.some(q => q.st === 1 || q.st === 2)).length, dead: S.cols.length - live.length,
       });
       peak = 0; foraged = S.stats.foraged || 0;
     }

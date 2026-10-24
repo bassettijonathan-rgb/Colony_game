@@ -8,15 +8,18 @@ import { ailing, danger, downed, laidUp, needs, capOf, woundText, PART } from '.
 import { byId, built, capOf as bCap } from './build.js';
 import { remember } from './life.js';
 import { dropCarry } from './work.js';
+import { diagnose, illMeal } from './illness.js';
+import { eat } from './food.js';
 
 export const MED_KIT = { dress: 24, pk: 16, abx: 8, blood: 6 };          // what the lander carried down
 export const MED_MADE = { dress: 8, pk: 4, abx: 2, blood: 2 };           // one batch from the fabricator
 export const MED_NAME = { dress: 'dressings', pk: 'painkillers', abx: 'antibiotic courses', blood: 'units of blood substitute' };
 export const TRIAGE = { worst: 'Worst first', likely: 'Most likely to live first', leads: 'Crew leads first' };
-const DUR = { exam: .2, close: .5, dress: .5, set: .8, surgery: 2, abx: .15, shock: .4, pk: .1 };   // hours, for a practised medic
+const DUR = { exam: .2, close: .5, dress: .5, set: .8, surgery: 2, abx: .15, shock: .4, pk: .1, dx: .3, nurse: .6 };   // hours, for a practised medic
 const TEXT = {
   close: (o, c, w) => `${o} cleaned and closed ${c}'s ${w}`, dress: (o, c, w) => `${o} cleaned and dressed ${c}'s ${w}`, set: (o, c, w) => `${o} set ${c}'s ${w}`,
   surgery: (o, c, w) => `${o} operated on ${c}: ${w}`, abx: (o, c) => `${o} started ${c} on a course of antibiotics`, shock: (o, c) => `${o} treated ${c} for shock`, pk: (o, c) => `${o} gave ${c} painkillers`,
+  nurse: (o, c) => `${o} sat with ${c} through the worst of the fever, with water and cool cloths`, dx: (o, c) => `${o} examined ${c} again`,
 };
 export const MEDIC = 1.5;                                               // the medicine skill to treat anyone
 
@@ -44,7 +47,7 @@ export function careThink(sim) {
     if (d && !c.down) fallDown(sim, c); else if (!d && c.down && c.carried < 0) getUp(sim, c);
     const out = !hidden(c.act) && c.act !== ACT.BED;
     if (out && c.aidBy < 0 && c.carried < 0 && (c.down || c.bd.w.some(w => w.kn && w.bl > .02 && !w.aid))) scene.push(c);
-    else if (c.medBy < 0 && c.carried < 0 && !c.mv && (c.job === 'ward' || c.down) && needs(c).length) beds.push(c);
+    else if (c.medBy < 0 && c.carried < 0 && !c.mv && (c.job === 'ward' || c.down) && needs(c, sim).length) beds.push(c);
     else if (c.medBy < 0) c.waitSince = 0;
   }
   // first aid: the nearest pair of hands, a medic's if there is one close
@@ -131,9 +134,9 @@ export function careTimer(sim, o) {
   else treat(sim, o, c, o.care.step);
   // the next thing that needs doing, while the medic is here
   // surgery away from a clinic is a last resort: only when there is no clinic to take them to
-  const n = needs(c).find(q => q.k !== 'surgery' || atClinic(S, c) || (!restFor(sim, c).ward && danger(c) > .4));
+  const n = needs(c, sim).find(q => q.k !== 'surgery' || atClinic(S, c) || (!restFor(sim, c).ward && danger(c) > .4));
   if (!n || (!c.down && c.job !== 'ward')) {
-    if (needs(c).some(q => q.k === 'surgery') && !atClinic(S, c)) note(sim, c, 'surgery', `${o.name} thinks ${c.name} is bleeding inside and needs surgery, which goes far better in a clinic.`);
+    if (needs(c, sim).some(q => q.k === 'surgery') && !atClinic(S, c)) note(sim, c, 'surgery', `${o.name} thinks ${c.name} is bleeding inside and needs surgery, which goes far better in a clinic.`);
     endCare(sim, o); return;
   }
   o.care.step = n.k; o.care.w = n.w;
@@ -186,6 +189,7 @@ function exam(sim, o, c) {
     w[hid] = true;
     sim.log(`${o.name} examined ${c.name} and found what nobody had seen: ${woundText(w, hid === 'ikn').toLowerCase()}.`, 'bad', { e: 'hidden', lvl: 1, who: c.id, title: 'A hidden injury' });
   }
+  diagnose(sim, o, c, pf, atClinic(S, c));
   grow(o, .02);
 }
 function treat(sim, o, c, k) {
@@ -216,7 +220,10 @@ function treat(sim, o, c, k) {
       break;
     case 'abx':
       if (!use('abx')) { note(sim, c, 'abx', `${c.name} has an infection and there are no antibiotics left.`); return; }
-      b.abx = 4; break;
+      b.abx = 4; for (const q of b.ill) if (q.st) q.tried = true;
+      break;
+    case 'dx': exam(sim, o, c); return;
+    case 'nurse': b.nu = 5; if (b.nuSaid === b.ill.length + ':' + c.bd.hx.length) { grow(o, .03); return; } b.nuSaid = b.ill.length + ':' + c.bd.hx.length; break;
     case 'shock':
       if (use('blood')) { b.blood = Math.min(1, b.blood + .22); b.st = 6; }
       else { b.st = 3; m = ' There was no blood substitute, only warmth and fluids.'; }
@@ -233,6 +240,18 @@ function treat(sim, o, c, k) {
   if (k === 'surgery' && ok) remember(sim, c, `${o.name} operated on them and stopped a bleed inside.`);
 }
 const grow = (o, v) => { o.skills.medicine = Math.min(10, Math.round((o.skills.medicine + v) * 1000) / 1000); };
+
+// ---------- supper for the bedridden: brought to them where they lie ----------
+export function feedPatients(sim) {
+  const S = sim.S;
+  for (const c of S.cols) {
+    if (c.dead || c.carried >= 0 || c.ate === sim.day || !(c.plan === 'ward' || c.down)) continue;
+    c.ate = sim.day;
+    const got = eat(sim, c);
+    if (got) { c.meal = got; c.hungry = false; if (got !== 'ration') S.stats.meals++; illMeal(sim, c, 'w' + (c.ward >= 0 ? c.ward : c.home), got); }
+    else c.hungry = true;
+  }
+}
 
 // ---------- a carried person goes where their carrier goes, just behind them ----------
 export function follow(sim, c) {

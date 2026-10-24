@@ -1,5 +1,6 @@
 // The Health tab of a person's card: the medic's view of their body. Only what the colony knows is shown: a
-// wound nobody has found is not here, though blood lost from it shows as "losing blood, cause not found".
+// wound nobody has found is not here, though blood lost from it shows as "losing blood, cause not found", and an
+// illness nobody has named shows only as its symptoms.
 import { CAPS, CAP_NAME, PARTS, PART } from '../core/body.js';
 import { DAY_TICKS, HOUR } from '../core/consts.js';
 
@@ -56,11 +57,21 @@ function state(w) {
   return c.map(([k, s]) => `<span class="chip ${k}">${s}</span>`).join('');
 }
 
+const STAGE = ['', 'Sick', 'Crisis', 'Recovering'];
+// an illness as the colony sees it: named once a medic has, otherwise only what anyone can see
+function illness(q) {
+  const c = [[q.st === 2 ? 'b' : q.st === 3 ? 'g' : 'm', STAGE[q.st]]];
+  if (q.catching) c.push(['b', 'Catching']);
+  if (q.kn) c.push(q.abx ? ['g', 'Antibiotics work'] : ['m', 'Antibiotics don’t help']);
+  else if (q.tried) c.push(['', 'Antibiotics tried']);
+  return `<div class="wd"><b>${esc(q.kn ? q.name : 'An illness nobody has named')}</b><div class="sub">${esc(q.sym)}. Since day ${q.d}.${q.kn ? '' : ' A medic’s examination may name it.'}</div><div class="chips">${c.map(([k, t]) => `<span class="chip ${k}">${t}</span>`).join('')}</div></div>`;
+}
 // the whole tab; B is the sim's body report, name the person's first name
 export function healthTab(B, name, dead) {
   if (!B) return '<div class="note">Nothing to report.</div>';
-  const d = B.danger, how = dead ? 'Dead.' : B.danger >= .75 ? 'In grave danger.' : B.danger >= .45 ? 'In danger.' : B.danger >= .2 ? 'Hurt, but not in danger.' : B.w.length || B.inner.length ? 'Mending.' : 'Healthy.';
-  const where = B.down ? ` ${name} is down and can't get up.` : B.laid ? ` Laid up resting.` : '';
+  const ill = B.ill || [], hurt = B.w.length || B.inner.length, crisis = ill.some(q => q.st === 2);
+  const d = B.danger, how = dead ? 'Dead.' : B.danger >= .75 ? 'In grave danger.' : B.danger >= .45 ? (crisis && !hurt ? 'Gravely ill.' : 'In danger.') : ill.length && !hurt ? (ill.every(q => q.st === 3) ? 'Getting better.' : 'Sick.') : B.danger >= .2 ? 'Hurt, but not in danger.' : hurt ? 'Mending.' : 'Healthy.';
+  const where = B.down ? ` ${name} is down and can't get up.` : B.iso ? ' Kept apart from everyone while it passes.' : B.laid ? ` Laid up resting.` : '';
   const by = B.by ? ` ${esc(B.by)} is looking after them.` : '';
   let h = `<div class="hsum" style="--c:${col(d) || 'var(--good)'}"><b>${how}</b>${B.worse && !dead ? ' <em>Getting worse.</em>' : ''}${where}${by}</div>`;
   const bar = (lbl, v, tip, txt) => `<span title="${tip}">${lbl}</span><b><u style="width:${Math.round(Math.min(1, v) * 100)}%;background:${col(Math.min(1, v)) || 'var(--good)'}"></u></b><em>${txt}</em>`;
@@ -73,9 +84,12 @@ export function healthTab(B, name, dead) {
     if (B.unexplained) h += `<div class="wd"><b>Losing blood, cause not found</b><div class="sub">Something is bleeding that nobody has found yet. A medic's examination may find it.</div></div>`;
     for (const w of B.w) h += `<div class="wd"><b>${esc(w.text)}</b><div class="sub">${esc(cap1(w.how || 'how, nobody knows'))}, day ${w.d}.</div><div class="chips">${state(w)}</div></div>`;
   }
+  if (ill.length) h += `<div class="sec">Illness</div>${ill.map(illness).join('')}`;
   if (B.marks.length) h += `<div class="sec">Lasting marks</div>${B.marks.map(m => `<div class="wd"><b>${esc(m.what)}</b><div class="sub">${esc(cap1(m.how || ''))}${m.how ? ', ' : ''}day ${m.d}.${m.loss ? ` It costs them ${Math.round(m.loss * 100)}% of the ${esc(PARTS[m.p].name)}.` : ''}${m.pain ? ' It still aches.' : ''}</div></div>`).join('')}`;
   if (B.ex) h += `<div class="note" style="margin-top:10px">Last examined by ${esc(B.ex.by)}, ${when(B.ex.t)}. A medic that skilled would find a hidden injury about ${B.ex.conf}% of the time.</div>`;
-  else if (B.w.length) h += `<div class="note" style="margin-top:10px">Nobody has examined them yet.</div>`;
-  if (B.pk || B.abx) h += `<div class="chips" style="margin-top:8px">${B.pk ? '<span class="chip">On painkillers</span>' : ''}${B.abx ? '<span class="chip">On antibiotics</span>' : ''}</div>`;
+  else if (B.w.length || ill.some(q => q.st < 3)) h += `<div class="note" style="margin-top:10px">Nobody has examined them yet.</div>`;
+  if (B.hx && B.hx.length) h += `<div class="sec">Illnesses before</div>${B.hx.slice().reverse().map(x => `<div class="wd"><b>${esc(x.name || 'An illness nobody named')}</b><div class="sub">${x.name ? '' : esc(x.sym) + '. '}Day ${x.d} to day ${x.e}: ${x.out === 'died' ? 'it killed them' : 'got over it'}.</div></div>`).join('')}`;
+  if (B.imm && B.imm.length) h += `<div class="note" style="margin-top:8px">${B.imm.map(m => m.v > 0 ? `Some resistance to ${esc(m.name.toLowerCase())}.` : `Their body now overreacts to ${esc(m.name.toLowerCase())}: each case comes on faster and harder.`).join(' ')}</div>`;
+  if (B.pk || B.abx || B.nu) h += `<div class="chips" style="margin-top:8px">${B.pk ? '<span class="chip">On painkillers</span>' : ''}${B.abx ? '<span class="chip">On antibiotics</span>' : ''}${B.nu ? '<span class="chip">Being nursed</span>' : ''}</div>`;
   return h;
 }
