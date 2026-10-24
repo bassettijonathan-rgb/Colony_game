@@ -64,7 +64,7 @@ export function thingCard(A, th) {
       const sd = U.seed, arch = A.archive || [], stored = arch.filter(p => p.woke == null).length, names = new Map(arch.map(p => [p.fid, p.name]));
       const lab = F && F.lab, cur = lab && lab.cur >= 0 ? F.life[lab.cur] : null;
       let h = note('The lander’s mind. It came down with the colony’s founders stored as minds in its archive, prints their bodies, and plans the work, the meals and the power.', 8);
-      h += sec('Archive and fabricator') + row('Minds stored', stored) + row('Feedstock left', `${sd.feed} ${sd.feed === 1 ? 'body' : 'bodies'}`);
+      h += sec('Archive and fabricator') + row('Minds stored', stored) + row('Feedstock left', `${sd.feed} ${sd.feed === 1 ? 'body' : 'bodies'}`) + (U.projects.some(p => p.type === 'plant' && p.done) ? row('Next body’s feedstock', pct(sd.fb / sd.per)) : !sd.feed ? note('A feedstock plant (Build window, Plan) makes more from biomass and stone.', 0) : '');
       if (sd.printing) h += row(`Printing ${esc(names.get(sd.printing.fid) || '')}`, '');
       if (sd.queue.length) h += row('Next in line', sd.queue.length);
       if (sd.fab) h += row('Making from salvage', esc(matName(sd.fab.k, 1)));

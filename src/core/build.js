@@ -36,9 +36,10 @@ export const TYPES = {
   solar: { name: 'Solar field', min: 3, max: 10, size: [6, 6], open: true, use: "Power, stored in the lander's batteries for the night. Panels make less in the short days of Deep cold" },
   field: { name: 'Field', min: 3, max: 12, size: [8, 6], open: true, use: 'Made soil for the crops in the seed bank: local soil broken up, mixed with biomass and drained' },
   lab: { name: 'Lab', min: 5, max: 8, size: [5, 6], use: 'Benches where a lab crew tests samples of local life, far faster than the Seed’s own analyser' },
+  plant: { name: 'Feedstock plant', min: 5, max: 9, size: [5, 6], use: 'Tanks that turn biomass and crushed stone into feedstock, which the fabricator prints new people from. They take their loads from the yard and need power' },
   test: { name: 'Load test', fixed: true },
 };
-export const PLANNABLE = ['field', 'workshop', 'commons', 'clinic', 'dorm', 'solar', 'lab'];
+export const PLANNABLE = ['field', 'workshop', 'plant', 'commons', 'clinic', 'dorm', 'solar', 'lab'];
 const inner = (w, h) => Math.max(0, (w - 2) * (h - 2));
 // what a building of this size holds, and the power it draws (kW) or makes
 export function capacity(type, w, h) {
@@ -52,6 +53,7 @@ export function capacity(type, w, h) {
     case 'solar': { const panels = Math.floor(w * h / 4); return { panels, kw: 0, supply: panels * PANEL_KW }; }
     case 'field': return { tiles: w * h, kw: 0 };
     case 'lab': { const benches = clamp(Math.floor(a / 6), 1, 3); return { benches, kw: +(1.5 + benches * .5).toFixed(1) }; }
+    case 'plant': { const tanks = clamp(Math.floor(a / 6), 1, 3); return { tanks, kw: 1 + tanks * 1.5 }; }
   }
   return { kw: 0 };
 }
@@ -90,7 +92,7 @@ export function stageLoads(S, type, w, h, st, mat) {
     if (st === 4) add('panel', cap.panels);
     return L;
   }
-  const posts = loadCheck(S, type, w, h).posts, fixtures = (cap.beds || 0) / 4 + (cap.seats || 0) / 8 + (cap.benches || 0);
+  const posts = loadCheck(S, type, w, h).posts, fixtures = (cap.beds || 0) / 4 + (cap.seats || 0) / 8 + (cap.benches || 0) + (cap.tanks || 0);
   if (st === 0) add('mark', per / 6);
   if (st === 1) { add('stone', a / 10 * ms); add('stone', posts); }
   if (st === 2) { add('timber', (per / 6 + a / 16) * mt); add('timber', posts); }
@@ -246,9 +248,24 @@ export function nextOrder(sim) {
   }
   return null;
 }
-// raw material the colony wants piled in the yard: everything the project list still needs, plus a little
-export function rawWanted(S, k) {
+// ---------- feedstock ----------
+// One batch in one tank of a feedstock plant: loads from the yard, hours with power, and the share of a body it
+// makes. The plant stops while the fabricator already holds feedstock for FEED.max bodies, or for everyone left
+// in the archive.
+export const FEED = { biomass: 3, stone: 1, h: 12, per: 8, max: 4 };
+export function plantStop(S) {
+  const sd = S.seedc, asleep = S.archive.filter(p => p.woke == null).length - sd.queue.length - (sd.printing ? 1 : 0);
+  let run = 0; for (const p of built(S)) if (p.type === 'plant' && p.tanks) for (const t of p.tanks) if (t > 0) run++;
+  const have = sd.feed + ((sd.fb || 0) + run) / FEED.per;
+  if (asleep <= 0) return 'Everyone in the archive is awake, so there is nobody to print.';
+  if (have >= Math.min(FEED.max, asleep)) return `The fabricator already holds feedstock for ${have >= asleep ? 'everyone left in the archive' : `${FEED.max} bodies`}. The tanks wait until some is used.`;
+  return '';
+}
+// raw material the colony wants piled in the yard: everything the project list still needs, plus a little, plus
+// two batches ahead for each working tank (unless only the projects count)
+export function rawWanted(S, k, plants = true) {
   let n = 6;
+  if (plants && FEED[k] && S.seedc && !plantStop(S)) for (const p of built(S)) if (p.type === 'plant' && p.powered) n += capOf(p).tanks * FEED[k] * 2;
   for (const p of active(S)) {
     if (p.paused) continue;
     for (let st = p.stage; st < (p.type === 'test' ? 1 : 5); st++) {
