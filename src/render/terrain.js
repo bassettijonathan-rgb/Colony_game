@@ -163,6 +163,14 @@ export class Terrain {
     }
     if (this.ready) { gl.bindTexture(gl.TEXTURE_2D, this.albO); gl.generateMipmap(gl.TEXTURE_2D); gl.bindTexture(gl.TEXTURE_2D, this.matO); gl.generateMipmap(gl.TEXTURE_2D); }
   }
+  // ground that changed kind (burnt, or grown back): the kind map goes up again and its chunks are repainted
+  retype(W, tiles) {
+    const gl = this.G.gl; this.W = W;
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.bindTexture(gl.TEXTURE_2D, this.tType); gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, MAP, MAP, gl.RED, gl.UNSIGNED_BYTE, W.type);
+    const ks = new Set(); for (const t of tiles) ks.add(((t / MAP | 0) / CH | 0) * NCH + ((t % MAP) / CH | 0));
+    for (const k of ks) { if (this.chunkSlot[k] >= 0) this.stale[k] = 1; this.ovStale.add(k); }
+  }
   // what the Seed has seen, one chunk at a time (0 unseen, 255 seen)
   setKnown(k, data) { this.sub(this.tKnown, k, data); }
 

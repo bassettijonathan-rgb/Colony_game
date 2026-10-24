@@ -2,7 +2,7 @@
 // browser allows one, or on the page itself otherwise; either way it only talks through messages.
 //   page -> sim: init {seed, mode, count, save}, land {site}, speed {v}, save {id}, cmd {op, ...}, watch {id}
 //   sim -> page: survey {world, sites}, ready {world, site, roster, ui, ...}, snap {pos, clock, perf},
-//                state {ui, log, roster?}, wear {chunks}, known {chunks}, marks {gone, quarry}, saved {id, data}, cmd {id, r}
+//                state {ui, log, roster?}, wear {chunks}, known {chunks}, marks {gone, quarry, ground}, saved {id, data}, cmd {id, r}
 import { generateWorld, findSites, landAt } from '../core/world.js';
 import { Pathfinder } from '../core/path.js';
 import { Sim } from '../core/sim.js';
@@ -36,8 +36,8 @@ export function createSimCore(post) {
   }
   // trees felled and stone quarried since the last report, as flat [tile, value, ...] lists
   function marks() {
-    if (!sim.gnew.length && !sim.qnew.length) return;
-    post({ t: 'marks', gone: sim.gnew, quarry: sim.qnew }); sim.gnew = []; sim.qnew = [];
+    if (!sim.gnew.length && !sim.qnew.length && !sim.tnew.length) return;
+    post({ t: 'marks', gone: sim.gnew, quarry: sim.qnew, ground: sim.tnew }); sim.gnew = []; sim.qnew = []; sim.tnew = [];
   }
   function state() {
     const S = sim.S, m = { t: 'state', ui: sim.ui(watch), log: sim.logSince(sentLog) };
@@ -64,7 +64,7 @@ export function createSimCore(post) {
       pos: sim.snapshot(new Float32Array(S.cols.length * 4)), clock: sim.clock(),
       timing: { world: t1 - t0, land: t2 - t1, graph: t3 - t2, field: t4 - t3, nodes: P.nodes.length }
     });
-    sentLog = S.logN; sim.gnew = []; sim.qnew = [];
+    sentLog = S.logN; sim.gnew = []; sim.qnew = []; sim.tnew = [];
     // the trodden and the surveyed ground go out at once
     chunks('wear', sim.dirty, k => sim.wearChunk(k)); chunks('known', sim.kdirty, k => sim.knownChunk(k));
     last = now(); acc = 0; timer = setTimeout(step, 8);

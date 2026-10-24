@@ -181,3 +181,30 @@ export function propsIn(W, x0, y0, x1, y1) {
 }
 // what stood on one tile before anything was felled or cleared there
 export function propAt(W, x, y) { const g = W.gone; W.gone = null; const p = propsIn(W, x, y, x + 1, y + 1)[0] || null; W.gone = g; return p; }
+
+// ---------- floods ----------
+// How high the water has to rise, in the painter's height units, before each tile near the landing goes under:
+// its height above the nearest river or lake, plus a little for every tile of distance from it. 255 is never.
+// A pure function of the land, so both threads can work it out.
+export const FLOOD_LINE = 5;   // how high the Seed reckons the water comes in a wet year, for planning
+export const FLOOD_R = 150;
+export function floodPlain(W) {
+  if (W.flood) return W.flood;
+  const L = W.land, thr = new Uint8Array(MAP * MAP).fill(255), src = new Float32Array(MAP * MAP), d = new Float32Array(MAP * MAP).fill(1e9);
+  const x0 = Math.max(1, L.x - FLOOD_R), x1 = Math.min(MAP - 2, L.x + FLOOD_R), y0 = Math.max(1, L.y - FLOOD_R), y1 = Math.min(MAP - 2, L.y + FLOOD_R);
+  let q = [];
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const i = y * MAP + x, t = W.type[i]; if (t === T.SHALLOW || t === T.DEEP) { d[i] = 0; src[i] = W.elev[i]; q.push(i); } }
+  // breadth first out from the water, up to 40 tiles; each tile remembers the water level it is measured from
+  for (let r = 0; r < 40 && q.length; r++) {
+    const nq = [];
+    for (const i of q) for (const n of [i - 1, i + 1, i - MAP, i + MAP]) {
+      const x = n % MAP, y = n / MAP | 0; if (x < x0 || x > x1 || y < y0 || y > y1 || d[n] <= r + 1) continue;
+      const t = W.type[n]; if (t === T.SHALLOW || t === T.DEEP || t === T.ROCK) continue;
+      d[n] = r + 1; src[n] = Math.min(src[i], W.elev[n]); nq.push(n);
+      thr[n] = Math.min(254, Math.max(1, Math.round(W.elev[n] - src[n] + (r + 1) * .35)));
+    }
+    q = nq;
+  }
+  W.flood = thr;
+  return thr;
+}

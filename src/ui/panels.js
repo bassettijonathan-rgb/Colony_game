@@ -343,13 +343,14 @@ export class Panels {
   // the card for a building being placed: what it holds, what it costs, whether it carries its loads, its power
   planCard(P) {
     const el = $('plan'); if (!P || P.x == null || !P.check || !P.locked) { el.hidden = true; this.planSig = ''; return; }
-    const sig = JSON.stringify([P.type, P.x, P.y, P.w, P.h, P.side, P.check.ok, P.check.why]); if (sig === this.planSig) { el.hidden = false; return; }
+    const sig = JSON.stringify([P.type, P.x, P.y, P.w, P.h, P.side, P.check.ok, P.check.why, P.check.warn]); if (sig === this.planSig) { el.hidden = false; return; }
     this.planSig = sig;
     const c = P.check, T = TYPES[P.type];
     $('plName').textContent = T.name; $('plPic').innerHTML = icon(TICON[P.type] || 'build');
     $('plMeta').textContent = `${P.w} × ${P.h} tiles${T.open ? '' : ` · door on the ${SIDE[P.side]} side`}`;
     let h = '';
     if (!c.ok) h += `<div class="pw bad">${esc(c.why)}</div>`;
+    else if (c.warn) h += `<div class="pw">${esc(c.warn)}</div>`;
     h += `<div class="note" style="margin:8px 0 4px">${esc(T.use)}. It holds ${esc(holds(P.type, c.cap))}.</div>`;
     if (c.bill) {
       h += `<div class="sec">What it takes</div><div class="bill">` + c.bill.stages.map((L, i) => `<div><em>${stagesOf(P.type)[i]}</em>${esc(loads(L) || (i === 0 ? 'pegs and string' : '-'))}</div>`).join('') + `</div>`;
@@ -507,8 +508,14 @@ export class Panels {
     $('bMeta').textContent = test ? `At the rig in the yard` : `${T.name} · ${p.w} × ${p.h} tiles${T.open ? '' : ` · door on the ${SIDE[p.side]} side`}`;
     $('bJob').textContent = p.done ? (p.type === 'solar' ? `Finished · making ${p.cap.supply} kW` : !p.cap.kw ? 'Finished · in use' : `Finished · ${p.powered ? 'has power' : 'dark: not enough power'}`)
       : p.paused ? `Paused at ${names[p.stage].toLowerCase()}` : p.stall ? 'Stalled' : p.crews.length ? `Being built · ${names[p.stage].toLowerCase()}` : `Waiting · ${names[p.stage].toLowerCase()}`;
-    $('bDot').className = 'dot' + (p.done ? (p.powered || p.type === 'solar' ? ' ok' : ' off') : p.paused || p.stall || !p.crews.length ? ' off' : '');
+    if (p.fire) $('bJob').textContent = `On fire · ${Math.round(p.burn * 100)}% burned`;
+    else if (p.wet) $('bJob').textContent = 'Under water';
+    else if (p.dmg && !p.done) $('bJob').textContent = `Repairing after the ${p.dmg} · ${names[p.stage].toLowerCase()}`;
+    $('bDot').className = 'dot' + (p.fire || p.wet ? ' bad' : p.done ? (p.powered || p.type === 'solar' ? ' ok' : ' off') : p.paused || p.stall || !p.crews.length ? ' off' : '');
     let h = '';
+    if (p.fire) h += `<div class="pw bad">It is burning. Everyone inside got out, and anyone who can is beating it out. The longer it burns, the more of it the build crews will have to put back.</div>`;
+    else if (p.wet) h += `<div class="pw">Flood water is standing in it${p.done || p.type === 'field' ? ': it is out of use until the water goes down' : ': building waits until the water goes down'}. The longer it stands, the more repairs it will need.</div>`;
+    else if (p.dmg && !p.done) h += `<div class="note" style="margin:0 0 6px">Damaged by the ${p.dmg}: it is out of use until the build crews finish the repairs below.</div>`;
     if (!test) h += `<div class="note" style="margin:8px 0 0">${esc(T.use || 'Twelve bunks in the lander\'s own modules, the first roof on this world')}. It holds ${esc(holds(p.type, p.cap))}${p.type === 'solar' || !p.cap.kw ? '' : ` and draws ${p.cap.kw} kW`}.</div>`;
     if (p.type === 'clinic' && p.done && U.care) {
       const C = U.care, M = U.med, here = C.ward.filter(q => q[1] === p.id).map(q => q[0]);

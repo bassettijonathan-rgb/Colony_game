@@ -9,8 +9,9 @@ import { dayWeather, fireOn } from './year.js';
 import { ailing, bodyTick, laidUp, needs, injure, danger, downed, woundText } from './body.js';
 import { endCare, restFor, goToPatient } from './care.js';
 import { toIsolate, illDay, ILL } from './illness.js';
+import { fightSpot } from './hazards.js';
 
-const WORKING = a => a === ACT.BUILD || a === ACT.CARRY || a === ACT.SURVEY || a === ACT.PLANT || a === ACT.QUARRY || a === ACT.FELL || a === ACT.STONE || a === ACT.LOG || a === ACT.TEST || a === ACT.BENCH || a === ACT.GATHER || a === ACT.FARM || a === ACT.COOK || a === ACT.SAMPLE || a === ACT.SACK;
+const WORKING = a => a === ACT.BUILD || a === ACT.CARRY || a === ACT.SURVEY || a === ACT.PLANT || a === ACT.QUARRY || a === ACT.FELL || a === ACT.STONE || a === ACT.LOG || a === ACT.TEST || a === ACT.BENCH || a === ACT.GATHER || a === ACT.FARM || a === ACT.COOK || a === ACT.SAMPLE || a === ACT.SACK || a === ACT.FIGHT;
 // a finished building with its lights on
 const usable = (S, id) => { const p = id >= 0 ? byId(S, id) : null; return p && p.done && p.powered ? p : null; };
 const CLASH = [['stubborn', 'stubborn'], ['reckless', 'careful'], ['sociable', 'solitary'], ['restless', 'patient']];
@@ -22,6 +23,7 @@ export function want(sim, c) {
   if (c.carried >= 0) return 'carried';
   if (c.down) return 'down';
   if (c.care) return 'care';
+  if (c.fight > 0) return 'fire';   // all hands to a fire near the camp
   if (c.act === ACT.WAKE && c.timer > 0) return 'wake';
   if (c.alone > 0) return 'alone';
   // the clinic's rule: the sick with something catching stay apart until it has passed
@@ -49,7 +51,7 @@ export function think(sim, c) {
   if (w === 'carried') return;
   if (w === c.plan) {
     // a job that ran out of steps starts its next one
-    if (w === 'work' && c.mv === 0 && c.timer <= 0 && !c.job) start(sim, c, w);
+    if ((w === 'work' || w === 'fire') && c.mv === 0 && c.timer <= 0 && !c.job) start(sim, c, w);
     else if (w === 'idle' && c.mv === 0 && c.act === ACT.IDLE && rnd() < .04) idleAt(sim, c);
     return;
   }
@@ -63,6 +65,7 @@ function start(sim, c, w) {
   if (c.carry || c.make) dropCarry(sim, c);
   c.plan = w; c.job = ''; c.timer = 0; c.where = -1; c.pj = -1;
   if (w === 'wake') return;
+  if (w === 'fire') { c.job = 'fire'; sim.goTo(c, fightSpot(sim, c.fight), ACT.FIGHT, ACT.WALK); return; }
   if (w === 'down') { c.job = 'down'; c.mv = 0; if (!hidden(c.act) && c.act !== ACT.BED) c.act = ACT.DOWN; return; }
   if (w === 'sleep' || w === 'ward') {
     // the hurt sleep where they rest: a clinic bed if there is one free

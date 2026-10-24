@@ -27,7 +27,7 @@ const CHARTS = [
   { id: 'known', title: 'Ground surveyed', unit: '% of the map', series: [['Surveyed', r => r[K.known]]], fmt: v => `${v.toFixed(1)}%` },
   { id: 'life', title: 'Local life', unit: 'kinds', series: [['Found', r => r[K.seen]], ['Tested', r => r[K.tested]]], int: true },
 ];
-const TOTALS = [['meals', 'Meals cooked'], ['foraged', 'Loads foraged'], ['harvests', 'Harvests'], ['felled', 'Trees felled'], ['quarried', 'Stone cut'], ['made', 'Parts made'], ['feedstock', 'Bodies of feedstock made'], ['friends', 'Friendships'], ['rivals', 'Rivalries'], ['breakdowns', 'Breakdowns'], ['accidents', 'Accidents'], ['treated', 'Treatments'], ['ill', 'Illnesses caught'], ['illDeaths', 'Deaths from illness'], ['cold', 'Dangerously cold'], ['deaths', 'Deaths']];
+const TOTALS = [['meals', 'Meals cooked'], ['foraged', 'Loads foraged'], ['harvests', 'Harvests'], ['felled', 'Trees felled'], ['quarried', 'Stone cut'], ['made', 'Parts made'], ['feedstock', 'Bodies of feedstock made'], ['friends', 'Friendships'], ['rivals', 'Rivalries'], ['breakdowns', 'Breakdowns'], ['accidents', 'Accidents'], ['treated', 'Treatments'], ['ill', 'Illnesses caught'], ['illDeaths', 'Deaths from illness'], ['fires', 'Fires'], ['floods', 'Floods'], ['cold', 'Dangerously cold'], ['deaths', 'Deaths']];
 
 // a round step for the y-axis (whole numbers for counts), and the axis ends on whole steps
 function axis(lo0, hi0, whole) {

@@ -7,7 +7,7 @@
 //   they are fixed.
 // The first time each kind of event happens, its letter also says what it means and what can be done.
 // The log keeps everything; this only decides what is worth interrupting for.
-import { ACT } from '../core/consts.js';
+import { ACT, MAP } from '../core/consts.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -59,6 +59,13 @@ export const EXPLAIN = {
   illknown: 'A medic names an illness the databank knows. From now on its card on the clinic says what helps: antibiotics work only against the illnesses they are made for. If it is catching, the clinic has a rule to keep the sick apart.',
   illfound: 'A local illness has to be worked out from the cases themselves: every examination adds to what the medics know, faster in a clinic and faster still with a lab. Now that it is understood, every case is named on sight.',
   crisis: 'A crisis is the dangerous part of an illness. A clinic bed, a medic sitting with them, the right medicine, food and warmth all make it far more likely they pull through.',
+  wildfire: 'Grass and woodland burn when the ground is dry: after days of sun and wind, and worst late in Long light. A fire spreads downwind, fast in woodland, and rain or snow puts it out. When it comes near the camp, the fields or a building, everyone who can drops what they are doing to beat it out, and the Seed wakes the sleepers. Burnt ground grows back over a season.',
+  farfire: 'Fires far out burn themselves out, or the rain puts them out. The Seed raises the alarm if one comes within reach of the camp.',
+  bfire: 'A burning building is out of use and everyone inside gets out. The more of it burns before it is beaten out, the more of it the build crews have to put back. Timber frames burn; the shelter’s lander modules don’t.',
+  gutted: 'A building that burns out keeps its footings: the build crews rebuild it from there, like a new project, and it is out of use until they finish.',
+  floodwarn: 'Floods come from a fast thaw upstream or from days of heavy rain. The water rises over the low ground by the river or lake for a day or so, stands, and falls slowly. Buildings in it are out of use until it goes down, and need repairs after; crops drown. The Seed warns when planning on low ground. The lander and its shelter stand on legs and stay dry.',
+  flood: 'Buildings under water are out of use until it goes down, and need repairs after: the longer the water stands, the more work. Anyone wading through it gets cold, and deep water can knock people off their feet.',
+  repaired: 'Repairs are build projects like any other: they show on the project list, and a build crew sees to them in order.',
   unwell: 'A narrow diet shows over time. Food with a slow harm builds up in the body, and food that isn’t enough on its own leaves people short of what they need. More kinds of food, and fewer meals of the troublesome ones, put it right over some days.',
 };
 
@@ -69,6 +76,10 @@ const ALERTS = {
   food: ['warn', '', 'Foragers bring in wild food the Life window (G) shows is safe; fields feed more once they are made and sown.'],
   cold: ['bad', '', 'They need to get indoors or to the fire. The very cold work slower and have accidents, and can die if it lasts.'],
   crisis: ['bad', '', 'A clinic bed and a medic sitting with them give them the best chance.'],
+  fire: ['bad', '', 'Everyone who can is beating it out. Rain puts it out; a fire left alone spreads downwind.'],
+  bfire: ['bad', '', 'It is out of use while it burns, and every minute of it means more repairs.'],
+  flooded: ['warn', '', 'Out of use until the water goes down, then the build crews repair them.'],
+  floodwarn: ['warn', 'The river is rising', 'The water will come over the low ground. Buildings there will be out of use until it goes down.'],
   sick: ['warn', '', 'The sick work slower, or rest until it passes. Their Health tab shows what is known about it.'],
   catching: ['warn', 'A catching illness', 'Someone has an illness that spreads, and nobody is kept apart. The clinic’s card has a rule to isolate the sick, at a cost to their strain and trust.'],
   unwell: ['warn', '', 'Something in their diet. More kinds of food in the larder put it right over some days.'],
@@ -92,7 +103,7 @@ const ALERTS = {
   stalled: ['warn', '', ''],
   idle: ['info', 'Nothing to build', 'A build crew has nothing on the project list. Plan a building in the Build window (B), or give the crew other work.'],
 };
-const ORDER = ['down', 'crisis', 'bleed', 'catching', 'hungry', 'cold', 'food', 'deep', 'locked', 'nofarm', 'ripe', 'unwell', 'sick', 'samples', 'print', 'feedwait', 'alone', 'hurt', 'meds', 'nomedic', 'strain', 'tired', 'trust', 'nocrew', 'stalled', 'dark', 'idle'];
+const ORDER = ['fire', 'bfire', 'down', 'crisis', 'bleed', 'floodwarn', 'flooded', 'catching', 'hungry', 'cold', 'food', 'deep', 'locked', 'nofarm', 'ripe', 'unwell', 'sick', 'samples', 'print', 'feedwait', 'alone', 'hurt', 'meds', 'nomedic', 'strain', 'tired', 'trust', 'nocrew', 'stalled', 'dark', 'idle'];
 
 export class News {
   constructor(A, api) {
@@ -230,6 +241,16 @@ export class News {
     if ((ids = people(p => p[6] & 4096 && !(p[6] & 16384))).length) add('sick', named(ids, 'is sick', 'people are sick'), ids.map(i => ({ who: i })));
     const clinic = U.projects.find(p => p.type === 'clinic' && p.done);
     if (U.care && !U.care.iso && (ids = people(p => p[6] & 32768 && !(p[6] & 8192))).length) add('catching', ALERTS.catching[1], clinic ? [{ pid: clinic.id }] : ids.map(i => ({ who: i })), clinic ? '' : 'There is no clinic yet to set the rule on: build one.');
+    const H = U.hz;
+    if (H) {
+      const burning = U.projects.filter(p => p.fire);
+      if (burning.length) add('bfire', burning.length === 1 ? `${burning[0].name} is on fire` : `${burning.length} buildings are on fire`, burning.map(p => ({ pid: p.id })));
+      if (H.alarm && H.fire.length) { const t = H.fire[0]; add('fire', 'Fire near the camp', [{ x: t % MAP + .5, y: (t / MAP | 0) + .5 }]); }
+      const wet = U.projects.filter(p => p.wet && p.type !== 'shelter');
+      if (wet.length) add('flooded', wet.length === 1 ? `${wet[0].name} is under water` : `${wet.length} buildings are under water`, wet.map(p => ({ pid: p.id })));
+      else if (H.lv > 1) add('floodwarn', 'The river is in flood', [], 'The water is over the low ground. Nothing the colony has built is in it.');
+      else if (H.warn) add('floodwarn', ALERTS.floodwarn[1], []);
+    }
     const hurtN = people(p => p[6] & 4098).length, M = U.med;
     if (hurtN && U.care && !U.care.medics) add('nomedic', ALERTS.nomedic[1], []);
     if (M) { const out = [M.dress ? '' : 'dressings', M.pk ? '' : 'painkillers', M.abx ? '' : 'antibiotics', M.blood ? '' : 'blood substitute'].filter(Boolean); if (out.length) add('meds', `Out of ${out.join(', ')}`, []); }
@@ -241,7 +262,7 @@ export class News {
     if (stalled.length) add('stalled', stalled.length === 1 ? `${stalled[0].name} stalled` : `${stalled.length} projects stalled`, stalled.map(p => ({ pid: p.id })), stalled.map(p => `${p.name}: ${p.wait}.`).join(' '));
     const starved = U.projects.filter(p => p.type === 'plant' && p.done && p.powered && p.why && p.why.startsWith('Waiting'));
     if (starved.length) add('feedwait', starved.length === 1 ? `${starved[0].name} is waiting` : `${starved.length} feedstock plants are waiting`, starved.map(p => ({ pid: p.id })), starved[0].why);
-    const dark = U.projects.filter(p => p.done && p.type !== 'solar' && !p.powered);
+    const dark = U.projects.filter(p => p.done && p.type !== 'solar' && !p.powered && !p.shut);
     if (dark.length) add('dark', dark.length === 1 ? `${dark[0].name} is dark` : `${dark.length} buildings are dark`, dark.map(p => ({ pid: p.id })));
     const idle = U.crews.filter(c => !c.gone && c.work === 'build' && c.members.length && c.proj < 0);
     if (idle.length && U.shelter.done && !U.projects.some(p => !p.done && !p.paused && p.type !== 'test')) add('idle', ALERTS.idle[1], [{ tab: 'build:plan' }]);

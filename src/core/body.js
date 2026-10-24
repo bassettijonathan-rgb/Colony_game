@@ -183,6 +183,7 @@ const HURT = {
   fall: [['arm_', 'frac', 2], ['hand_', 'frac', 1.2], ['head', 'crush', 1.2], ['leg_', 'frac', 1], ['spine', 'crush', 1], ['hand_', 'cut', 1]],
   frost: [['hand_', 'frost', 3], ['skin', 'frost', 1.5]],
   lightning: [['skin', 'burn', 3], ['chest', 'crush', 1]],
+  fire: [['hand_', 'burn', 2], ['arm_', 'burn', 2], ['skin', 'burn', 1.5], ['leg_', 'burn', 1]],
 };
 // a short description of a wound, the way a medic would put it
 export function woundText(w, inner) {

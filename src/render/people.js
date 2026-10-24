@@ -151,6 +151,7 @@ export function drawPerson(g, a, x, y, ang, moving, act, t) {
   else if (act === 25) { lh = [-.16, -.1]; rh = [.12, -.2]; prop = 'sack'; }
   else if (act === 27 && still) { const k = Math.sin(t * 3.2 + a.walk * 2); lh = [-.09, -.3 + k * .02]; rh = [.1, -.31 - k * .03]; prop = 'kit'; }   // tending someone on the ground
   else if (act === 28) { lh = [-.14, .27]; rh = [.14, .27]; }   // dragging someone behind them
+  else if (act === 29 && still) { const k = Math.max(0, Math.sin(t * 6.5 + a.walk * 2)); a.k = k; lh = [-.04, -.21 - k * .05]; rh = [.08, -.24 - k * .09]; prop = 'beater'; }   // beating at the flames
   if (prop === 'crate') { g.fillStyle = 'rgba(0,0,0,.25)'; rrect(g, -.2, -.5, .42, .3, .03); g.fill(); }
   hand(lh[0], lh[1]); hand(rh[0], rh[1]);
   if (prop === 'tablet') { g.fillStyle = '#2a3038'; rrect(g, -.1, -.34, .2, .12, .02); g.fill(); g.fillStyle = `rgba(120,220,255,${.55 + .3 * Math.sin(t * 2 + a.walk)})`; rrect(g, -.085, -.33, .17, .09, .015); g.fill(); }
@@ -162,6 +163,7 @@ export function drawPerson(g, a, x, y, ang, moving, act, t) {
     g.fillStyle = '#9aa2aa'; if (prop === 'pick') { g.beginPath(); g.moveTo(-.14, -.36); g.quadraticCurveTo(0, -.43, .14, -.36); g.lineTo(0, -.39); g.closePath(); g.fill(); } else { rrect(g, -.01, -.42, .1, .09, .02); g.fill(); }
     g.restore();
   }
+  else if (prop === 'beater') { g.save(); g.translate((lh[0] + rh[0]) / 2, (lh[1] + rh[1]) / 2); g.rotate(-.8 + a.k * 1.6); g.fillStyle = '#6a4a2e'; g.fillRect(-.016, -.44, .032, .46); g.fillStyle = '#3b3530'; rrect(g, -.07, -.56, .14, .14, .03); g.fill(); g.restore(); }
   else if (prop === 'stone') { g.fillStyle = '#9d968a'; rrect(g, -.19, -.5, .38, .26, .03); g.fill(); g.strokeStyle = 'rgba(40,36,30,.5)'; g.lineWidth = .015; rrect(g, -.19, -.5, .38, .26, .03); g.stroke(); }
   else if (prop === 'pick-up') { g.fillStyle = '#7d9a5a'; ell(g, rh[0], rh[1] - .04, .04, .03); g.fill(); g.fillStyle = 'rgba(60,46,30,.55)'; ell(g, 0, -.36, .1, .05); g.fill(); }
   else if (prop === 'hoe') { g.save(); g.translate((lh[0] + rh[0]) / 2, (lh[1] + rh[1]) / 2); g.rotate(-.5 + a.k * 1.1); g.fillStyle = '#6a4a2e'; g.fillRect(-.016, -.42, .032, .44); g.fillStyle = '#8e969e'; rrect(g, -.07, -.45, .14, .05, .01); g.fill(); g.restore(); }

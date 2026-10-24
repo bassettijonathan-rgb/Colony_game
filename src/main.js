@@ -24,7 +24,7 @@ const A = {
   speed: 1, lastSpeed: 1, n: 0, prev: null, cur: null, pos: new Float32Array(0), arts: [], names: [], people: [], archive: [], ui: null, log: [], leads: new Set(),
   clock: null, perf: null, sel: -1, hover: -1, follow: false, frames: [], lastSaveLocal: 0, lastSaveAcct: 0, saveId: 0, cmdId: 0, waiting: new Map(),
   savedNote: 'not yet', thread: '-', timing: null, hold: false, pickCrew: -1, pickAt: null, pendingWear: [], pendingKnown: [], music: new Music(),
-  place: null, projSel: -1, thing: null
+  place: null, projSel: -1, thing: null, retype: []
 };
 const pad = n => String(n).padStart(2, '0');
 const when = t => { const d = Math.floor(t / DAY_TICKS) + 1, h = (t % DAY_TICKS) / (DAY_TICKS / 24); return `Day ${d}, ${pad(Math.floor(h))}:${pad(Math.floor((h % 1) * 60))}`; };
@@ -105,7 +105,7 @@ function onReady(m) {
   // what has been felled, cleared and quarried so far: the map is painted without it
   W.gone = new Map(Object.entries(m.gone || {}).map(([k, v]) => [+k, v])); W.quarry = new Map(Object.entries(m.quarry || {}).map(([k, v]) => [+k, v]));
   const landing = A.phase === 'landing' && A.view;
-  A.W = W; A.mode = m.mode; A.tag = m.tag; A.timing = { ...(A.timing || {}), ...m.timing };
+  A.W = W; A.retype = []; A.mode = m.mode; A.tag = m.tag; A.timing = { ...(A.timing || {}), ...m.timing };
   if (landing) A.view.land(W, m.patch);
   else { resetPeople(); if (!ensureView(W)) return; }
   setRoster(m.roster); A.ui = m.ui; A.log = m.log.slice(); A.hist = (m.hist || []).slice(); A.panels.logSeen = landing ? 0 : m.ui.logN;
@@ -134,14 +134,18 @@ function onMarks(m) {
   for (let i = 0; i < m.gone.length; i += 2) { const t = m.gone[i]; if (!W.gone.has(t)) tiles.push(t); W.gone.set(t, m.gone[i + 1]); }
   for (let i = 0; i < m.quarry.length; i += 2) W.quarry.set(m.quarry[i], m.quarry[i + 1]);
   if (tiles.length && A.view) A.view.terrain.propsGone(tiles);
+  // burnt ground, and ground grown back: repainted in batches, not tile by tile
+  if (m.ground && m.ground.length) { for (let i = 0; i < m.ground.length; i += 2) { W.type[m.ground[i]] = m.ground[i + 1]; A.retype.push(m.ground[i]); } }
+  flushRetype();
 }
+function flushRetype() { if (A.retype.length && A.view && A.W && performance.now() - (A.retypeAt || 0) > 1500) { A.retypeAt = performance.now(); A.view.terrain.retype(A.W, A.retype); A.view.mmBase = A.view.minimapBase(); A.retype = []; } }
 function onState(m) {
   if (A.phase !== 'colony') return;
   if (m.roster) setRoster(m.roster);
   A.ui = m.ui;
   if (m.hist) A.hist.push(...m.hist);
   if (m.log.length) { A.log.push(...m.log); if (A.log.length > 300) A.log.splice(0, A.log.length - 300); A.news.add(m.log); }
-  recolour(); A.panels.update(); A.news.alerts(A.ui); A.guide.update(A.ui); A.stats.update();
+  flushRetype(); recolour(); A.panels.update(); A.news.alerts(A.ui); A.guide.update(A.ui); A.stats.update();
   if (A.projSel >= 0 && !A.ui.projects.some(p => p.id === A.projSel)) A.projSel = -1;
 }
 
@@ -163,7 +167,7 @@ function frame(now) {
   if (keys.has('KeyW') || keys.has('ArrowUp')) pan(0, -sp); if (keys.has('KeyS') || keys.has('ArrowDown')) pan(0, sp);
   if (A.follow && A.sel >= 0 && A.sel < A.n) { c.x += (A.pos[A.sel * 4] - c.x) * Math.min(1, dt * 6); c.y += (A.pos[A.sel * 4 + 1] - c.y) * Math.min(1, dt * 6); }
   V.clampCam();
-  const colony = A.phase === 'colony' && A.ui ? { seed: A.ui.seed, stakes: A.ui.stakes, crews: A.ui.crews, projects: A.ui.projects, stores: A.ui.stores, year: A.ui.year, F: A.ui.F, spots: A.ui.spots, day: A.clock ? A.clock.cal || A.clock.abs : 1 } : null;
+  const colony = A.phase === 'colony' && A.ui ? { seed: A.ui.seed, stakes: A.ui.stakes, crews: A.ui.crews, projects: A.ui.projects, stores: A.ui.stores, year: A.ui.year, F: A.ui.F, spots: A.ui.spots, hz: A.ui.hz, day: A.clock ? A.clock.cal || A.clock.abs : 1 } : null;
   const hour = A.clock && A.phase === 'colony' ? A.clock.hour : 10.5;
   V.frame({ n: A.n, pos: A.pos, arts: A.arts, names: A.names, leads: A.leads, hour, time: now / 1000, sel: A.sel, hover: A.hover, budget: A.frames.length > 30 && avgMs() > 22 ? 1 : 2, colony, orbit: A.phase === 'orbit' ? { sites: A.sites, sel: A.siteSel } : null, pickAt: A.pickCrew >= 0 ? A.pickAt : null, place: A.place, projSel: A.projSel, thing: A.thing });
   if (A.hold && A.phase === 'colony' && !V.landing) { A.hold = false; setSpeed(A.speed || 1); if (V.anim) toast('The Seed is down. Choose who the fabricator prints first.'); }
@@ -225,7 +229,7 @@ function weather(Y) {
   $('wxT').textContent = `${hot}°`; $('wxN').textContent = w.name + (Y.snap ? ' · cold snap' : '');
   el.className = w.out === 2 || Y.temp < -15 ? 'bad' : Y.temp < 0 ? 'cold' : '';
   el.title = `${w.name}, ${hot}°C${Y.snap ? ', a cold snap' : ''}. ${w.out === 2 ? 'Nobody works outside today. ' : w.out ? 'Work outside is risky today. ' : ''}Light from ${hhmm(Y.dawn)} to ${hhmm(Y.dusk)}. ` +
-    (Y.season === 3 ? 'Deep cold: nothing grows.' : `Deep cold in ${Y.deepIn} day${Y.deepIn === 1 ? '' : 's'}.`) + (Y.snow > .1 ? ` Snow on the ground.` : '') + (Y.ice > .2 ? ' The water is freezing over.' : '');
+    (Y.season === 3 ? 'Deep cold: nothing grows.' : `Deep cold in ${Y.deepIn} day${Y.deepIn === 1 ? '' : 's'}.`) + (Y.snow > .1 ? ` Snow on the ground.` : '') + (Y.ice > .2 ? ' The water is freezing over.' : '') + (A.ui.hz ? (A.ui.hz.dry > .75 ? ' The ground is tinder dry: fires spread fast.' : A.ui.hz.dry > .5 ? ' The ground is dry: a fire would spread.' : '') + (A.ui.hz.lv > .5 ? ' The river is in flood.' : A.ui.hz.warn ? ' The river is rising.' : '') : '');
 }
 function spark() {
   const cv = $('spark'), g = cv.getContext('2d'), W = cv.width, H = cv.height, f = A.frames; g.clearRect(0, 0, W, H);
@@ -325,7 +329,7 @@ async function autosave(now) {
 }
 function newest(a, b) { if (!a) return b; if (!b) return a; return (a.savedAt || 0) >= (b.savedAt || 0) ? a : b; }
 // milestone 2 colonies (version 2) carry on: their shelter becomes the first project of many
-const isSave = d => d && d.v >= 2 && d.v <= 4 && d.sim && d.sim.v >= 2 && d.sim.v <= 6 && Array.isArray(d.sim.cols);
+const isSave = d => d && d.v >= 2 && d.v <= 4 && d.sim && d.sim.v >= 2 && d.sim.v <= 7 && Array.isArray(d.sim.cols);
 function startColony(opts) {
   A.phase = 'boot'; A.hold = false; endPick(); if (A.place) endPlace(); A.projSel = -1; A.thing = null;
   if (A.panels) { A.panels.show(false); A.panels.orbit(null); }
