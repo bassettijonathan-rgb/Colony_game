@@ -142,7 +142,17 @@ kbd{font:600 10px var(--f-num);padding:1px 5px;border-radius:3px;border:1px soli
 .pc.out img{filter:saturate(.5) brightness(.8)}
 
 /* open projects, top left */
-#track{left:var(--gl);top:calc(var(--tb) + var(--top) + 8px);width:250px}
+#lcol{position:absolute;left:var(--gl);top:calc(var(--tb) + var(--top) + 8px);width:250px;display:flex;flex-direction:column;gap:8px;pointer-events:none;z-index:3}
+#lcol>.glass{position:relative;left:auto;top:auto;pointer-events:auto}
+#track{width:250px}
+#guide{width:250px;border-top:2px solid var(--seed)}
+#guide .wt{height:32px}#guide .wt b{font-size:11.5px;flex:1}#guide .wt em{font:600 11px var(--f-hd);color:var(--mut);font-style:normal}
+.gmin{margin-left:8px;padding:2px 7px;border-radius:2px;border:1px solid var(--line);background:none;color:var(--mut);font:600 10.5px var(--f-ui);cursor:pointer}.gmin:hover{color:var(--txt);border-color:var(--edge)}
+#gBody{padding:9px 12px 11px}
+#gBody b{display:block;font:700 14px/1.3 var(--f-hd);letter-spacing:.02em}
+#gBody p{margin:5px 0 0;font-size:12px;line-height:1.5;color:#d6dde6}
+.gdots{display:flex;gap:4px;margin-bottom:8px}.gdots i{flex:1;height:3px;border-radius:2px;background:rgba(255,255,255,.12)}.gdots i.d{background:var(--good)}.gdots i.c{background:var(--seed)}
+.gact{margin-top:9px;display:flex}.gact button{flex:1}
 #track .wt{height:32px}
 #track .wt b{font-size:11.5px}
 #track .wt em{font:600 11px var(--f-hd);color:var(--mut);font-style:normal}
@@ -337,8 +347,21 @@ select{font:600 12px var(--f-ui);color:var(--txt);background:rgba(0,0,0,.35);bor
 #app.placing{cursor:crosshair}
 
 /* news: standing alerts and event cards down the right of the map (left of the window when it is open), letters in the middle */
-#news{position:absolute;right:var(--gr);top:calc(var(--tb) + var(--top) + 96px);width:290px;display:flex;flex-direction:column;gap:6px;pointer-events:none;z-index:4;max-height:calc(100% - var(--tb) - var(--top) - var(--bot) - 190px);overflow:hidden}
+#news{position:absolute;right:var(--gr);top:calc(var(--tb) + var(--top) + 8px);bottom:calc(var(--bot) + 250px);width:300px;display:flex;flex-direction:column;justify-content:flex-end;align-items:flex-end;gap:8px;pointer-events:none;z-index:4;overflow:hidden}
 #news.side{right:calc(var(--gr) + 380px)}
+#letters{display:flex;flex-direction:column;align-items:flex-end;gap:4px;min-height:0}
+.lt{--c:#6fb8e8;pointer-events:auto;display:flex;align-items:center;gap:7px;cursor:pointer;user-select:none;-webkit-user-select:none}
+.lt.good{--c:#6fcf86}.lt.warn{--c:#e8bf55}.lt.bad{--c:#e65b50}
+.lt .lb{font:600 12px var(--f-ui);color:var(--txt);padding:3px 8px;border-radius:2px;background:rgba(9,13,19,.7);text-shadow:0 1px 2px #000;max-width:230px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lt i{width:36px;height:27px;flex:none;display:grid;place-items:center;border-radius:3px;background:linear-gradient(180deg,color-mix(in srgb,var(--c) 100%,#fff 12%),color-mix(in srgb,var(--c) 78%,#000));color:rgba(8,12,18,.85);box-shadow:0 4px 12px rgba(0,0,0,.5),inset 0 0 0 1px rgba(255,255,255,.28)}
+.lt i .ic{width:19px;height:19px;stroke-width:1.8}
+.lt:hover .lb{background:rgba(28,38,52,.92)}.lt:hover i{filter:brightness(1.15)}
+.lt.big:not(.read) i{animation:ltGlow 1.5s ease-in-out infinite}
+@keyframes ltGlow{50%{box-shadow:0 0 0 3px rgba(255,255,255,.2),0 0 18px var(--c),inset 0 0 0 1px rgba(255,255,255,.4)}}
+#lTip{position:fixed;width:280px;padding:8px 10px 9px 12px;border-radius:3px;border:1px solid var(--edge);border-left:3px solid var(--seed);background:var(--panel);box-shadow:0 10px 26px rgba(0,0,0,.5);z-index:6;pointer-events:none}
+#lTip.bad{border-left-color:var(--bad)}#lTip.good{border-left-color:var(--good)}
+#lTip p{margin:3px 0 0;font-size:12px;line-height:1.45}
+#lTip small{display:block;margin-top:6px;font-size:10.5px;color:var(--dim)}
 #alerts{display:flex;flex-direction:column;gap:3px;align-items:flex-end}
 .al{pointer-events:auto;display:flex;align-items:flex-start;gap:8px;max-width:100%;padding:6px 9px 6px 9px;border-radius:3px;border:1px solid var(--edge);background:var(--panel);text-align:left;color:var(--txt);font:600 12px var(--f-ui);box-shadow:0 6px 16px rgba(0,0,0,.4)}
 .al:hover,.al:focus-visible{border-color:rgba(143,224,255,.45)}
@@ -349,18 +372,11 @@ select{font:600 12px var(--f-ui);color:var(--txt);background:rgba(0,0,0,.35);bor
 .al small{display:none;font-weight:500;color:var(--mut);font-size:11.5px;line-height:1.45;margin-top:3px;white-space:normal}
 .al:hover small,.al:focus-visible small{display:block}
 .al em{font:700 10px/16px var(--f-num);font-style:normal;min-width:16px;padding:0 3px;border-radius:2px;text-align:center;background:rgba(255,255,255,.1);color:var(--txt);margin-left:2px}
-#cards{display:flex;flex-direction:column;gap:6px}
-.nc{pointer-events:auto;position:relative;padding:8px 8px 9px 12px;border-radius:3px;border:1px solid var(--edge);border-left:3px solid var(--seed);background:var(--panel);box-shadow:0 10px 26px rgba(0,0,0,.45);animation:ncIn .28s ease-out}
-.nc.bad{border-left-color:var(--bad)}.nc.good{border-left-color:var(--good)}
-.nc.aim{cursor:pointer}.nc.aim:hover{border-color:rgba(143,224,255,.4)}
 .nh{display:flex;align-items:center;gap:8px}
 .nh b{flex:1;font:700 13px/1.25 var(--f-hd);letter-spacing:.02em}
 .nh em{font:500 10.5px var(--f-num);color:var(--dim);font-style:normal;white-space:nowrap}
-.nh .x{width:22px;height:22px;margin:-3px -2px -3px 0}.nh .x .ic{width:12px;height:12px}
-.nc p{margin:3px 22px 0 0;font-size:12px;line-height:1.45}
 .why{margin-top:7px;padding:7px 9px;border-radius:3px;background:rgba(143,224,255,.08);border:1px solid rgba(143,224,255,.22);font-size:11.5px;line-height:1.5;color:#cfe9f5}
 .why i{font:700 9.5px var(--f-hd);letter-spacing:.14em;text-transform:uppercase;color:var(--seed);font-style:normal;margin-right:7px}
-@keyframes ncIn{from{opacity:0;transform:translateX(14px)}to{opacity:1;transform:none}}
 #stats{left:50%;transform:translateX(-50%);top:calc(var(--tb) + var(--top) + 8px);bottom:calc(var(--bot) + 76px);width:min(1060px,calc(100% - 24px));display:flex;flex-direction:column;overflow:hidden;z-index:7}
 #stats .wt b{flex:1}#stRange{flex:none;margin-right:6px}#stRange button{padding:0 10px;flex:none}
 #stats .body{flex:1;overflow:auto;padding:12px 14px 16px;overscroll-behavior:contain}
@@ -422,7 +438,7 @@ select{font:600 12px var(--f-ui);color:var(--txt);background:rgba(0,0,0,.35);bor
 
 @media (max-width:1440px){#wx span{display:none}.xm,.r.opt{display:none}.r{padding:0 8px}#kPeople small{display:none}#date{font-size:0}#date b{font-size:12.5px}.brand span{display:none}}
 @media (max-width:1180px){.r.opt{display:none}#bar{max-width:calc(100% - 680px)}}
-@media (max-width:980px){#news,#news.side{left:var(--gl);right:auto;width:min(290px,calc(100% - 24px))}.brand span{display:none}#date{display:none}#track{display:none}#bar{left:var(--gl);transform:none;max-width:calc(100% - 410px)}}
+@media (max-width:980px){#news,#news.side{left:var(--gl);right:auto;width:min(290px,calc(100% - 24px))}.brand span{display:none}#date{display:none}#lcol{display:none}#bar{left:var(--gl);transform:none;max-width:calc(100% - 410px)}}
 @media (max-width:760px){
   :root{--tb:46px}
   .brand,.clock .speeds+*{display:none}
@@ -464,6 +480,7 @@ select{font:600 12px var(--f-ui);color:var(--txt);background:rgba(0,0,0,.35);bor
   <symbol id="i-field" viewBox="0 0 16 16"><path d="M2 13.5h12M3 10.5h10M8 10.5V6"/><path d="M8 7.5C8 5 6 4 4 4c0 2 1.5 3.5 4 3.5zM8 6.5c0-2 1.5-3.5 4-3.5 0 2-1.5 3.5-4 3.5z"/></symbol>
   <symbol id="i-lab" viewBox="0 0 16 16"><path d="M6 2.5h4M6.75 2.5v4L3 13a.9.9 0 0 0 .8 1.4h8.4A.9.9 0 0 0 13 13L9.25 6.5v-4"/><path d="M4.6 10.5h6.8"/></symbol>
   <symbol id="i-tank" viewBox="0 0 16 16"><rect x="2.5" y="4" width="4.5" height="9.5" rx="2.25"/><rect x="9" y="4" width="4.5" height="9.5" rx="2.25"/><path d="M4.75 4V2.5h6.5V4M4.75 9h0M11.25 9h0"/></symbol>
+  <symbol id="i-letter" viewBox="0 0 16 16"><rect x="2" y="3.5" width="12" height="9" rx="1.2"/><path d="M2.6 4.4 8 8.9l5.4-4.5"/></symbol>
   <symbol id="i-life" viewBox="0 0 16 16"><path d="M3 13C3 7 7 3 13 3c0 6-4 10-10 10z"/><path d="M3 13l6.5-6.5"/></symbol>
   <symbol id="i-sun" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.75"/><path d="M8 1.5v1.75M8 12.75v1.75M1.5 8h1.75M12.75 8h1.75M3.4 3.4l1.25 1.25M11.35 11.35l1.25 1.25M3.4 12.6l1.25-1.25M11.35 4.65l1.25-1.25"/></symbol>
   <symbol id="i-fire" viewBox="0 0 16 16"><path d="M8 1.75c.4 2.2 3.75 3.9 3.75 7.4A3.75 3.75 0 0 1 4.25 9.15c0-1.6.85-2.6 1.6-3.4.2 1.2.8 2 1.65 2.35C7.2 6 7.4 3.8 8 1.75z"/><path d="M3 14.25h10"/></symbol>
@@ -513,7 +530,10 @@ select{font:600 12px var(--f-ui);color:var(--txt);background:rgba(0,0,0,.35);bor
       </div>
     </header>
     <div id="bar" hidden></div>
-    <div class="glass" id="track" hidden><div class="wt"><svg class="ic"><use href="#i-build"/></svg><b>Projects</b><em id="trackN"></em></div><div id="kBuild"></div></div>
+    <div id="lcol">
+      <div class="glass" id="track" hidden><div class="wt"><svg class="ic"><use href="#i-build"/></svg><b>Projects</b><em id="trackN"></em></div><div id="kBuild"></div></div>
+      <div class="glass" id="guide" hidden><div class="wt"><svg class="ic"><use href="#i-orbit"/></svg><b>First steps</b><em id="gN"></em><button class="gmin" id="gMin">Hide</button></div><div id="gBody"></div></div>
+    </div>
     <div class="glass" id="menu" hidden>
       <div class="wt"><svg class="ic"><use href="#i-menu"/></svg><b>Menu</b><button class="x" id="menuX" aria-label="Close the menu"><svg class="ic"><use href="#i-close"/></svg></button></div>
       <div class="in">
@@ -525,6 +545,7 @@ select{font:600 12px var(--f-ui);color:var(--txt);background:rgba(0,0,0,.35);bor
         <div class="rules">
           <label><input type="checkbox" id="nPause"> Pause the game for big events</label>
           <label><input type="checkbox" id="nExplain"> Explain new things when they first happen</label>
+          <label><input type="checkbox" id="nGuide"> Show the first-steps guide</label>
         </div>
         <button class="pill" id="nAgain">Explain everything again</button>
         <div class="sec" style="margin-bottom:2px">Controls</div>
@@ -611,7 +632,7 @@ select{font:600 12px var(--f-ui);color:var(--txt);background:rgba(0,0,0,.35);bor
         <div class="acts"><button class="pill" id="nCancel">Cancel</button><button class="go" id="nGo">Land</button></div>
       </div>
     </div>
-    <div id="news"><div id="alerts"></div><div id="cards"></div></div>
+    <div id="news"><div id="letters"></div><div id="alerts"></div></div><div id="lTip" hidden></div>
     <div class="glass info" id="letter" role="dialog" aria-labelledby="lTitle" hidden>
       <div class="wt"><svg class="ic"><use href="#i-seed"/></svg><b>The Seed reports</b><em id="lWhen"></em></div>
       <div class="in">
