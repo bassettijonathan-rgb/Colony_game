@@ -165,13 +165,16 @@ function putOut(sim, p, how) {
 // ---------- damage and repairs ----------
 // A building that burned or stood in water goes back to an earlier stage, and the build crews repair it like any
 // other project; it is out of use until they finish. A field loses its crop, and its soil if the water stood long.
+// what burned or washed away no longer counts as in the building, so taking it down gives back only what is left
+function lose(p, L) { if (p.used) for (const k in L) if (p.used[k]) p.used[k] = Math.max(0, p.used[k] - L[k]); }
 export function damage(sim, p, frac, why) {
   const S = sim.S;
   if (p.type === 'field' && p.crop && frac > .05) { if (p.crop.st === 'grow' || p.crop.st === 'ripe') sim.log(`The crop in ${p.name} is lost${why === 'flood' ? ': it drowned' : ' to the fire'}.`, 'bad', { pid: p.id }); p.crop.st = 'bare'; p.crop.g = 0; p.crop.k = ''; }
   if (frac < .15 || (p.type === 'field' && why === 'fire')) { if (p.shut === why) p.shut = ''; powerCheck(sim); return; }
-  if (!p.done) { p.got = {}; p.shut = ''; return; }
+  if (!p.done) { lose(p, p.got); p.got = {}; p.shut = ''; return; }
   const st = frac >= .9 ? 2 : frac >= .5 ? 3 : 4;
   p.done = false; p.shut = ''; p.dmg = why; p.rep = Math.min(1, frac); p.stage = p.type === 'field' ? Math.min(st, 2) : st; p.got = {};
+  for (let k = p.stage; k < 5; k++) lose(p, loadsOf(S, p, k));   // what the repairs put back is what was lost
   p.need = loadsOf(S, p, p.stage);
   if (p.type === 'field') p.crop = null;
   S.rv++; powerCheck(sim); assignHomes(sim);

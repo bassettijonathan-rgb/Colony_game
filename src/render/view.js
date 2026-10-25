@@ -3,7 +3,7 @@
 // the view from orbit before the landing, the landing itself, and the minimap.
 import { MAP, CH, ACT, hidden } from '../core/consts.js';
 import { clamp, sstep, hash } from '../core/rng.js';
-import { drawBuilding, drawHatch, drawYard, drawCargo, drawMarks, buildingLights, progress } from './buildings.js';
+import { drawBuilding, drawHatch, drawYard, drawCargo, drawMarks, buildingLights, progress, spotInside } from './buildings.js';
 import { stagesOf, TYPES } from '../core/build.js';
 import { createGL } from './gl.js';
 import { FS_H, FS_L, FS_C } from './shaders.js';
@@ -42,7 +42,7 @@ export class View {
     }
     this.seed = makeSeed();
     this.LP = new Float32Array(96); this.LC = new Float32Array(96);
-    this.labels = false; this.below = false; this.stats = { lights: 0, lightsInView: 0, people: 0 }; this.order = [];
+    this.labels = false; this.below = false; this.inside = true; this.stats = { lights: 0, lightsInView: 0, people: 0 }; this.order = [];
     this.fly = null; this.anim = null; this.fog = !!W.land;
     this.mm = app.querySelector('#mm'); this.mmBase = this.minimapBase(); this.mmFog = this.fogBase();
     this.resize();
@@ -160,7 +160,7 @@ export class View {
       if (C.hz && C.hz.lv > .3) this.drawFlood(dc, C.hz.lv, F.time);
       for (const p of C.projects) if (p.below) { if (p.door && vis(p.door.x, p.door.y, 3)) drawHatch(dc, hRect, p, F.time); }
       else if (p.type !== 'test' && vis(p.x + p.w / 2, p.y + p.h / 2, Math.max(p.w, p.h))) {
-        drawBuilding(dc, hRect, p, E, F.time);
+        drawBuilding(dc, hRect, p, E, F.time, this.inside);
         if (p.wet) { dc.fillStyle = `rgba(66,78,80,${.42 + .04 * Math.sin(F.time * 1.3 + p.id)})`; dc.fillRect(p.x, p.y, p.w, p.h); }   // standing in the flood
         if (p.dmg && !p.fire && p.dmg === 'fire') { dc.fillStyle = 'rgba(20,14,10,.38)'; dc.fillRect(p.x, p.y, p.w, p.h); }      // charred, waiting for repairs
       }
@@ -195,6 +195,22 @@ export class View {
     order.length = 0;
     for (let i = 0; i < n; i++) { const act = pos[i * 4 + 3] >> 1; if (hidden(act)) continue; if (vis(pos[i * 4], pos[i * 4 + 1], 1.5)) order.push(i); }
     this.stats.people = order.length;
+    // with the roofs off, whoever is indoors shows inside: asleep in a bunk, at a table, at a bench
+    if (C && this.inside) {
+      const doors = new Map(); for (const p of C.projects) if (p.done && !p.below && p.door && p.type !== 'solar' && p.type !== 'field') doors.set(p.door.y * MAP + p.door.x, p);
+      const r = Math.max(.35, 2.2 / k);
+      for (let i = 0; i < n; i++) {
+        const o = i * 4, act = pos[o + 3] >> 1; if (act !== ACT.INSIDE && act !== ACT.INDOORS && act !== ACT.BENCH) continue;
+        const tx = Math.floor(pos[o]), ty = Math.floor(pos[o + 1]); let p = null;
+        for (let dy = -1; dy <= 1 && !p; dy++) for (let dx = -1; dx <= 1 && !p; dx++) p = doors.get((ty + dy) * MAP + tx + dx) || null;
+        if (!p || !vis(p.x + p.w / 2, p.y + p.h / 2, Math.max(p.w, p.h))) continue;
+        const [X, Y, pose] = spotInside(p, act, i);
+        if (!near) { drawDot(dc, arts[i], X, Y, r); continue; }
+        dc.save(); dc.translate(X, Y); dc.scale(.62, .62);
+        drawPerson(dc, arts[i], 0, 0, pose === 'sleep' ? (p.w >= p.h ? 0 : -Math.PI / 2) : -Math.PI / 2, 0, pose === 'sleep' ? ACT.BED : pose === 'sit' ? ACT.EAT : ACT.IDLE, F.time);
+        dc.restore();
+      }
+    }
     if (near) {
       order.sort((a, b) => pos[a * 4 + 1] - pos[b * 4 + 1]);
       for (const i of order) { const o = i * 4, f = pos[o + 3], act = f >> 1, mv = f & 1; drawPerson(dc, arts[i], pos[o], pos[o + 1], pos[o + 2], mv, act, F.time); if (act !== ACT.BED && act !== ACT.DOWN) hDisc(pos[o], pos[o + 1], .28, act === ACT.EAT || act === ACT.ALONE || act === ACT.PLANT || act === ACT.QUARRY ? .8 : 1.2); else hDisc(pos[o], pos[o + 1], .3, .3); }

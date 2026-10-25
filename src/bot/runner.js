@@ -57,6 +57,8 @@ function botFood(sim) {
   const S = sim.S, F = S.F, live = S.crews.filter(c => !c.gone);
   for (let o = 0; o < F.life.length; o++) if (F.life[o].samples >= 3 && !F.life[o].tested && !F.life[o].queued) sim.command({ op: 'analyse', o });
   if (!S.projects[0].done || sim.policy === 'nofood') return;
+  // 'plan' hands the crews to the Seed's own planner once the shelter is up
+  if (sim.policy === 'plan') { if (!S.crewPlan && !sim.planAsked) { sim.planAsked = true; sim.command({ op: 'crewPlan' }); } return; }
   const crewOf = w => live.find(c => c.work === w), build = crewOf('build');
   // the Seed stops sorting new people into crews once the player has changed the crews: the bot puts them with the builders
   if (build && !S.autoCrews) for (const c of S.cols) if (!c.dead && c.crew < 0 && c.act !== ACT.WAKE) sim.command({ op: 'move', person: c.id, crew: build.id });
@@ -84,7 +86,7 @@ function botFood(sim) {
 
 // play `days` days and report what happened and what it cost
 // policy 'careless' plays badly on purpose: long shifts and every safety rule off, to see what breaks;
-// 'lean' feeds the colony with a single forager, and 'nofood' never sets up food crews at all
+// 'lean' feeds the colony with a single forager, 'nofood' never sets up food crews at all, and 'plan' lets the Seed plan them
 export function runColony(seed, days = 1, mode = 'landfall', count = 300, onTick, policy = 'seed') {
   const run = landColony(seed, mode, count), { sim, P } = run, S = sim.S; sim.policy = policy;
   const careless = () => { for (const cr of S.crews) { sim.command({ op: 'crewSet', crew: cr.id, shift: 2 }); for (const k of ['dark', 'pairs', 'rest']) sim.command({ op: 'crewSet', crew: cr.id, rule: k, on: false }); } };

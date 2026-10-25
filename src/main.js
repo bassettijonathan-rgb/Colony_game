@@ -62,7 +62,7 @@ function ensureView(W) {
   if (!A.view) {
     A.view = new View(app, W);
     if (!A.view.G || !A.view.ok) { loader('This needs a browser with WebGL 2. ' + (A.view.G ? 'A shader did not compile.' : ''), 1); $('ldmsg').id = 'nogl'; return false; }
-    A.panels = new Panels(A, { cmd, select, toast, pickArea, land, siteSelect, startPlace, showProject });
+    A.panels = new Panels(A, { cmd, select, toast, pickArea, land, siteSelect, startPlace, showProject, useSug });
     A.stats = new Stats(A);
     A.news = new News(A, { select, showProject, setSpeed, toast, when, flyTo: (x, y) => { A.view.flyTo(x, y, Math.max(A.view.cam.z, 18)); A.follow = false; }, tab: t => A.panels.setTab(t) });
     A.guide = new Guide(A, { tab: t => A.panels.setTab(t) });
@@ -270,6 +270,12 @@ function startPlace(type, w, h, name) {
   A.place = { type, w: w || 0, h: h || 0, fixed: !!w, name: name || '', x: null, y: null, side: 0, turned: false, check: null, locked: false, seq: 0, wasBelow: !!(A.view && A.view.below) };
   if (TYPES[type].below) belowView(true);
   $('placeTxt').textContent = w ? `Move the ${name || TYPES[type].name} where it should go and click to put it down` : `Drag on the map to draw the ${TYPES[type].name.toLowerCase()}: at least ${TYPES[type].min} by ${TYPES[type].min} tiles, at most ${TYPES[type].max} long`;
+  // the Seed suggests a size for what the colony needs: it follows the pointer and a click puts it down; a drag still draws any size
+  if (!w) cmd('sizeFor', { type }).then(r => {
+    const P = A.place; if (!P || P.type !== type || !r || P.drag || P.locked) return;
+    P.sug = r; P.w = r.w; P.h = r.h; A.panels.planCard(null);
+    $('placeTxt').textContent = `The Seed suggests ${r.w} × ${r.h} tiles. ${r.why} Click to put it down, or drag to draw another size.`;
+  });
   $('placeTurn').hidden = !!TYPES[type].open; $('plTurn').hidden = !!TYPES[type].open;
   $('placeTurn').textContent = TYPES[type].below ? 'Turn stairs (R)' : 'Turn door (R)'; $('plTurn').textContent = TYPES[type].below ? 'Turn stairs' : 'Turn door';
   $('placeHint').hidden = false; app.classList.add('placing');
@@ -291,6 +297,12 @@ async function checkPlace() {
   if (A.place !== P || seq !== P.seq || !r) return;
   P.check = r; if (r.door) P.door = r.door;
   A.panels.planCard(P);
+}
+// back to the Seed's suggested size, centred where the drawn plot was
+function useSug() {
+  const P = A.place; if (!P || !P.sug || P.x == null) return;
+  const cx = P.x + P.w / 2, cy = P.y + P.h / 2;
+  placeRect(Math.round(cx - P.sug.w / 2), Math.round(cy - P.sug.h / 2), P.sug.w, P.sug.h);
 }
 function turnDoor() { const P = A.place; if (!P || TYPES[P.type].open) return; P.side = (P.side + 1) % 4; P.turned = true; P.door = doorAt(P); checkPlace(); }
 async function confirmPlace() {
@@ -321,6 +333,12 @@ function projectAt(wx, wy) {
   return null;
 }
 // the view below ground, where rooms are dug: on and off by the button or U, and on by itself while one is planned
+function roofView(on) {
+  const V = A.view; if (!V) return;
+  V.inside = on === undefined ? !V.inside : !!on;
+  $('bRoof').classList.toggle('on', V.inside); $('bRoof').setAttribute('aria-pressed', V.inside ? 'true' : 'false');
+  $('bRoof').title = V.inside ? 'Roofs off: see inside buildings (I)' : 'Roofs on (I)';
+}
 function belowView(on) {
   const V = A.view; if (!V) return;
   V.below = on === undefined ? !V.below : !!on;
@@ -361,15 +379,15 @@ function hookInput() {
     if (e.target.closest(HUD + ',#pickHint,#placeHint')) return;
     app.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]);
     // drawing a building: the left button (or one finger) draws, anything else still moves the map
-    if (A.place && ptrs.size === 1 && e.button === 0 && !A.place.fixed) { const [x, y] = tileAt(e); A.place.drag = { x0: x, y0: y }; A.place.locked = false; A.panels.planCard(null); placeRect(x, y, 1, 1); return; }
+    if (A.place && ptrs.size === 1 && e.button === 0 && !A.place.fixed) { const [x, y] = tileAt(e); A.place.drag = { x0: x, y0: y, still: !!A.place.sug }; A.place.locked = false; A.panels.planCard(null); if (A.place.sug) sugAt(e); else placeRect(x, y, 1, 1); return; }
     if (ptrs.size === 1) drag = { x: e.clientX, y: e.clientY, cx: V.cam.x, cy: V.cam.y, moved: 0 };
     if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), z: V.cam.z }; drag = null; }
   });
   app.addEventListener('pointermove', e => {
     if (ptrs.has(e.pointerId)) ptrs.set(e.pointerId, [e.clientX, e.clientY]);
     if (pinch && ptrs.size === 2) { const [a, b] = [...ptrs.values()]; const d = Math.hypot(a[0] - b[0], a[1] - b[1]); V.zoomAt(pinch.z * d / pinch.d / V.cam.z, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2); return; }
-    if (A.place && A.place.drag) { const [x, y] = tileAt(e), d = A.place.drag; placeRect(Math.min(x, d.x0), Math.min(y, d.y0), Math.abs(x - d.x0) + 1, Math.abs(y - d.y0) + 1); return; }
-    if (A.place && A.place.fixed && !A.place.locked && !drag && !e.target.closest(HUD)) { const [wx, wy] = V.toWorld(...local(e)), P = A.place; placeRect(Math.round(wx - P.w / 2), Math.round(wy - P.h / 2), P.w, P.h); }
+    if (A.place && A.place.drag) { const [x, y] = tileAt(e), d = A.place.drag; if (d.still && x === d.x0 && y === d.y0) return; d.still = false; placeRect(Math.min(x, d.x0), Math.min(y, d.y0), Math.abs(x - d.x0) + 1, Math.abs(y - d.y0) + 1); return; }
+    if (A.place && (A.place.fixed || A.place.sug) && !A.place.locked && !drag && !e.target.closest(HUD)) sugAt(e);
     if (drag) {
       const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.moved = Math.max(drag.moved, Math.hypot(dx, dy));
       if (drag.moved > 4) { app.classList.add('drag'); A.follow = false; V.fly = null; V.cam.x = drag.cx - dx / V.cam.z; V.cam.y = drag.cy - dy / V.cam.z; V.clampCam(); }
@@ -384,6 +402,8 @@ function hookInput() {
     if (!can && A.phase === 'colony' && !A.place && A.pickCrew < 0) { const [wx, wy] = V.toWorld(sx, sy); can = !!(thingAt(A, V, wx, wy) || projectAt(wx, wy)); }
     app.classList.toggle('can', can);
   });
+  // a blueprint or the suggested size, centred on the pointer
+  const sugAt = e => { const P = A.place, [wx, wy] = V.toWorld(...local(e)), w = P.fixed ? P.w : P.sug.w, h = P.fixed ? P.h : P.sug.h; placeRect(Math.round(wx - w / 2), Math.round(wy - h / 2), w, h); };
   const up = e => {
     ptrs.delete(e.pointerId); app.classList.remove('drag');
     if (A.place && A.place.drag) { A.place.drag = null; A.place.locked = true; A.panels.planCard(A.place); drag = null; return; }
@@ -410,6 +430,7 @@ function hookInput() {
     else if (e.code === 'KeyR' && A.place) turnDoor();
     else if (e.code === 'KeyM') musicToggle();
     else if (e.code === 'KeyU' && colony) belowView();
+    else if (e.code === 'KeyI' && colony) roofView();
     else if (e.code === 'F11') { e.preventDefault(); fullscreen(); }
     else if ((e.code === 'Escape' || e.code === 'Enter') && A.news && A.news.open) { e.preventDefault(); A.news.closeLetter(); }
     else if (e.code === 'Escape' && A.ui && A.ui.ctl >= 0 && !A.place) toggleCtl(A.ui.ctl);
@@ -421,7 +442,7 @@ function hookInput() {
   window.addEventListener('blur', () => keys.clear());
   document.querySelectorAll('.speeds button').forEach(b => b.addEventListener('click', () => setSpeed(+b.dataset.s)));
   $('bHome').onclick = goHome;
-  $('bBelow').onclick = () => belowView(); $('belowUp').onclick = () => belowView(false);
+  $('bBelow').onclick = () => belowView(); $('bRoof').onclick = () => roofView(); $('belowUp').onclick = () => belowView(false);
   $('bFull').onclick = () => fullscreen();
   const fsIcon = () => { const on = !!(document.fullscreenElement || document.webkitFullscreenElement); $('bFull').querySelector('use').setAttribute('href', on ? '#i-unfull' : '#i-full'); $('bFull').title = on ? 'Leave fullscreen (F11)' : 'Fullscreen (F11)'; };
   document.addEventListener('fullscreenchange', fsIcon); document.addEventListener('webkitfullscreenchange', fsIcon);
@@ -437,6 +458,7 @@ function hookInput() {
   $('bStats').onclick = () => A.stats.show();
   $('bClose').onclick = () => { if (A.thing) closeThing(); else closeProject(); };
   $('bList').onclick = () => { if (A.thing) { const c = A.panels.thingInfo; if (c && c.btn) A.panels.setTab(c.btn.tab); return; } const id = A.projSel; A.panels.setTab('build:list'); showProject(id); };
+  $('bCancel').onclick = () => { if (A.projSel >= 0) A.panels.askCancel(A.projSel); };
   $('bPause').onclick = () => { const p = A.ui && A.ui.projects.find(q => q.id === A.projSel); if (p) cmd('projPause', { id: p.id, on: !p.paused }); };
   $('cCtl').onclick = () => toggleCtl(A.sel); $('ctlEnd').onclick = () => { if (A.ui && A.ui.ctl >= 0) toggleCtl(A.ui.ctl); };
   // right-click gives the person under direct orders their next order
