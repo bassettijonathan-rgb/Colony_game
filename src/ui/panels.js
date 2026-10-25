@@ -72,6 +72,7 @@ export class Panels {
     this.ctab = 'about';
     $('cBody').addEventListener('click', e => { const b = e.target.closest('[data-ctab]'); if (b) { this.ctab = b.dataset.ctab; this.cardSig = ''; this.card(); } });
     $('bBody').addEventListener('click', e => this.onClick(e));
+    $('plBody').addEventListener('click', e => { if (e.target.closest('[data-act="useSug"]')) this.api.useSug(); });
     $('bBody').addEventListener('change', e => this.onChange(e));
     body.addEventListener('change', e => this.onChange(e));
     $('cMove').onchange = e => { const v = +e.target.value; this.api.cmd('move', { person: this.A.sel, crew: v }); };
@@ -137,17 +138,25 @@ export class Panels {
     if ($('ctlTxt').textContent !== t) $('ctlTxt').textContent = t;
     el.hidden = false;
   }
+  // the top bar never hides a readout behind the clock: when it doesn't fit, drop details step by step
+  fitBar() {
+    const res = $('colony'), bar = res.parentNode, key = res.textContent + '|' + innerWidth;
+    if (key === this.barKey) return; this.barKey = key;
+    for (let i = 1; i <= 5; i++) bar.classList.remove('f' + i);
+    for (let i = 1; i <= 5 && res.scrollWidth > res.clientWidth + 1; i++) bar.classList.add('f' + i);
+  }
   strip(U) {
     const awake = U.alive, left = U.seed.feed + U.seed.queue.length;
-    $('kPeople').innerHTML = U.mode === 'stress' ? `${awake}<small>awake</small>` : `${awake}<small>+${this.A.archive.filter(p => p.woke == null).length} stored</small>`;
+    $('kPeople').innerHTML = U.mode === 'stress' ? `${awake}<small>awake</small>` : `${awake}<small class="dx">+${this.A.archive.filter(p => p.woke == null).length} stored</small>`;
     const meals = U.F ? U.F.usable : U.food, eaters = awake + U.seed.queue.length + (U.seed.printing ? 1 : 0), days = eaters ? meals / eaters : 0, kf = $('kFood');
     kf.innerHTML = U.mode === 'stress' ? '<small>not counted</small>' : eaters ? `${Math.floor(days)}<small>days<i class="xm"> · ${Math.floor(meals)} meals</i></small>` : `${Math.floor(meals)}<small>meals</small>`;
     if (U.F) $('rFood').title = `Food the colony can eat: ${Math.floor(U.food)} lander rations and ${Math.floor(meals - U.food)} meals of food from this world${U.F.locked > 0 ? `, plus ${Math.floor(U.F.locked)} that need a kitchen crew first` : ''}. At ${eaters} mouths that is ${Math.floor(days)} days. Open Life (G) for the larder.`;
     kf.className = U.mode !== 'stress' && eaters && days < 10 ? (days < 3 ? 'bad' : 'warn') : '';
     const pw = U.power, dark = U.projects.filter(p => p.done && p.type !== 'solar' && !p.powered).length;
-    $('kPower').innerHTML = `${pw.draw}/${pw.supply}<small>kW${dark ? ` · ${dark} dark` : ''}</small>`; $('rPower').classList.toggle('warn', !!dark);
-    const y = U.stores.yard; $('kStone').textContent = y.stone; $('kTimber').textContent = y.timber; $('kSalvage').innerHTML = y.ore ? `${y.salvage}<small>+${y.ore} ore</small>` : `${y.salvage}`;
+    $('kPower').innerHTML = `${pw.draw}/${pw.supply}<small>kW${dark ? `<i class="dx"> · ${dark} dark</i>` : ''}</small>`; $('rPower').classList.toggle('warn', !!dark);
+    const y = U.stores.yard; $('kStone').textContent = y.stone; $('kTimber').textContent = y.timber; $('kSalvage').innerHTML = y.ore ? `${y.salvage}<small class="dx">+${y.ore} ore</small>` : `${y.salvage}`;
     $('kKnown').innerHTML = `${(U.known / (MAP * MAP) * 100).toFixed(1)}%`; $('kKnown').parentNode.title = `Ground surveyed: ${(U.known / (MAP * MAP) * 100).toFixed(1)}%. Sensor stakes planted: ${U.stakes.length} of 10`;
+    this.fitBar();
     this.tracker(U); this.colbar(U);
     void left;
   }
@@ -201,9 +210,12 @@ export class Panels {
       return Object.entries(n).map(([w, k]) => `${k} ${w}`).join(' · ') || 'nobody yet';
     };
     const mm = i => { const r = P[i]; return [Math.round(r[2] / 10), Math.round(r[3] / 10), Math.round(r[4] / 10)]; };
-    const sig = 'c' + JSON.stringify([U.rv, U.auto, live.map(c => [c.id, c.lead, c.work, c.shift, c.rules, c.target, c.members, statusOf(c), c.members.map(mm), this.workNote(U, c)]), free, free.map(mm)]);
+    const sig = 'c' + JSON.stringify([U.rv, U.auto, U.plan, live.map(c => [c.id, c.lead, c.work, c.shift, c.rules, c.target, c.members, statusOf(c), c.members.map(mm), this.workNote(U, c)]), free, free.map(mm)]);
     return [sig, () => {
-      let h = U.auto ? `<div class="note">The Seed is sorting people into crews as they wake. Change anything here and it leaves the crews to you.</div>` : '';
+      let h = U.plan ? '' : U.auto ? `<div class="note">The Seed is sorting people into crews as they wake. Change anything here and it leaves the crews to you.</div>` : '';
+      if (P.length) h += `<div class="crew plan"><button class="btn go" data-act="crewPlan" style="width:100%">Let the Seed plan the crews</button>
+        <label class="keep"><input type="checkbox" data-act="crewKeep"${U.plan ? ' checked' : ''}>Plan again every morning and when someone wakes</label>
+        <div class="note">${U.plan ? 'The Seed is planning the crews: it works out' : 'The Seed works out'} how many hands the food, the fields, the kitchen, the yard, the survey and the buildings need, puts the best-suited person on each, and keeps everyone else building.${U.plan ? ' Move someone or change a crew\u2019s work and it leaves the crews to you.' : ''}</div></div>`;
       if (!live.length && !free.length) h += `<div class="note">Nobody is awake yet. Crews form as the fabricator prints the founders.</div>`;
       const member = (i, cr) => { const r = P[i]; return `<div class="mem" data-act="person" data-id="${i}"><span class="nm">${esc(names[i] || '')}</span>${cr && cr.lead === i ? '<span class="lead">LEAD</span>' : ''}<span class="mini3" title="Fatigue, strain, trust">${[[r[2], 0], [r[3], 0], [r[4], 1]].map(([v, g]) => `<b><u style="width:${v}%;background:${meterCol(v, g)}"></u></b>`).join('')}</span></div>`; };
       for (const cr of live) {
@@ -343,11 +355,12 @@ export class Panels {
         if (p.type !== 'shelter') {
           r += `<div class="row2" style="margin-top:6px"><span class="grow"></span>`;
           if (!p.done) r += `<button class="btn" data-act="pPause" data-id="${p.id}">${p.paused ? 'Resume' : 'Pause'}</button>`;
-          r += `<button class="btn" data-act="pCancel" data-id="${p.id}">${this.confirm === p.id ? 'Yes, ' + (p.done ? 'take it down' : 'cancel it') : p.done ? 'Take down' : 'Cancel'}</button></div>`;
+          r += `<button class="btn" data-act="pCancel" data-id="${p.id}">${this.confirm === p.id ? 'Yes, ' + (p.done || p.dmg ? 'take it down' : 'cancel it') : p.done || p.dmg ? 'Take down' : 'Cancel'}</button></div>`;
+          if (this.confirm === p.id) { const b = Object.entries(p.back || {}).map(([k, q]) => matName(k, q)).join(', '); r += `<div class="ps">${b ? `Gives back ${esc(b)}.` : 'Nothing has gone into it yet.'}</div>`; }
         }
         return r + `</div>`;
       };
-      h += `<div class="note" style="margin:0 0 8px">Build crews work from the top. The arrows change the order, Pause sets a project aside, and a cancelled project gives back what went into it. Click a name to see it on the map.</div>`;
+      h += `<div class="note" style="margin:0 0 8px">Build crews work from the top. The arrows change the order, Pause sets a project aside, and cancelling a project or taking a building down gives back everything that went into it. Click a name to see it on the map.</div>`;
       h += `<div class="sec">Projects · in priority order</div>` + (open.length ? open.map(row).join('') : `<div class="note">Nothing planned. Pick a building in Plan.</div>`);
       if (done.length) h += `<div class="sec">Buildings · power goes to them in this order</div>` + done.map(row).join('');
       return h;
@@ -357,7 +370,7 @@ export class Panels {
   // the card for a building being placed: what it holds, what it costs, whether it carries its loads, its power
   planCard(P) {
     const el = $('plan'); if (!P || P.x == null || !P.check || !P.locked) { el.hidden = true; this.planSig = ''; return; }
-    const sig = JSON.stringify([P.type, P.x, P.y, P.w, P.h, P.side, P.check.ok, P.check.why, P.check.warn]); if (sig === this.planSig) { el.hidden = false; return; }
+    const sig = JSON.stringify([P.type, P.x, P.y, P.w, P.h, P.side, P.check.ok, P.check.why, P.check.warn, P.sug]); if (sig === this.planSig) { el.hidden = false; return; }
     this.planSig = sig;
     const c = P.check, T = TYPES[P.type];
     $('plName').textContent = T.name; $('plPic').innerHTML = icon(TICON[P.type] || 'build');
@@ -366,6 +379,9 @@ export class Panels {
     if (!c.ok) h += `<div class="pw bad">${esc(c.why)}</div>`;
     else if (c.warn) h += `<div class="pw">${esc(c.warn)}</div>`;
     h += `<div class="note" style="margin:8px 0 4px">${esc(T.use)}. It holds ${esc(holds(P.type, c.cap))}.</div>`;
+    const sg = P.sug;
+    if (sg && sg.w === P.w && sg.h === P.h) h += `<div class="note sug">The size the Seed suggests. ${esc(sg.why)}</div>`;
+    else if (sg) h += `<div class="row2 sug"><span class="grow">The Seed suggests ${sg.w} × ${sg.h} tiles for what the colony needs.</span><button class="btn" data-act="useSug">Use ${sg.w} × ${sg.h}</button></div>`;
     if (c.bill) {
       h += `<div class="sec">What it takes</div><div class="bill">` + c.bill.stages.map((L, i) => `<div><em>${stagesOf(P.type)[i]}</em>${esc(loads(L) || (i === 0 ? 'pegs and string' : '-'))}</div>`).join('') + `</div>`;
       h += `<div class="note" style="margin-top:4px">In all: ${esc(loads(c.bill.total))}. Stone and timber are worked out again when each stage starts, so a load test before then makes later stages cheaper.</div>`;
@@ -418,6 +434,7 @@ export class Panels {
       case 'areaClear': this.api.cmd('crewSet', { crew, target: -1 }); break;
       case 'person': this.api.select(+el.dataset.id, true); break;
       case 'crewNew': this.api.cmd('crewNew', {}); break;
+      case 'crewPlan': this.api.cmd('crewPlan', { keep: true }); break;
       case 'crewDel': this.api.cmd('crewDel', { crew }); break;
       case 'plan': this.api.startPlace(el.dataset.type); break;
       case 'bp': { const b = U.blueprints[+el.dataset.i]; if (b) this.api.startPlace(b.type, b.w, b.h, b.name); break; }
@@ -431,15 +448,22 @@ export class Panels {
       case 'unanalyse': this.api.cmd('unanalyse', { o: +el.dataset.o }); break;
       case 'pUp': case 'pDown': this.api.cmd('projMove', { id: +el.dataset.id, d: act === 'pUp' ? -1 : 1 }); break;
       case 'pPause': { const p = U.projects.find(q => q.id === +el.dataset.id); if (p) this.api.cmd('projPause', { id: p.id, on: !p.paused }); break; }
-      case 'pCancel': { const id = +el.dataset.id; if (this.confirm === id) { this.confirm = -1; this.api.cmd('projCancel', { id }); } else { this.confirm = id; clearTimeout(this.cTimer); this.cTimer = setTimeout(() => { this.confirm = -1; this.sig = ''; this.update(); }, 4000); } break; }
+      case 'pCancel': this.askCancel(+el.dataset.id); break;
     }
     this.sig = ''; this.update();
+  }
+  // cancelling or taking down asks twice: the first press shows what comes back
+  askCancel(id) {
+    if (this.confirm === id) { this.confirm = -1; this.api.cmd('projCancel', { id }); }
+    else { this.confirm = id; clearTimeout(this.cTimer); this.cTimer = setTimeout(() => { this.confirm = -1; this.sig = ''; this.bSig = ''; this.update(); }, 6000); }
+    this.sig = ''; this.bSig = ''; this.update();
   }
   onChange(e) {
     const el = e.target, act = el.dataset.act, crew = +el.dataset.crew;
     if (act === 'rule') this.api.cmd('crewSet', { crew, rule: el.dataset.rule, on: el.checked });
     else if (act === 'lead') { this.api.cmd('crewSet', { crew, lead: +el.value }); el.blur(); }
     else if (act === 'iso') this.api.cmd('iso', { v: el.checked });
+    else if (act === 'crewKeep') this.api.cmd('crewKeep', { on: el.checked });
   }
 
   // open projects, top left: click one for its card
@@ -573,7 +597,12 @@ export class Panels {
       if (p.wait) h += `<div class="pw">${esc(p.wait)}</div>`;
       else if (p.crews.length) h += `<div class="ps" style="margin-top:6px">${esc(p.crews.join(', '))} crew${p.crews.length > 1 ? 's are' : ' is'} on it.</div>`;
     } else if (p.wait) h += `<div class="pw">${esc(p.wait)}</div>`;
+    if (p.type !== 'shelter' && this.confirm === p.id) {
+      const b = Object.entries(p.back || {}).map(([k, q]) => matName(k, q)).join(', ');
+      h += `<div class="pw">${p.done || p.dmg ? 'Take it down?' : 'Cancel it?'} ${b ? `Everything that went into it comes back to the stores: ${esc(b)}.` : 'Nothing has gone into it yet.'} Press again to confirm.</div>`;
+    }
     $('bBody').innerHTML = h;
+    const cx = $('bCancel'); cx.hidden = p.type === 'shelter'; cx.textContent = this.confirm === p.id ? (p.done || p.dmg ? 'Yes, take it down' : 'Yes, cancel it') : p.done || p.dmg ? 'Take down' : 'Cancel';
     const pause = $('bPause'); pause.hidden = p.done || p.type === 'shelter'; pause.textContent = p.paused ? 'Resume' : 'Pause';
     $('bList').hidden = false; $('bList').textContent = 'In the build list';
     el.hidden = false;
@@ -587,7 +616,7 @@ export class Panels {
     $('bName').textContent = c.name; $('bPic').innerHTML = icon(c.icon); $('bMeta').textContent = c.meta;
     $('bJob').textContent = c.job; $('bDot').className = 'dot' + (c.dot ? ' ' + c.dot : '');
     $('bBody').innerHTML = c.body;
-    $('bPause').hidden = true; $('bList').hidden = !c.btn; if (c.btn) $('bList').textContent = c.btn.label;
+    $('bPause').hidden = true; $('bCancel').hidden = true; $('bList').hidden = !c.btn; if (c.btn) $('bList').textContent = c.btn.label;
     el.hidden = false;
   }
 }

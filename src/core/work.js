@@ -2,20 +2,20 @@
 // body to print), crews and what they do (building, quarrying, felling, foraging, farming, the kitchen, workshop
 // and lab benches, surveying), and the commands the player gives through the page. The books for buildings are
 // kept in build.js, and for food in food.js.
-import { MAP, HOUR, DAY_TICKS, ACT, SHIFTS, T, WORKS } from './consts.js';
+import { MAP, HOUR, DAY_TICKS, ACT, SHIFTS, T, WORKS, WORK_NAME } from './consts.js';
 import { rnd, ri, clamp } from './rng.js';
 import { remember, trustAll } from './life.js';
 import { suggestFirst } from './founders.js';
 import {
   TYPES, RAW, PRECISE, RECIPE, FIT_H, FAB_SLOW, STAGE_NAMES, matName, stageLoads, loadsOf, billOf, loadCheck, capacity, checkPlot, addProject,
-  active, built, byId, capOf, powerCheck, shortOf, stockOf, sources, takeFrom, putBack, nextOrder, rawWanted, clearPlot, LANDER_KW, LABOUR, stagesOf, FEED, plantStop,
+  active, built, byId, capOf, powerCheck, shortOf, stockOf, sources, takeFrom, putBack, nextOrder, rawWanted, clearPlot, LANDER_KW, PANEL_KW, LABOUR, stagesOf, FEED, plantStop,
 } from './build.js';
 import { illMeal } from './illness.js';
 import { FIRE_STEP, beat } from './hazards.js';
 import { take, order, release } from './control.js';
-import { eat, analyse, labHour, kitchenJob, cookMeals, foodOf, add, patchLeft, takePatch, inSeason, cropPlan, sowUnits, harvestLoads, keyOf, isCrop, mealsInStore, hasKitchen, SAMPLES, PROC_DAYS, CROPS, CROP_KEYS } from './food.js';
+import { eat, analyse, labHour, kitchenJob, cookMeals, foodOf, add, patchLeft, takePatch, inSeason, cropPlan, sowUnits, harvestLoads, keyOf, isCrop, mealsInStore, kitchenOnly, hasKitchen, SAMPLES, PROC_DAYS, CROPS, CROP_KEYS } from './food.js';
 import { dayWeather, untilDeep } from './year.js';
-import { careArrive, careTimer, MED_KIT, MED_MADE, TRIAGE } from './care.js';
+import { careArrive, careTimer, MED_KIT, MED_MADE, TRIAGE, MEDIC } from './care.js';
 import { capOf as bodyCap } from './body.js';
 
 export const PRINT_TICKS = 4 * HOUR;
@@ -38,7 +38,7 @@ export function seedTick(sim) {
     const c = sim.spawn(p, sim.cargoTile, ACT.WAKE); c.timer = HOUR; c.plan = 'wake'; c.job = 'wake';
     remember(sim, c, 'Woke in a new body, on a new world.');
     sim.log(`${p.name} woke in a new body.`, 'good', { e: 'woke', lvl: 1, who: c.id, title: 'A founder is awake' });
-    if (S.autoCrews) autoCrew(sim, c); else sim.log(`${p.name} is waiting to be put in a crew.`, '', { e: 'nocrew', lvl: 1, who: c.id, title: 'Waiting for a crew' });
+    if (S.crewPlan) planCrews(sim, 'woke'); else if (S.autoCrews) autoCrew(sim, c); else sim.log(`${p.name} is waiting to be put in a crew.`, '', { e: 'nocrew', lvl: 1, who: c.id, title: 'Waiting for a crew' });
     if (!sd.feed && !sd.queue.length) sim.log(`The fabricator has used the last of its feedstock for bodies. ${built(S).some(q => q.type === 'plant') ? 'The feedstock plant makes more, a batch at a time.' : 'To print more people, the colony needs a feedstock plant: plan one in the Build window.'} Meanwhile the fabricator makes modules from salvage.`, '', { e: 'feedstock', lvl: 1, x: sim.W.site.cargo.x + .5, y: sim.W.site.cargo.y + .5, title: 'No more bodies to print' });
   }
   // with no body to print, the fabricator makes modules from salvage, three times slower than a workshop bench
@@ -106,6 +106,92 @@ function autoCrew(sim, c) {
   sim.addTo(c, k.id);
   for (const cr of [sh, sv]) { let best = cr.lead, bs = -1; for (const i of cr.members) { const s = S.cols[i].skills.leadership; if (s > bs) { bs = s; best = i; } } cr.lead = best; }
   sim.log(`The Seed put ${c.name} in the ${k.name} crew (${WORKS[k.work].toLowerCase()}).`);
+}
+
+// ---------- the Seed plans the crews ----------
+// How many hands each kind of work needs today, from what the colony has built and what it is short of. Every
+// one of them is filled with whoever suits it best compared with building, which takes everyone left over.
+const FIT = {
+  build: s => .45 + s.building * .05 + s.engineering * .025, survey: s => .5 + s.fieldcraft * .05 + s.botany * .01,
+  quarry: s => .55 + s.building * .03 + s.fieldcraft * .03, timber: s => .55 + s.building * .03 + s.fieldcraft * .03,
+  forage: s => .55 + s.fieldcraft * .04 + s.botany * .02, farm: s => .5 + s.botany * .05 + s.fieldcraft * .01,
+  kitchen: s => .5 + s.cooking * .05, workshop: s => .4 + s.engineering * .07, lab: s => .4 + s.botany * .045 + s.medicine * .03,
+  clinic: s => .3 + s.medicine * .08,
+};
+const CAPOF = { survey: 'forage', quarry: 'cut', timber: 'cut', kitchen: 'cook', workshop: 'bench', clinic: 'lab' };
+function fitFor(c, w) {
+  let e = FIT[w](c.skills);
+  if (c.cap) { const q = CAPW[CAPOF[w] || w] || CAPW.build; let f = 0; for (const k in q) f += q[k] * bodyCap(c, k); e *= f; }
+  return e;
+}
+export function crewNeeds(sim) {
+  const S = sim.S, F = S.F, Y = S.stores.yard, people = S.cols.filter(c => !c.dead), n = people.length, B = built(S), has = t => B.filter(p => p.type === t && (p.powered || t === 'field'));
+  const need = [];   // in order of what matters most
+  const add = (w, k) => { if (k > 0) need.push([w, k]); };
+  if (!S.projects[0].done) { add('survey', n >= 4 ? Math.min(2, n - 3) : 0); return { need, n }; }
+  const days = mealsInStore(sim) / Math.max(1, n), tested = F.life.some((L, o) => L.tested && sim.kinds[o].food);
+  add('forage', days < 3 ? Math.ceil(n / 4) : days < 8 ? Math.max(1, Math.ceil(n / 8)) : 1);
+  if (tested || F.firstHarvest || F.vats.length) add('kitchen', Math.max(1, Math.ceil(n / 10)) + (people.some(c => c.hungry) && kitchenOnly(sim) > 4 ? 1 : 0));
+  const fields = has('field').length; add('farm', Math.ceil(fields / 2));
+  if (S.stakes.length < STAKES_ALL) add('survey', n >= 8 ? 2 : n >= 4 ? 1 : 0);
+  if (has('plant').length && Y.biomass < rawWanted(S, 'biomass')) need[0][1]++;
+  for (const k of ['stone', 'timber']) { const short = rawWanted(S, k) - (Y[k] || 0); if (short > 8 && active(S).length) add(k === 'stone' ? 'quarry' : 'timber', short > 25 && n >= 10 ? 2 : 1); }
+  if (has('lab').length && (F.lab.cur >= 0 || F.lab.queue.length)) add('lab', Math.min(2, has('lab').reduce((a, p) => a + capOf(p).benches, 0)));
+  if (has('workshop').length) add('workshop', n >= 15 ? 2 : 1);
+  if (has('clinic').length && n >= 12 && people.some(c => c.skills.medicine >= MEDIC)) add('clinic', 1);
+  return { need, n };
+}
+// everything that has gone into a project so far, the loads being fitted now included: all of it comes back
+export function refundOf(p) {
+  const L = {};
+  for (const k in p.used || {}) if (p.used[k] > 0 && k !== 'dig' && k !== 'mark' && k !== 'test') L[k] = p.used[k];
+  for (const k in p.out || {}) if (p.out[k] > 0) L[k] = (L[k] || 0) + p.out[k];   // parts a workshop made and still holds
+  return L;
+}
+// the player changing who works where takes the crews back from the Seed
+function handsOn(sim) {
+  if (!sim.S.crewPlan) return;
+  sim.S.crewPlan = false;
+  sim.log('The Seed stopped planning the crews, because you changed them. Ask it again from the Crews window.');
+}
+export function planCrews(sim, why = '') {
+  const S = sim.S, people = S.cols.filter(c => !c.dead);
+  if (!people.length) return '';
+  const { need } = crewNeeds(sim), crewOf = c => c.crew >= 0 && !S.crews[c.crew].gone ? S.crews[c.crew].work : '';
+  // building keeps at least a third of the colony, and never fewer than one
+  let room = people.length - Math.max(1, Math.ceil(people.length / 3));
+  const free = new Set(people), want = {};
+  for (const [w, k] of need) {
+    for (let i = 0; i < k && room > 0; i++) {
+      let best = null, bs = -1e9;
+      for (const c of free) { const s = fitFor(c, w) - fitFor(c, 'build') + (crewOf(c) === w ? .12 : 0) + (w === 'clinic' && c.skills.medicine < MEDIC ? -9 : 0); if (s > bs) { bs = s; best = c; } }
+      if (!best) break;
+      free.delete(best); (want[w] = want[w] || []).push(best); room--;
+    }
+  }
+  want.build = [...free];
+  // keep the crews already doing each kind of work; turn crews nobody needs any more into new ones before making more
+  const live = S.crews.filter(k => !k.gone), byWork = {};
+  for (const k of live) if (want[k.work] && want[k.work].length) (byWork[k.work] = byWork[k.work] || []).push(k);
+  const spare = live.filter(k => !byWork[k.work] || !byWork[k.work].includes(k));
+  let moved = 0;
+  for (const w in want) {
+    if (!want[w].length) continue;
+    if (!byWork[w]) {
+      let k = spare.shift();
+      if (k) { k.work = w; k.dest = -1; k.recalled = false; k.proj = -1; k.target = -1; for (const i of k.members) { S.cols[i].plan = ''; S.cols[i].noWork = 0; } }
+      else { k = sim.newCrew(w); S.crews.push(k); }
+      byWork[w] = [k];
+    }
+    const home = byWork[w][0];
+    for (const c of want[w]) if (!byWork[w].some(k => k.id === c.crew)) { sim.addTo(c, home.id); moved++; }
+  }
+  for (const k of S.crews) if (!k.gone && !k.members.length) { k.gone = true; k.lead = -1; }
+  for (const k of S.crews) if (!k.gone) k.lead = k.members.reduce((b, i) => b < 0 || S.cols[i].skills.leadership > S.cols[b].skills.leadership ? i : b, -1);
+  S.rv++;
+  const sum = Object.entries(want).filter(([, v]) => v.length).map(([w, v]) => `${v.length} ${WORK_NAME[w]}`).join(', ');
+  if (moved || why === 'asked') sim.log(`The Seed planned the crews${why === 'morning' ? ' for the day' : ''}: ${sum}.${moved ? ` ${moved} ${moved === 1 ? 'person' : 'people'} changed crew.` : ' Nobody needed to move.'}`);
+  return sum;
 }
 
 // ---------- a crew member's next job ----------
@@ -675,6 +761,62 @@ const MAT_ONE = { seal: 'airlock seal', pipe: 'pipe run', power: 'power unit', p
 
 // ---------- the player's commands ----------
 // power every planned and finished building will draw, against what the lander and every solar field will make
+// ---------- the Seed's suggested size for a new building, from what the colony needs ----------
+// The smallest plot, close to square, that holds what is needed; the reason comes with it.
+export function sizeFor(sim, type) {
+  const S = sim.S, T0 = TYPES[type]; if (!T0 || T0.fixed) return null;
+  const alive = S.cols.filter(c => !c.dead).length, coming = (S.seedc.printing ? 1 : 0) + Math.max(S.seedc.queue.length, S.seedc.feed), soon = alive + coming;
+  const mine = S.projects.filter(p => !p.gone && p.type !== 'test'), sumOf = (types, k) => mine.filter(p => types.includes(p.type)).reduce((a, p) => a + (capacity(p.type, p.w, p.h)[k] || 0), 0);
+  const fit = (want, key, sq = 3) => {
+    let best = null;
+    for (let w = T0.min; w <= T0.max; w++) for (let h = T0.min; h <= T0.max; h++) {
+      if (Math.abs(w - h) > sq) continue;
+      const v = capacity(type, w, h)[key] || 0, ok = v >= want, sc = ok ? w * h + Math.abs(w - h) * .1 : 1e6 - v * 100 + w * h;
+      if (!best || sc < best.sc) best = { w, h, v, ok, sc };
+    }
+    return best;
+  };
+  const n = (k, a, b) => `${k} ${k === 1 ? a : b}`;
+  let r, why;
+  switch (type) {
+    case 'dorm': case 'burrow': {
+      const beds = sumOf(['shelter', 'dorm', 'burrow'], 'beds'), short = soon + 2 - beds;
+      r = fit(Math.max(4, short), 'beds');
+      why = `${n(r.v, 'bunk', 'bunks')}. ` + (short > 0 ? `There are ${n(soon, 'person', 'people')} awake or on the way and ${n(beds, 'bunk', 'bunks')} built or planned, so this gives everyone one, with two to spare` : `Everyone already has a bunk, so this is room for more people`);
+      break;
+    }
+    case 'commons': {
+      const seats = sumOf(['commons'], 'seats'), want = Math.max(6, soon + 4 - seats);
+      r = fit(want, 'seats'); why = `${n(r.v, 'seat', 'seats')}${seats ? `, beside the ${seats} already built or planned` : ''}, so the ${n(soon, 'person', 'people')} awake or on the way can all eat indoors, with room to grow`;
+      break;
+    }
+    case 'field': {
+      const eaters = Math.max(1, soon), want = clamp(Math.ceil(Math.max(6, eaters) * 4), 25, 64);
+      r = fit(want, 'tiles', 2);
+      why = `${r.v} tiles: about ${r.v * CROPS.potato.yield} meals a harvest of potatoes, ${Math.round(r.v * CROPS.potato.yield / eaters)} days of food for ${n(eaters, 'person', 'people')}. Plan more fields as the colony grows`;
+      break;
+    }
+    case 'clinic': { r = fit(Math.max(2, Math.ceil(soon / 5)), 'beds'); why = `${n(r.v, 'bed', 'beds')}, about one for every five people`; break; }
+    case 'workshop': { r = fit(soon >= 15 ? 3 : 2, 'benches'); why = `${n(r.v, 'bench', 'benches')}, enough to keep the projects in parts`; break; }
+    case 'lab': { r = fit(1, 'benches'); why = 'One bench, which tests samples far faster than the Seed’s own analyser'; break; }
+    case 'plant': { r = fit(2, 'tanks'); why = `${n(r.v, 'tank', 'tanks')}: a new body about every ${Math.round(FEED.per * FEED.h / 24 / r.v)} days, with biomass and stone to feed it`; break; }
+    case 'solar': {
+      const supply = LANDER_KW + sumOf(['solar'], 'supply'), draw = sumOf(mine.map(p => p.type).filter(t => t !== 'solar'), 'kw'), short = draw - supply;
+      r = fit(Math.max(4, Math.ceil((Math.max(0, short) + 2) / PANEL_KW)), 'panels', 4);
+      why = short > 0 ? `the buildings built and planned draw ${draw.toFixed(1)} kW against ${supply.toFixed(1)} kW: ${r.v} panels make up the ${short.toFixed(1)} kW short, with a little to spare` : `${r.v} panels add ${(r.v * PANEL_KW).toFixed(1)} kW to spare, less in the short days of Deep cold`;
+      break;
+    }
+    case 'cellar': {
+      const Ld = S.F.larder; let loads = 0; for (const g of [Ld.raw, Ld.prep, Ld.meals]) for (const k in g) loads += g[k];
+      const room = sumOf(['cellar'], 'store'); r = fit(Math.max(alive * 4, Math.ceil(loads * 1.5) - room, 20), 'store');
+      why = `Room for ${r.v} loads of food, more than the larder holds now`;
+      break;
+    }
+    default: { const [w, h] = T0.size; return { w, h, why: '' }; }
+  }
+  why = why.replace(/^./, m => m.toUpperCase());
+  return { w: r.w, h: r.h, why: why + '.' + (r.ok ? '' : ' That is the most one building can hold: plan another for the rest.') };
+}
 function powerPlan(S) {
   let supply = LANDER_KW, draw = 0;
   for (const p of S.projects) { if (p.gone || p.type === 'test') continue; const c = capOf(p); if (p.type === 'solar') supply += c.supply * S.F.sun; else draw += c.kw; }
@@ -688,17 +830,19 @@ export function command(sim, m) {
       S.rv++; break;
     case 'unqueue': S.seedc.queue = S.seedc.queue.filter(f => f !== m.fid); S.rv++; break;
     case 'suggest': return suggestFirst(S.archive, Math.max(1, S.seedc.feed));
-    case 'crewNew': { const k = sim.newCrew(m.work && WORKS[m.work] ? m.work : 'rest'); S.crews.push(k); S.autoCrews = false; S.rv++; return k.id; }
-    case 'crewDel': if (cr) { for (const i of cr.members.slice()) sim.addTo(S.cols[i], -1); cr.gone = true; cr.members = []; cr.lead = -1; S.autoCrews = false; S.rv++; } break;
+    case 'crewPlan': S.autoCrews = false; S.crewPlan = m.keep !== false; planCrews(sim, 'asked'); S.rv++; break;
+    case 'crewKeep': S.crewPlan = !!m.on; S.rv++; break;
+    case 'crewNew': { handsOn(sim); const k = sim.newCrew(m.work && WORKS[m.work] ? m.work : 'rest'); S.crews.push(k); S.autoCrews = false; S.rv++; return k.id; }
+    case 'crewDel': if (cr) { handsOn(sim); for (const i of cr.members.slice()) sim.addTo(S.cols[i], -1); cr.gone = true; cr.members = []; cr.lead = -1; S.autoCrews = false; S.rv++; } break;
     case 'crewSet':
       if (!cr) break;
-      if (m.work && WORKS[m.work] && m.work !== cr.work) { cr.work = m.work; cr.dest = -1; cr.recalled = false; cr.proj = -1; for (const i of cr.members) { S.cols[i].plan = ''; S.cols[i].noWork = 0; } }
+      if (m.work && WORKS[m.work] && m.work !== cr.work) { handsOn(sim); cr.work = m.work; cr.dest = -1; cr.recalled = false; cr.proj = -1; for (const i of cr.members) { S.cols[i].plan = ''; S.cols[i].noWork = 0; } }
       if (m.shift != null) cr.shift = clamp(m.shift | 0, 0, SHIFTS.length - 1);
       if (m.lead != null && cr.members.includes(m.lead)) cr.lead = m.lead;
       if (m.rule) cr.rules[m.rule] = !!m.on;
       if (m.target !== undefined) { cr.target = m.target; cr.dest = -1; }
       S.autoCrews = false; S.rv++; break;
-    case 'move': { const c = S.cols[m.person]; if (c && !c.dead) { sim.addTo(c, m.crew); S.autoCrews = false; } break; }
+    case 'move': { const c = S.cols[m.person]; if (c && !c.dead && c.crew !== m.crew) { handsOn(sim); sim.addTo(c, m.crew); S.autoCrews = false; } break; }
     // ---- building ----
     case 'plan': {
       if (!TYPES[m.type] || TYPES[m.type].fixed) return { ok: false, why: 'That is not something the colony can plan.' };
@@ -706,6 +850,7 @@ export function command(sim, m) {
       const after = { supply: +(pw.supply + (cap.supply || 0)).toFixed(1), draw: +(pw.draw + cap.kw).toFixed(1) };
       return { ...chk, bill: billOf(S, m.type, m.w, m.h, chk.ground), load: loadCheck(S, m.type, m.w, m.h), cap, power: after, short: +Math.max(0, after.draw - after.supply).toFixed(1) };
     }
+    case 'sizeFor': return sizeFor(sim, m.type);
     case 'place': {
       const chk = checkPlot(sim, m.type, m.x, m.y, m.w, m.h, m.side);
       if (!chk.ok) return { ok: false, why: chk.why };
@@ -727,12 +872,19 @@ export function command(sim, m) {
     case 'projPause': if (p && !p.done) { p.paused = !!m.on; S.rv++; sim.log(`${p.name} ${p.paused ? 'is paused' : 'is back on the list'}.`); projectsThink(sim); } break;
     case 'projCancel': {
       if (!p || p.type === 'shelter') return false;
+      if (p.fire) return { ok: false, why: 'It is burning: put the fire out first.' };
       if (p.blocked) sim.unblock(p);
-      const back = [];
-      for (const k in p.used) { for (let n = 0; n < p.used[k]; n++) putBack(S, k); back.push(matName(k, p.used[k])); }
+      const back = refundOf(p), was = p.done || p.dmg;
+      for (const k in back) for (let n = 0; n < back[k]; n++) putBack(S, k);
       p.gone = true; S.rv++;
-      for (const c of S.cols) { if (c.pj === p.id && c.job === 'fit') c.pj = -1; if (c.home === p.id) c.home = -1; if (c.mess === p.id) c.mess = -1; if (c.ward === p.id) c.ward = -1; }
-      sim.log(`${p.done ? 'Took down' : 'Cancelled'} ${p.name}.${back.length ? ' ' + back.join(', ') + ' went back to the stores.' : ''}`);
+      // anyone working in it or carrying to it drops what they hold back in the stores and finds other work
+      for (const c of S.cols) {
+        if (c.dead) continue;
+        if (c.home === p.id) c.home = -1; if (c.mess === p.id) c.mess = -1; if (c.ward === p.id) c.ward = -1;
+        if ((c.pj === p.id || c.ws === p.id) && c.job !== 'wake' && !c.down && c.carried < 0) { dropCarry(sim, c); c.plan = ''; c.job = ''; c.ws = -1; c.noWork = 0; }
+      }
+      const list = Object.entries(back).map(([k, n]) => matName(k, n));
+      sim.log(`${was ? 'Took down' : 'Cancelled'} ${p.name}.${list.length ? ' ' + list.join(', ').replace(/^./, m => m.toUpperCase()) + ' went back to the stores.' : ' Nothing had gone into it yet.'}`);
       for (const q of powerCheck(sim)) powerNote(sim, q);
       assignHomes(sim); projectsThink(sim);
       return true;
@@ -767,5 +919,5 @@ function saveBlueprint(S, name, type, w, h) {
 }
 function planNote(p) {
   const c = capOf(p);
-  return { dorm: `${c.beds} bunks`, commons: `tables for ${c.seats}`, workshop: `${c.benches} bench${c.benches > 1 ? 'es' : ''}`, clinic: `${c.beds} beds`, solar: `${c.panels} panels`, field: `${c.tiles} tiles of beds`, lab: `${c.benches} bench${c.benches > 1 ? 'es' : ''}`, cellar: `shelves for ${c.store} loads of food`, burrow: `${c.beds} bunks, dug into ${p.ug ? p.ug.name : 'the ground'}` }[p.type] || 'done';
+  return { dorm: `${c.beds} bunks`, commons: `tables for ${c.seats}`, workshop: `${c.benches} bench${c.benches > 1 ? 'es' : ''}`, clinic: `${c.beds} beds`, solar: `${c.panels} panels`, field: `${c.tiles} tiles of beds`, lab: `${c.benches} bench${c.benches > 1 ? 'es' : ''}`, plant: `${c.tanks} tank${c.tanks > 1 ? 's' : ''}`, cellar: `shelves for ${c.store} loads of food`, burrow: `${c.beds} bunks, dug into ${p.ug ? p.ug.name : 'the ground'}` }[p.type] || 'done';
 }

@@ -8,7 +8,7 @@ import { R, srand, rnd, ri, lcg } from './rng.js';
 import { makeArchive, makePerson } from './founders.js';
 import { propsIn } from './world.js';
 import { think, mindTick, daily, remember } from './life.js';
-import { crewThink, seedTick, onArrive, onTimer, command, projectsThink, dropCarry } from './work.js';
+import { crewThink, seedTick, onArrive, onTimer, command, projectsThink, dropCarry, planCrews, refundOf } from './work.js';
 import { shelterProject, strength, powerCheck, capOf, byId, stockOf, built, PRECISE, SALVAGE, KIT, CARGO, LANDER_KW, FEED } from './build.js';
 import { drawLife, placeLife, newFood, labHour, fieldHour, spoil, cellarShare, mealsInStore, kitchenOnly, patchLeft, inSeason, cropPlan, daysToRipen, foodOf, CROPS, SEED_LAB, verdict, PROC_NAME } from './food.js';
 import { newHist, histHour, histDay, histRow } from './history.js';
@@ -256,7 +256,7 @@ export class Sim {
     this.separate();
     this.groundTick();
     if (S.tick % HOUR === 0) this.hourly();
-    if (S.tick % DAY_TICKS === Math.round(4 * HOUR)) { for (const c of cols) daily(this, c); if (S.mode === 'landfall') spoil(this); }
+    if (S.tick % DAY_TICKS === Math.round(4 * HOUR)) { for (const c of cols) daily(this, c); if (S.mode === 'landfall') { spoil(this); if (S.crewPlan) planCrews(this, 'morning'); } }
   }
   // ---------- the hour: light, temperature, snow and ice, crops, the Seed's analyser, the seasons ----------
   hourly() {
@@ -472,10 +472,10 @@ export class Sim {
       crews: S.crews.map(cr => ({ id: cr.id, name: cr.name, gone: cr.gone, lead: cr.lead, members: cr.members, work: cr.work, shift: cr.shift, rules: cr.rules, target: cr.target, dest: cr.dest, recalled: cr.recalled, proj: cr.proj })),
       seed: { feed: sd.feed, fb: sd.fb || 0, per: FEED.per, queue: sd.queue, printing: sd.printing && { fid: sd.printing.fid, left: sd.printing.left }, stakes: sd.stakes, fab: S.fab.job && { k: S.fab.job.k, left: S.fab.job.left } },
       shelter: { stage: sh.stage, done: sh.done, beds: 12 },
-      projects: S.projects.filter(p => !p.gone).map(p => ({ crop: p.crop && { ...p.crop, plan: p.crop.st === 'bare' ? cropPlan(this, p) : null, eta: p.crop.st === 'grow' ? daysToRipen(this, p.crop.k, p.crop.g) : null }, id: p.id, type: p.type, name: p.name, x: p.x, y: p.y, w: p.w, h: p.h, side: p.side, door: p.door, stage: p.stage, need: p.need, got: p.got, done: p.done, powered: p.powered, paused: p.paused, wait: p.wait, stall: p.stall, mat: p.mat, cap: capOf(p), tanks: p.tanks, why: p.why, crews: S.crews.filter(cr => !cr.gone && cr.work === 'build' && cr.proj === p.id).map(cr => cr.name), out: p.out, fire: !!p.fire, burn: p.fire ? +(p.burn || 0).toFixed(2) : 0, shut: p.shut || '', dmg: p.dmg || '', wet: !!p.wetH, below: !!p.below, ug: p.ug && p.ug.name, ore: p.ug ? p.ug.ore : 0 })),
+      projects: S.projects.filter(p => !p.gone).map(p => ({ crop: p.crop && { ...p.crop, plan: p.crop.st === 'bare' ? cropPlan(this, p) : null, eta: p.crop.st === 'grow' ? daysToRipen(this, p.crop.k, p.crop.g) : null }, id: p.id, type: p.type, name: p.name, x: p.x, y: p.y, w: p.w, h: p.h, side: p.side, door: p.door, stage: p.stage, need: p.need, got: p.got, done: p.done, powered: p.powered, paused: p.paused, wait: p.wait, stall: p.stall, mat: p.mat, cap: capOf(p), tanks: p.tanks, why: p.why, crews: S.crews.filter(cr => !cr.gone && cr.work === 'build' && cr.proj === p.id).map(cr => cr.name), out: p.out, fire: !!p.fire, burn: p.fire ? +(p.burn || 0).toFixed(2) : 0, shut: p.shut || '', dmg: p.dmg || '', wet: !!p.wetH, below: !!p.below, ug: p.ug && p.ug.name, ore: p.ug ? p.ug.ore : 0, back: refundOf(p) })),
       stores: { yard: S.stores.yard, cargo: S.stores.cargo, precise: Object.fromEntries(PRECISE.map(k => [k, stockOf(S, k)])) }, power: S.power, blueprints: S.blueprints,
       mat: { stone: { tested: S.mat.stone.tested, f: S.mat.stone.tested ? S.mat.stone.f : null }, timber: { tested: S.mat.timber.tested, f: S.mat.timber.tested ? S.mat.timber.f : null } },
-      med: S.med, care: { triage: S.care.triage, medics: S.care.medics, iso: !!S.care.iso, ward: S.cols.filter(c => !c.dead && c.ward >= 0).map(c => [c.id, c.ward]) }, food: S.food, alive: S.cols.filter(c => !c.dead).length, year: this.yearUI(), F: this.foodUI(), known: S.knownN, stakes: S.stakes, auto: S.autoCrews, stats: S.stats, today: histRow(this, this.day), y0: S.y0 || 0, ill: illUI(S), hz: hzUI(S), ctl: S.ctl ?? -1, ord: S.ctl >= 0 && S.cols[S.ctl] ? S.cols[S.ctl].ord : null, emerg: emergency(this),
+      med: S.med, care: { triage: S.care.triage, medics: S.care.medics, iso: !!S.care.iso, ward: S.cols.filter(c => !c.dead && c.ward >= 0).map(c => [c.id, c.ward]) }, food: S.food, alive: S.cols.filter(c => !c.dead).length, year: this.yearUI(), F: this.foodUI(), known: S.knownN, stakes: S.stakes, auto: S.autoCrews, plan: !!S.crewPlan, stats: S.stats, today: histRow(this, this.day), y0: S.y0 || 0, ill: illUI(S), hz: hzUI(S), ctl: S.ctl ?? -1, ord: S.ctl >= 0 && S.cols[S.ctl] ? S.cols[S.ctl].ord : null, emerg: emergency(this),
       detail: c && { id: c.id, meal: c.meal, tox: +c.tox.toFixed(1), lack: c.lack, skills: c.skills, mem: c.mem.slice(-6), tr: traumaUI(c), ties: Object.entries(c.ties).filter(([, t]) => t.k).map(([id, t]) => ({ id: +id, k: t.k, f: Math.round(t.f), a: Math.round(t.a) })), worked: c.worked, fresh: c.fresh, hurt: c.hurt, plan: c.plan, home: c.home >= 0 && byId(S, c.home) ? byId(S, c.home).name : '', carry: c.carry, body: this.bodyUI(c) },
     };
   }

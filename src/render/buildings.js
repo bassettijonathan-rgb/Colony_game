@@ -20,7 +20,7 @@ const STYLE = {
   clinic: { slab: '#8f8b84', joint: 'rgba(50,48,44,.3)', post: '#6f5a44', beam: '#7a6450', wall: '#b4b0a6', roof: ['#d2d8d8', '#a5b0b2'], done: ['#e4e9ea', '#c3cccd', '#9aa6a8'], seam: 'rgba(50,60,64,.35)' },
 };
 
-export function drawBuilding(g, hRect, p, E, t) {
+export function drawBuilding(g, hRect, p, E, t, inside = false) {
   if (p.type === 'test') return;
   if (p.type === 'solar') return drawSolar(g, hRect, p);
   if (p.type === 'field') return drawField(g, hRect, p, t || 0);
@@ -64,6 +64,7 @@ export function drawBuilding(g, hRect, p, E, t) {
     }
   }
   if (stage < 5) return;
+  if (inside && p.type !== 'solar') { drawInterior(g, hRect, p, E); crates(g, hRect, p); return; }
   // finished: a roof, a door, windows lit after dark when the building has power
   const gr = g.createLinearGradient(x, y, x + w, y + h); gr.addColorStop(0, st.done[0]); gr.addColorStop(.6, st.done[1]); gr.addColorStop(1, st.done[2]);
   g.fillStyle = 'rgba(0,0,0,.3)'; g.fillRect(x + .12, y + .15, w, h);
@@ -91,6 +92,10 @@ export function drawBuilding(g, hRect, p, E, t) {
   for (let i = 0; i < 4; i++) { const k = (i + .5) / 4; if (long) { g.fillRect(x + w * k - .2, y - .04, .4, .1); g.fillRect(x + w * k - .2, y + h - .06, .4, .1); } else { g.fillRect(x - .04, y + h * k - .2, .1, .4); g.fillRect(x + w - .06, y + h * k - .2, .1, .4); } }
   hRect(x, y, w, h, 1.7);
   // the workshop's finished modules wait in crates by its door
+  crates(g, hRect, p);
+}
+function crates(g, hRect, p) {
+  const d = p.door, [nx, ny] = NORMAL[p.side];
   if (p.type === 'workshop' && d) { let k = 0; for (const m in p.out) for (let i = 0; i < Math.min(p.out[m], 3) && k < 6; i++, k++) crate(g, hRect, d.x + .5 + (ny ? (k - 2.5) * .45 : nx * .2), d.y + .5 + (nx ? (k - 2.5) * .45 : ny * .2), m); }
 }
 // a field: marked out, the ground broken in rows, made soil spread over it, drains dug round and across, then
@@ -330,4 +335,79 @@ export function buildingLights(out, projects, on, mul3) {
       const long = p.w >= p.h; for (const k of [.3, .7]) out.push({ x: long ? p.x + p.w * k : p.x - .6, y: long ? p.y - .6 : p.y + p.h * k, z: 1, r: 4, c: mul3([1, .8, .55], 1.1 * on), g: .1 }), out.push({ x: long ? p.x + p.w * k : p.x + p.w + .6, y: long ? p.y + p.h + .6 : p.y + p.h * k, z: 1, r: 4, c: mul3([1, .8, .55], 1.1 * on), g: .1 });
     } else if (!p.done && p.stage > 0 && !p.paused) out.push({ x: p.x + p.w / 2, y: p.y + p.h / 2, z: 2.2, r: 6, c: mul3([1, .88, .7], .6 * on), g: .1 });
   }
+}
+
+// ---------- inside a finished building ----------
+// With the roofs off the camera sees the floor, the walls with their door, and what each building holds: bunks,
+// tables and seats, benches, sickbeds, tanks. The same layout gives the people inside somewhere to be.
+const LAYOUT = new Map();
+export function layoutOf(p) {
+  const key = `${p.type}|${p.x}|${p.y}|${p.w}|${p.h}|${p.side}`; let L = LAYOUT.get(key); if (L) return L;
+  const long = p.w >= p.h, ix = p.x + 1, iy = p.y + 1, iw = Math.max(1, p.w - 2), ih = Math.max(1, p.h - 2);
+  const U = long ? iw : ih, V = long ? ih : iw, at = (u, v) => long ? [ix + u, iy + v] : [ix + v, iy + u];
+  const cap = p.cap || {}, beds = [], seats = [], tables = [], benches = [], work = [];
+  if (p.type === 'shelter' || p.type === 'dorm' || p.type === 'clinic') {
+    const want = cap.beds || 0, gap = p.type === 'clinic' ? 2 : 1;
+    for (let v = 0; v < V && beds.length < want; v++) { if (V > 2 && v % 3 === 1 && p.type !== 'shelter') continue; for (let u = 0; u < U && beds.length < want; u += gap) beds.push(at(u, v)); }
+  } else if (p.type === 'commons') {
+    for (let v = 1; v < V; v += 3) tables.push([at(0, v), at(U, v + 1)]);
+    if (!tables.length) tables.push([at(0, 0), at(U, Math.min(1, V))]);
+    for (let v = 0; v < V && seats.length < (cap.seats || 0); v++) { if (v % 3 === 1) continue; for (let u = 0; u < U && seats.length < (cap.seats || 0); u++) seats.push(at(u + .5, v + .5)); }
+  } else if (p.type === 'workshop' || p.type === 'lab') {
+    const n = cap.benches || 1, span = Math.max(1, Math.floor(U / n));
+    for (let i = 0; i < n; i++) { const u = i * span; benches.push([at(u + .1, 0), at(u + Math.min(span, 2) - .1, .8)]); work.push(at(u + Math.min(span, 2) / 2, Math.min(V - .3, 1.4))); }
+  }
+  L = { long, beds, seats, tables, benches, work }; LAYOUT.set(key, L); return L;
+}
+const FLOOR = { shelter: ['#6f767d', '#656c73'], clinic: ['#c8ccc6', '#bcc0ba'], lab: ['#a9b0ae', '#9ea5a3'] };
+export function drawInterior(g, hRect, p, E) {
+  const st = STYLE[p.type] || STYLE.dorm, x = p.x, y = p.y, w = p.w, h = p.h, L = layoutOf(p), lit = E.night > .3 && p.powered;
+  // the floor: hull plates in the shelter, tiles in the clinic and lab, boards elsewhere
+  const fl = FLOOR[p.type] || ['#8a6c4c', '#7e6244'];
+  g.fillStyle = 'rgba(0,0,0,.3)'; g.fillRect(x + .12, y + .15, w, h);
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) { g.fillStyle = fl[(i + j * (FLOOR[p.type] ? 1 : 0)) % 2 ? 1 : 0]; g.fillRect(x + i, y + j, 1, 1); }
+  g.strokeStyle = 'rgba(30,22,14,.25)'; g.lineWidth = .03;
+  if (!FLOOR[p.type]) for (let j = .5; j < (L.long ? h : w); j += .5) { g.beginPath(); if (L.long) { g.moveTo(x, y + j); g.lineTo(x + w, y + j); } else { g.moveTo(x + j, y); g.lineTo(x + j, y + h); } g.stroke(); }
+  // what it holds
+  for (const [a, b] of L.beds) {
+    const sick = p.type === 'clinic';
+    g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(a + .14, b + .16, .78, .76);
+    g.fillStyle = sick ? '#9aa6a8' : '#6f5a44'; g.fillRect(a + .1, b + .1, .8, .8);
+    g.fillStyle = sick ? '#f1f4f2' : '#b8ad98'; g.fillRect(a + .16, b + .16, .68, .68);
+    g.fillStyle = sick ? '#ffffff' : '#ddd6c4'; g.fillRect(a + .2, b + .18, .6, .18);   // the pillow end
+    hRect(a + .1, b + .1, .8, .8, .5);
+  }
+  for (const [[a, b], [c, d]] of L.tables) { g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(a + .25, b + .3, c - a - .3, d - b - .4); g.fillStyle = '#6b4f33'; g.fillRect(a + .2, b + .2, c - a - .4, d - b - .4); g.fillStyle = 'rgba(255,230,190,.12)'; g.fillRect(a + .2, b + .2, c - a - .4, .08); hRect(a + .2, b + .2, c - a - .4, d - b - .4, .8); }
+  for (const [a, b] of L.seats) { g.fillStyle = '#5a4430'; g.fillRect(a - .16, b - .16, .32, .32); }
+  for (const [[a, b], [c, d]] of L.benches) {
+    g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(a + .05, b + .08, c - a, d - b);
+    g.fillStyle = p.type === 'lab' ? '#56636a' : '#5c636b'; g.fillRect(a, b, c - a, d - b); hRect(a, b, c - a, d - b, 1);
+    g.fillStyle = p.type === 'lab' ? 'rgba(120,230,200,.6)' : 'rgba(160,170,180,.7)'; g.fillRect(a + .15, b + .15, Math.min(.4, c - a - .3), .2);
+    if (p.type === 'workshop') { g.fillStyle = '#3d434a'; g.beginPath(); g.arc(c - .3, (b + d) / 2, .18, 0, 6.3); g.fill(); }
+  }
+  if (p.type === 'plant') {
+    const n2 = p.cap ? p.cap.tanks : 1, long = L.long, cx = x + w / 2, cy = y + h / 2;
+    for (let i = 0; i < n2; i++) { const k = (i + .5) / n2, a = long ? x + w * k : cx, b = long ? cy : y + h * k, on = p.powered && p.tanks && p.tanks[i] > 0; g.fillStyle = '#4e5a4a'; g.beginPath(); g.arc(a, b, .7, 0, 6.3); g.fill(); g.fillStyle = on ? 'rgba(150,210,110,.75)' : '#34402f'; g.beginPath(); g.arc(a, b, .45, 0, 6.3); g.fill(); hRect(a - .6, b - .6, 1.2, 1.2, 1.4); }
+  }
+  // lamplight, or the gloom of a building with no power
+  if (lit) { const gr = g.createRadialGradient(x + w / 2, y + h / 2, 0, x + w / 2, y + h / 2, Math.max(w, h) * .7); gr.addColorStop(0, 'rgba(255,200,120,.22)'); gr.addColorStop(1, 'rgba(255,200,120,0)'); g.fillStyle = gr; g.fillRect(x, y, w, h); }
+  if (!p.powered && p.type !== 'shelter') { g.fillStyle = 'rgba(8,12,18,.3)'; g.fillRect(x, y, w, h); }
+  // walls round the edge, open at the door, with windows
+  const T2 = .2, d = p.door, [nx, ny] = NORMAL[p.side];
+  const gapAt = d ? (nx ? d.y + .5 : d.x + .5) : -9, side = p.side;
+  g.fillStyle = st.wall;
+  const wall = (s, a, b, c, e) => { if (side === s && d) { const lo = nx ? b : a, len = nx ? e : c, g0 = gapAt - .45 - lo, g1 = gapAt + .45 - lo; if (nx) { g.fillRect(a, b, c, Math.max(0, g0)); g.fillRect(a, b + g1, c, Math.max(0, e - g1)); } else { g.fillRect(a, b, Math.max(0, g0), e); g.fillRect(a + g1, b, Math.max(0, c - g1), e); } void len; } else g.fillRect(a, b, c, e); hRect(a, b, c, e, 2); };
+  wall(0, x, y, w, T2); wall(2, x, y + h - T2, w, T2); wall(3, x, y, T2, h); wall(1, x + w - T2, y, T2, h);
+  g.fillStyle = lit ? 'rgba(255,214,138,.9)' : 'rgba(120,170,210,.7)';
+  for (let i = 0; i < 4; i++) { const k = (i + .5) / 4; if (L.long) { g.fillRect(x + w * k - .2, y + .04, .4, .1); g.fillRect(x + w * k - .2, y + h - .14, .4, .1); } else { g.fillRect(x + .04, y + h * k - .2, .1, .4); g.fillRect(x + w - .14, y + h * k - .2, .1, .4); } }
+  g.strokeStyle = 'rgba(20,24,30,.55)'; g.lineWidth = .04; g.strokeRect(x, y, w, h);
+}
+// where someone inside sits, sleeps or works: their slot in the building's layout, picked steadily by their index
+export function spotInside(p, act, i) {
+  const L = layoutOf(p), pick = a => a.length ? a[i % a.length] : null, ctr = [p.x + p.w / 2, p.y + p.h / 2];
+  if (act === 5) { const b = pick(L.beds); return b ? [b[0] + .5, b[1] + .55, 'sleep'] : [...ctr, 'sleep']; }   // asleep indoors
+  if (act === 20) { const s = pick(L.work); return s ? [s[0], s[1], 'work'] : [...ctr, 'work']; }               // at a bench
+  const s = pick(L.seats); if (s) return [s[0], s[1], 'sit'];
+  const b = pick(L.beds); if (b) return [b[0] + .5, b[1] + .55, p.type === 'clinic' ? 'sleep' : 'sit'];
+  const k = hash(i, p.id, 5); return [p.x + 1 + k * Math.max(.5, p.w - 2), p.y + 1 + hash(i, p.id, 6) * Math.max(.5, p.h - 2), 'sit'];
 }

@@ -25,7 +25,7 @@ export const STEPS = [
   },
   {
     title: 'Send someone foraging', tab: 'crews', btn: 'Open Crews',
-    text: 'The lander’s rations won’t last. In Crews, make a new crew, set its work to Forage, and move one or two people into it. Foragers bring in wild food and biomass, and take samples of the local life.',
+    text: 'The lander’s rations won’t last. In Crews, make a new crew, set its work to Forage, and move one or two people into it, or press Let the Seed plan the crews and it sorts everyone by skill and need. Foragers bring in wild food and biomass, and take samples of the local life.',
     done: U => crew(U, 'forage'),
   },
   {
@@ -35,7 +35,7 @@ export const STEPS = [
   },
   {
     title: 'Plan a field', tab: 'build:plan', btn: 'Open Plan',
-    text: 'In the Build window, under Plan, pick Field and drag it out near camp, then confirm. Build crews make the soil in five stages.',
+    text: 'In the Build window, under Plan, pick Field: the Seed suggests a size for the colony, so click near camp to put it down (or drag to draw your own), then confirm. Build crews make the soil in five stages.',
     done: U => has(U, 'field'),
   },
   {
