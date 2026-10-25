@@ -70,6 +70,12 @@ const PLANT_STEP = 30, PLANT_WAIT = {
   stone: 'Waiting for stone in the yard. A quarry crew brings it.',
   'biomass+stone': 'Waiting for biomass and stone in the yard. A forage crew brings biomass, and a quarry crew brings stone.',
 };
+// when no crew does the work that would bring it, the card says so
+function nobody(S, short) {
+  const want = short.map(k => k === 'stone' ? 'quarry' : 'forage').filter(w => !S.crews.some(k => !k.gone && k.work === w && k.members.length));
+  if (!want.length) return '';
+  return ` No ${want.join(' or ')} crew is working now: ${S.crewPlan ? 'the Seed adds one when it plans the crews in the morning' : 'make one in Crews, or press Let the Seed plan the crews'}.`;
+}
 function plantTick(sim) {
   const S = sim.S, sd = S.seedc, Y = S.stores.yard;
   for (const p of built(S)) {
@@ -89,10 +95,13 @@ function plantTick(sim) {
       const stop = plantStop(S);
       if (stop) { why = why || stop; continue; }
       const short = ['biomass', 'stone'].filter(k => Y[k] < FEED[k]);
-      if (short.length) { why = why || PLANT_WAIT[short.join('+')]; continue; }
+      if (short.length) { why = why || PLANT_WAIT[short.join('+')] + nobody(S, short); continue; }
       Y.biomass -= FEED.biomass; Y.stone -= FEED.stone; p.tanks[i] = Math.round(FEED.h * HOUR); S.rv++;
     }
-    if (why !== (p.why || '')) { p.why = why; S.rv++; }
+    if (why !== (p.why || '')) {
+      p.why = why; S.rv++;
+      if (S.crewPlan && why.includes(' No ') && !(S.tick - (S.planAt || -1e9) < 2 * HOUR)) { S.planAt = S.tick; planCrews(sim, 'plant'); p.why = ''; }   // the Seed finds hands for it at once; the card is checked again next round
+    }
   }
 }
 // the Seed's suggestion for where a new founder goes: two out surveying, everyone else building
@@ -135,7 +144,9 @@ export function crewNeeds(sim) {
   const fields = has('field').length; add('farm', Math.ceil(fields / 2));
   if (S.stakes.length < STAKES_ALL) add('survey', n >= 8 ? 2 : n >= 4 ? 1 : 0);
   if (has('plant').length && Y.biomass < rawWanted(S, 'biomass')) need[0][1]++;
-  for (const k of ['stone', 'timber']) { const short = rawWanted(S, k) - (Y[k] || 0); if (short > 8 && active(S).length) add(k === 'stone' ? 'quarry' : 'timber', short > 25 && n >= 10 ? 2 : 1); }
+  // stone and timber for the projects, and stone for the feedstock plant's tanks: the builders cut their own only when the yard runs dry
+  const plantWants = k => has('plant').some(p => (p.why || '').includes(k));
+  for (const k of ['stone', 'timber']) { const short = rawWanted(S, k) - (Y[k] || 0); if ((short > 8 && active(S).length) || plantWants(k)) add(k === 'stone' ? 'quarry' : 'timber', short > 25 && n >= 10 ? 2 : 1); }
   if (has('lab').length && (F.lab.cur >= 0 || F.lab.queue.length)) add('lab', Math.min(2, has('lab').reduce((a, p) => a + capOf(p).benches, 0)));
   if (has('workshop').length) add('workshop', n >= 15 ? 2 : 1);
   if (has('clinic').length && n >= 12 && people.some(c => c.skills.medicine >= MEDIC)) add('clinic', 1);
@@ -832,6 +843,7 @@ export function command(sim, m) {
     case 'suggest': return suggestFirst(S.archive, Math.max(1, S.seedc.feed));
     case 'crewPlan': S.autoCrews = false; S.crewPlan = m.keep !== false; planCrews(sim, 'asked'); S.rv++; break;
     case 'crewKeep': S.crewPlan = !!m.on; S.rv++; break;
+    case 'shiftAll': S.shift = clamp(m.shift | 0, 0, SHIFTS.length - 1); for (const k of S.crews) if (!k.gone) k.shift = S.shift; S.rv++; break;
     case 'crewNew': { handsOn(sim); const k = sim.newCrew(m.work && WORKS[m.work] ? m.work : 'rest'); S.crews.push(k); S.autoCrews = false; S.rv++; return k.id; }
     case 'crewDel': if (cr) { handsOn(sim); for (const i of cr.members.slice()) sim.addTo(S.cols[i], -1); cr.gone = true; cr.members = []; cr.lead = -1; S.autoCrews = false; S.rv++; } break;
     case 'crewSet':
