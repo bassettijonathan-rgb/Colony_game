@@ -100,7 +100,7 @@ function plantTick(sim) {
     }
     if (why !== (p.why || '')) {
       p.why = why; S.rv++;
-      if (S.crewPlan && why.includes(' No ') && !(S.tick - (S.planAt || -1e9) < 2 * HOUR)) { S.planAt = S.tick; planCrews(sim, 'plant'); p.why = ''; }   // the Seed finds hands for it at once; the card is checked again next round
+      if (S.crewPlan && why.includes(' No ') && !(S.tick - (S.planAt || -1e9) < 2 * HOUR)) { S.planAt = S.tick; planCrews(sim, 'plant'); }   // the Seed finds hands for it at once
     }
   }
 }
@@ -136,17 +136,18 @@ function fitFor(c, w) {
 export function crewNeeds(sim) {
   const S = sim.S, F = S.F, Y = S.stores.yard, people = S.cols.filter(c => !c.dead), n = people.length, B = built(S), has = t => B.filter(p => p.type === t && (p.powered || t === 'field'));
   const need = [];   // in order of what matters most
-  const add = (w, k) => { if (k > 0) need.push([w, k]); };
+  const add = (w, k) => { if (k <= 0) return; const o = need.find(q => q[0] === w); if (o) o[1] = Math.max(o[1], k); else need.push([w, k]); };
   if (!S.projects[0].done) { add('survey', n >= 4 ? Math.min(2, n - 3) : 0); return { need, n }; }
   const days = mealsInStore(sim) / Math.max(1, n), tested = F.life.some((L, o) => L.tested && sim.kinds[o].food);
   add('forage', days < 3 ? Math.ceil(n / 4) : days < 8 ? Math.max(1, Math.ceil(n / 8)) : 1);
   if (tested || F.firstHarvest || F.vats.length) add('kitchen', Math.max(1, Math.ceil(n / 10)) + (people.some(c => c.hungry) && kitchenOnly(sim) > 4 ? 1 : 0));
   const fields = has('field').length; add('farm', Math.ceil(fields / 2));
+  // a working feedstock plant eats biomass and stone every half day: a quarry crew for as long as it runs, and another forager while biomass is short
+  const plant = has('plant').length > 0 && !plantStop(S);
+  if (plant) { if (Y.biomass < rawWanted(S, 'biomass')) need[0][1]++; add('quarry', 1); }
   if (S.stakes.length < STAKES_ALL) add('survey', n >= 8 ? 2 : n >= 4 ? 1 : 0);
-  if (has('plant').length && Y.biomass < rawWanted(S, 'biomass')) need[0][1]++;
-  // stone and timber for the projects, and stone for the feedstock plant's tanks: the builders cut their own only when the yard runs dry
-  const plantWants = k => has('plant').some(p => (p.why || '').includes(k));
-  for (const k of ['stone', 'timber']) { const short = rawWanted(S, k) - (Y[k] || 0); if ((short > 8 && active(S).length) || plantWants(k)) add(k === 'stone' ? 'quarry' : 'timber', short > 25 && n >= 10 ? 2 : 1); }
+  // stone and timber for the projects: the builders cut their own only when the yard runs dry
+  for (const k of ['stone', 'timber']) { const short = rawWanted(S, k) - (Y[k] || 0); if (short > 8 && active(S).length) add(k === 'stone' ? 'quarry' : 'timber', short > 25 && n >= 10 ? 2 : 1); }
   if (has('lab').length && (F.lab.cur >= 0 || F.lab.queue.length)) add('lab', Math.min(2, has('lab').reduce((a, p) => a + capOf(p).benches, 0)));
   if (has('workshop').length) add('workshop', n >= 15 ? 2 : 1);
   if (has('clinic').length && n >= 12 && people.some(c => c.skills.medicine >= MEDIC)) add('clinic', 1);
@@ -169,8 +170,9 @@ export function planCrews(sim, why = '') {
   const S = sim.S, people = S.cols.filter(c => !c.dead);
   if (!people.length) return '';
   const { need } = crewNeeds(sim), crewOf = c => c.crew >= 0 && !S.crews[c.crew].gone ? S.crews[c.crew].work : '';
-  // building keeps at least a third of the colony, and never fewer than one
-  let room = people.length - Math.max(1, Math.ceil(people.length / 3));
+  // building keeps at least a quarter of the colony while there is something to build, and never fewer than one
+  const building = active(S).some(p => !p.paused && p.type !== 'test');
+  let room = people.length - (building ? Math.max(1, Math.ceil(people.length / 4)) : 1);
   const free = new Set(people), want = {};
   for (const [w, k] of need) {
     for (let i = 0; i < k && room > 0; i++) {
@@ -179,6 +181,10 @@ export function planCrews(sim, why = '') {
       if (!best) break;
       free.delete(best); (want[w] = want[w] || []).push(best); room--;
     }
+  }
+  if (!building && free.size > 1) {   // nothing to build: everyone but one builder forages, which always helps
+    const spare = [...free].sort((a, b) => (fitFor(b, 'forage') - fitFor(b, 'build')) - (fitFor(a, 'forage') - fitFor(a, 'build'))).slice(0, free.size - 1);
+    for (const c of spare) { free.delete(c); (want.forage = want.forage || []).push(c); }
   }
   want.build = [...free];
   // keep the crews already doing each kind of work; turn crews nobody needs any more into new ones before making more
