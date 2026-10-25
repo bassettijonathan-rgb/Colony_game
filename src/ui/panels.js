@@ -216,6 +216,7 @@ export class Panels {
       if (P.length) h += `<div class="crew plan"><button class="btn go" data-act="crewPlan" style="width:100%">Let the Seed plan the crews</button>
         <label class="keep"><input type="checkbox" data-act="crewKeep"${U.plan ? ' checked' : ''}>Plan again every morning and when someone wakes</label>
         <div class="note">${U.plan ? 'The Seed is planning the crews: it works out' : 'The Seed works out'} how many hands the food, the fields, the kitchen, the yard, the survey and the buildings need, puts the best-suited person on each, and keeps everyone else building.${U.plan ? ' Move someone or change a crew\u2019s work and it leaves the crews to you.' : ''}</div></div>`;
+      if (live.length > 1) { const same = live.every(c => c.shift === live[0].shift) ? live[0].shift : -1; h += `<div class="crew plan"><div class="lbl" style="margin-top:0">SHIFT FOR EVERY CREW</div><div class="seg sm">${SHIFT_TXT.map((t, k) => `<button data-act="shiftAll" data-v="${k}" class="${same === k ? 'on' : ''}">${t}</button>`).join('')}</div><div class="note">Sets the working hours of all crews at once, and of any crew made later. Each crew below can still be changed on its own.</div></div>`; }
       if (!live.length && !free.length) h += `<div class="note">Nobody is awake yet. Crews form as the fabricator prints the founders.</div>`;
       const member = (i, cr) => { const r = P[i]; return `<div class="mem" data-act="person" data-id="${i}"><span class="nm">${esc(names[i] || '')}</span>${cr && cr.lead === i ? '<span class="lead">LEAD</span>' : ''}<span class="mini3" title="Fatigue, strain, trust">${[[r[2], 0], [r[3], 0], [r[4], 1]].map(([v, g]) => `<b><u style="width:${v}%;background:${meterCol(v, g)}"></u></b>`).join('')}</span></div>`; };
       for (const cr of live) {
@@ -430,6 +431,7 @@ export class Panels {
       case 'unq': this.api.cmd('unqueue', { fid: +el.dataset.fid }); break;
       case 'work': this.api.cmd('crewSet', { crew, work: el.dataset.v }); break;
       case 'shift': this.api.cmd('crewSet', { crew, shift: +el.dataset.v }); break;
+      case 'shiftAll': this.api.cmd('shiftAll', { shift: +el.dataset.v }); break;
       case 'area': this.api.pickArea(crew); break;
       case 'areaClear': this.api.cmd('crewSet', { crew, target: -1 }); break;
       case 'person': this.api.select(+el.dataset.id, true); break;

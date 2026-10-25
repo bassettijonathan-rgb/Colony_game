@@ -80,7 +80,7 @@ export class Sim {
     const W = this.W, L = W.land; srand(W.seed * 7919 + 17);
     this.S = {
       v: 7, mode, seed: W.seed, wv: W.wv, y0: (season | 0) % 4 * SEASON_DAYS, site: { x: L.x, y: L.y, id: W.siteId ?? 0 }, tick: Math.round(6 * HOUR),
-      cols: [], crews: [], archive: makeArchive(W.seed), autoCrews: true,
+      cols: [], crews: [], archive: makeArchive(W.seed), autoCrews: true, crewPlan: mode === 'landfall', shift: 1,
       seedc: { feed: mode === 'stress' ? 0 : FIRST_BODIES, queue: [], printing: null, stakes: STAKES },
       projects: [shelterProject(W)], pid: 1, blueprints: [], fab: { job: null }, power: { supply: LANDER_KW, draw: 0 },
       stores: { yard: { stone: 0, timber: 0, biomass: 0, salvage: SALVAGE, ore: 0 }, cargo: { module: CARGO, ...KIT } },
@@ -108,7 +108,7 @@ export class Sim {
   }
   newCrew(work = 'rest') {
     const S = this.S, k = S.crews.length;
-    return { id: k, name: CREW_NAMES[k % CREW_NAMES.length] + (k >= CREW_NAMES.length ? ' ' + (1 + (k / CREW_NAMES.length | 0)) : ''), gone: false, lead: -1, members: [], work, shift: 1, rules: { dark: true, pairs: true, rest: true }, target: -1, dest: -1, wait: ri(0, 200), siteLeft: 0, recalled: false, trips: 0, proj: -1 };
+    return { id: k, name: CREW_NAMES[k % CREW_NAMES.length] + (k >= CREW_NAMES.length ? ' ' + (1 + (k / CREW_NAMES.length | 0)) : ''), gone: false, lead: -1, members: [], work, shift: S.shift ?? 1, rules: { dark: true, pairs: true, rest: true }, target: -1, dest: -1, wait: ri(0, 200), siteLeft: 0, recalled: false, trips: 0, proj: -1 };
   }
   addTo(c, k) {
     const S = this.S;
@@ -475,7 +475,7 @@ export class Sim {
       projects: S.projects.filter(p => !p.gone).map(p => ({ crop: p.crop && { ...p.crop, plan: p.crop.st === 'bare' ? cropPlan(this, p) : null, eta: p.crop.st === 'grow' ? daysToRipen(this, p.crop.k, p.crop.g) : null }, id: p.id, type: p.type, name: p.name, x: p.x, y: p.y, w: p.w, h: p.h, side: p.side, door: p.door, stage: p.stage, need: p.need, got: p.got, done: p.done, powered: p.powered, paused: p.paused, wait: p.wait, stall: p.stall, mat: p.mat, cap: capOf(p), tanks: p.tanks, why: p.why, crews: S.crews.filter(cr => !cr.gone && cr.work === 'build' && cr.proj === p.id).map(cr => cr.name), out: p.out, fire: !!p.fire, burn: p.fire ? +(p.burn || 0).toFixed(2) : 0, shut: p.shut || '', dmg: p.dmg || '', wet: !!p.wetH, below: !!p.below, ug: p.ug && p.ug.name, ore: p.ug ? p.ug.ore : 0, back: refundOf(p) })),
       stores: { yard: S.stores.yard, cargo: S.stores.cargo, precise: Object.fromEntries(PRECISE.map(k => [k, stockOf(S, k)])) }, power: S.power, blueprints: S.blueprints,
       mat: { stone: { tested: S.mat.stone.tested, f: S.mat.stone.tested ? S.mat.stone.f : null }, timber: { tested: S.mat.timber.tested, f: S.mat.timber.tested ? S.mat.timber.f : null } },
-      med: S.med, care: { triage: S.care.triage, medics: S.care.medics, iso: !!S.care.iso, ward: S.cols.filter(c => !c.dead && c.ward >= 0).map(c => [c.id, c.ward]) }, food: S.food, alive: S.cols.filter(c => !c.dead).length, year: this.yearUI(), F: this.foodUI(), known: S.knownN, stakes: S.stakes, auto: S.autoCrews, plan: !!S.crewPlan, stats: S.stats, today: histRow(this, this.day), y0: S.y0 || 0, ill: illUI(S), hz: hzUI(S), ctl: S.ctl ?? -1, ord: S.ctl >= 0 && S.cols[S.ctl] ? S.cols[S.ctl].ord : null, emerg: emergency(this),
+      med: S.med, care: { triage: S.care.triage, medics: S.care.medics, iso: !!S.care.iso, ward: S.cols.filter(c => !c.dead && c.ward >= 0).map(c => [c.id, c.ward]) }, food: S.food, alive: S.cols.filter(c => !c.dead).length, year: this.yearUI(), F: this.foodUI(), known: S.knownN, stakes: S.stakes, auto: S.autoCrews, plan: !!S.crewPlan, shift: S.shift ?? 1, stats: S.stats, today: histRow(this, this.day), y0: S.y0 || 0, ill: illUI(S), hz: hzUI(S), ctl: S.ctl ?? -1, ord: S.ctl >= 0 && S.cols[S.ctl] ? S.cols[S.ctl].ord : null, emerg: emergency(this),
       detail: c && { id: c.id, meal: c.meal, tox: +c.tox.toFixed(1), lack: c.lack, skills: c.skills, mem: c.mem.slice(-6), tr: traumaUI(c), ties: Object.entries(c.ties).filter(([, t]) => t.k).map(([id, t]) => ({ id: +id, k: t.k, f: Math.round(t.f), a: Math.round(t.a) })), worked: c.worked, fresh: c.fresh, hurt: c.hurt, plan: c.plan, home: c.home >= 0 && byId(S, c.home) ? byId(S, c.home).name : '', carry: c.carry, body: this.bodyUI(c) },
     };
   }
@@ -532,6 +532,8 @@ export class Sim {
     if (this.S.stores.yard.ore == null) this.S.stores.yard.ore = 0;
     for (const c of this.S.cols) { if (!c.tr) c.tr = []; if (c.ctl == null) { c.ctl = false; c.ord = null; } }
     if (this.S.ctl == null) this.S.ctl = -1;
+    if (this.S.crewPlan == null) this.S.crewPlan = !!this.S.autoCrews;   // saves from before the Seed planned crews
+    if (this.S.shift == null) this.S.shift = 1;
     this.resetGround(); this.gnew = []; this.qnew = [];
     if (old) projectsThink(this); // give the migrated crews their project now, not at the next check
     this.wear.set(unrle(wear, MAP * MAP)); this.known.set(unrle(known, MAP * MAP)); this.dirty.clear(); this.kdirty.clear();
