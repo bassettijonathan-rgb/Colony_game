@@ -16,6 +16,7 @@ import { TRIAGE } from '../core/care.js';
 import { EM_TXT } from '../core/control.js';
 import { TR_NAME } from '../core/trauma.js';
 import { COND } from '../core/aging.js';
+import { NbPanel } from './nbpanel.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -33,10 +34,11 @@ const GEN = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 
 // how old someone is: a founder's mind is older than the body the Seed printed for it
 function ageLine(p, r) {
   const body = Math.floor(r[8] ?? p.age), mind = r[9] ?? p.age;
+  if (p.from) return `${Math.floor(mind)} · grew up in ${p.from}, a newcomer`;
   if (p.native) return `${body} · born here, ${GEN[Math.max(0, p.gen - 1)] || p.gen + 'th'} generation${r[8] < 2 ? ' · in the nursery' : r[8] < 13 ? ' · a child' : r[8] < 16 ? ' · an apprentice' : ''}`;
   return `${mind}, in a body of ${body} · former ${p.trade.toLowerCase()}`;
 }
-const TAB = { society: ['Society', 'society'], records: ['Clinic records', 'clinic'], archive: ['Archive', 'archive'], crews: ['Crews', 'crews'], build: ['Build', 'build'], life: ['Food and local life', 'life'], log: ['Log', 'log'] };
+const TAB = { nb: ['Neighbours', 'nb'], society: ['Society', 'society'], records: ['Clinic records', 'clinic'], archive: ['Archive', 'archive'], crews: ['Crews', 'crews'], build: ['Build', 'build'], life: ['Food and local life', 'life'], log: ['Log', 'log'] };
 // what a building holds, in a few words
 const holds = (type, c) => ({ shelter: `${c.beds} bunks`, dorm: `${c.beds} bunks`, commons: `seats for ${c.seats}`, workshop: `${c.benches} bench${c.benches > 1 ? 'es' : ''}`, clinic: `${c.beds} beds`, solar: `${c.panels} panels, ${c.supply} kW`, field: `${c.tiles} tiles of beds`, lab: `${c.benches} lab bench${c.benches > 1 ? 'es' : ''}`, plant: `${c.tanks} tank${c.tanks > 1 ? 's' : ''}`, cellar: `cool shelves for ${c.store} loads of food`, burrow: `${c.beds} bunks`, mine: `${c.faces} face${c.faces > 1 ? 's' : ''} to work`, pit: `${c.faces} face${c.faces > 1 ? 's' : ''} to cut`, school: `${c.desks} desks`, library: `${c.shelves} shelves`, watch: 'a lamp and a post', nursery: `${c.tanks} growth tank${c.tanks > 1 ? 's' : ''}` })[type] || '';
 const UG_TXT = { soil: 'soft soil: quick to dig, but the walls need a lot of shoring', clay: 'clay: heavier digging, and it holds its shape', stone: 'stone: slow digging, little shoring, and the spoil gives stone for the yard', 'hard rock': 'hard rock: very slow digging, but it barely needs shoring and gives stone', 'hot rock': 'hot rock: the deep’s own heat, very slow to cut, and hot enough to run a heat engine' };
@@ -76,9 +78,10 @@ export class Panels {
     this.A = A; this.api = api; this.tab = 'archive'; this.chosen = new Set(); this.touched = false; this.sig = ''; this.cardSig = ''; this.moveSig = '';
     this.btab = 'plan'; this.ltab = 'larder'; this.logSeen = 0; this.busy = false; this.min = false; this.confirm = -1; this.planSig = '';
     const side = $('side'), body = $('sideBody');
+    this.nbp = new NbPanel({ cmd: (op, m) => api.cmd(op, m), toast: m => api.toast(m), refresh: () => { this.sig = ''; this.update(); } });
     document.querySelectorAll('#dock [data-tab]').forEach(b => b.onclick = () => this.toggleTab(b.dataset.tab));
     $('sideMin').onclick = () => this.fold(true);
-    $('kBuild').onclick = e => { const b = e.target.closest('[data-proj]'); if (b) this.api.showProject(+b.dataset.proj); };
+    $('kBuild').onclick = e => { const b = e.target.closest('[data-proj]'); if (b) this.api.showProject(+b.dataset.proj); const g = e.target.closest('[data-sug]'); if (g) this.api.startPlace(g.dataset.sug, 0, 0, '', +g.dataset.lvl); };
     const bar = $('bar');
     bar.onclick = e => { const b = e.target.closest('[data-i]'); if (b) this.api.select(+b.dataset.i); };
     bar.ondblclick = e => { const b = e.target.closest('[data-i]'); if (b) this.api.select(+b.dataset.i, true); };
@@ -146,7 +149,7 @@ export class Panels {
     if (!this.busy && !this.min) {
       const body = $('sideBody'), focus = document.activeElement;
       const holding = focus && body.contains(focus) && focus.tagName === 'SELECT';
-      const [sig, html] = this.tab === 'society' ? this.society(U) : this.tab === 'records' ? this.records(U) : this.tab === 'archive' ? this.archive(U) : this.tab === 'crews' ? this.crews(U) : this.tab === 'build' ? this.build(U) : this.tab === 'life' ? this.life(U) : this.log(U);
+      const [sig, html] = this.tab === 'nb' ? this.nbp.render(U) : this.tab === 'society' ? this.society(U) : this.tab === 'records' ? this.records(U) : this.tab === 'archive' ? this.archive(U) : this.tab === 'crews' ? this.crews(U) : this.tab === 'build' ? this.build(U) : this.tab === 'life' ? this.life(U) : this.log(U);
       if (sig !== this.sig && !holding) {
         const q = focus && focus.id === 'recQ' ? [focus.selectionStart, focus.selectionEnd] : null, top = body.scrollTop;
         body.innerHTML = html(); body.scrollTop = top; this.sig = sig;
@@ -429,14 +432,16 @@ export class Panels {
   // ---------- building ----------
   build(U) {
     const A = this.A, pw = U.power, st = U.stores, mat = U.mat, list = U.projects;
-    const sig = 'b' + JSON.stringify([U.rv, pw, st, mat, U.seed.fab && U.seed.fab.k, U.blueprints, list.map(p => [p.id, p.stage, p.got, p.wait, p.stall, p.powered, p.paused, p.crews, p.out]), this.confirm, A.projSel, this.btab]);
+    const sig = 'b' + JSON.stringify([U.rv, U.advice, pw, st, mat, U.seed.fab && U.seed.fab.k, U.blueprints, list.map(p => [p.id, p.stage, p.got, p.wait, p.stall, p.powered, p.paused, p.crews, p.out]), this.confirm, A.projSel, this.btab]);
     return [sig, () => {
       const used = pw.supply ? Math.min(1, pw.draw / pw.supply) : 0, dark = list.filter(p => p.done && p.type !== 'solar' && !p.powered);
       const open = list.filter(p => !p.done), done = list.filter(p => p.done), bt = this.btab;
       let h = sub('btab', bt, [['plan', 'Plan'], ['list', `Projects · ${open.length}`], ['mat', 'Materials']]);
       if (bt === 'plan') {
+        const AD = U.advice;
+        if (AD) h += `<div class="sec">The Seed suggests</div>` + (AD.note ? `<div class="note">${esc(AD.note)}</div>` : AD.list.length ? AD.list.slice(0, 3).map((o, i) => `<div class="box adv"><i class="bi">${icon(TICON[o.type])}</i><div><b>${i ? '' : 'Next: '}${esc(TYPES[o.type].name)}</b><div class="note" style="margin:2px 0 0">${esc(o.why)}</div></div><button class="btn${i ? '' : ' go'}" data-act="plan" data-type="${o.type}" data-lvl="${o.lvl || 0}">Plan it</button></div>`).join('') : '<div class="note">Nothing is short just now. Build what you like.</div>') + `<div class="sec">How to build</div>`;
         h += how(['Pick a building below.', 'Drag on the map to draw it. <kbd>R</kbd> turns the door; the card shows what it needs. Confirm to add it to the projects.', 'Build crews (Crews window, <kbd>C</kbd>) work through the projects from the top, cutting stone and felling trees for what each needs.', 'A finished building only works with power: see Materials.', 'Root cellars, dug quarters and mines go below ground: the map switches to the view underneath (<kbd>U</kbd>), where the Seed’s soundings show what can be dug and where the seams of ore run. A lift shaft opens the middle and the deep below it (press <kbd>U</kbd> again to go down), for deep vaults, heat taps and richer seams.']);
-        h += `<div class="types">${PLANNABLE.map(t => `<button data-act="plan" data-type="${t}"><i class="bi">${icon(TICON[t])}</i><b>${TYPES[t].name}</b><span>${esc(TYPES[t].use)}</span></button>`).join('')}</div>`;
+        h += `<div class="sec">Everything you can build</div><div class="types">${PLANNABLE.map(t => `<button data-act="plan" data-type="${t}"><i class="bi">${icon(TICON[t])}</i><b>${TYPES[t].name}</b><span>${esc(TYPES[t].use)}</span></button>`).join('')}</div>`;
         if (U.blueprints.length) h += `<div class="sec">Blueprints</div><div class="note" style="margin:0 0 6px">Buildings you saved to place again, same size and layout.</div>` + U.blueprints.map((b, i) => `<div class="q"><span>${esc(b.name)} <em class="dim">${TYPES[b.type].name.toLowerCase()} · ${b.w} × ${b.h}</em></span><button class="btn" data-act="bp" data-i="${i}">Place</button><button data-act="bpDel" data-i="${i}" title="Forget this blueprint">Forget</button></div>`).join('');
         return h;
       }
@@ -538,6 +543,7 @@ export class Panels {
   onClick(e) {
     const el = e.target.closest('[data-act]'); if (!el || el.tagName === 'INPUT' || el.tagName === 'SELECT') return;
     const A = this.A, U = A.ui, act = el.dataset.act, crew = el.dataset.crew != null ? +el.dataset.crew : null;
+    if (act.startsWith('nb') && this.nbp.click(el, U)) { this.sig = ''; this.update(); return; }
     switch (act) {
       case 'fsel': {
         const f = +el.dataset.fid, cap = U.seed.feed - U.seed.queue.length; this.touched = true;
@@ -564,7 +570,7 @@ export class Panels {
       case 'crewNew': this.api.cmd('crewNew', {}); break;
       case 'crewPlan': this.api.cmd('crewPlan', { keep: true }); break;
       case 'crewDel': this.api.cmd('crewDel', { crew }); break;
-      case 'plan': this.api.startPlace(el.dataset.type); break;
+      case 'plan': this.api.startPlace(el.dataset.type, 0, 0, '', +(el.dataset.lvl || 0)); break;
       case 'bp': { const b = U.blueprints[+el.dataset.i]; if (b) this.api.startPlace(b.type, b.w, b.h, b.name); break; }
       case 'bpDel': this.api.cmd('bpDel', { i: +el.dataset.i }); break;
       case 'test': this.api.cmd('test', { mat: el.dataset.mat }); this.api.toast(`The ${el.dataset.mat} test is first on the project list.`); break;
@@ -591,12 +597,13 @@ export class Panels {
     if (act === 'rule') this.api.cmd('crewSet', { crew, rule: el.dataset.rule, on: el.checked });
     else if (act === 'lead') { this.api.cmd('crewSet', { crew, lead: +el.value }); el.blur(); }
     else if (act === 'iso') this.api.cmd('iso', { v: el.checked });
+    else if (act === 'nbk') { this.nbp.click(el, this.A.ui); this.sig = ''; this.update(); }
     else if (act === 'crewKeep') this.api.cmd('crewKeep', { on: el.checked });
   }
 
   // open projects, top left: click one for its card
   tracker(U) {
-    const open = U.projects.filter(p => !p.done), sig = JSON.stringify([open.map(p => [p.id, p.name, p.stage, Math.round(progress(p) * 50), p.paused, p.stall, p.wait, p.crews]), this.A.projSel]);
+    const open = U.projects.filter(p => !p.done), ad = U.advice && U.advice.list[0], sig = JSON.stringify([open.map(p => [p.id, p.name, p.stage, Math.round(progress(p) * 50), p.paused, p.stall, p.wait, p.crews]), this.A.projSel, ad]);
     if (sig === this.trackSig) return; this.trackSig = sig;
     $('trackN').textContent = open.length ? open.length : '';
     $('kBuild').innerHTML = open.length ? open.slice(0, 5).map(p => {
@@ -604,6 +611,8 @@ export class Panels {
       return `<button class="tk${p.stall ? ' stuck' : ''}${this.A.projSel === p.id ? ' on' : ''}" data-proj="${p.id}"><div class="row2"><b class="grow">${esc(p.name)}</b><em>${pct(all)}</em></div>
         <div class="ps">${p.paused ? 'Paused · ' : ''}${esc(names[p.stage])}${p.stall ? ' · stalled' : !p.crews.length && !p.paused ? ' · waiting' : ''}</div><div class="bar"><u style="width:${pct(all)}"></u></div></button>`;
     }).join('') + (open.length > 5 ? `<div class="tk idle">${open.length - 5} more in the build list</div>` : '') : `<div class="tk idle">Nothing being built. Press B to plan a building.</div>`;
+    // the Seed's idea of what comes next, one click from planning it
+    if (ad) $('kBuild').innerHTML += `<button class="tk sug" data-sug="${ad.type}" data-lvl="${ad.lvl || 0}" title="${esc(ad.why)}"><div class="row2"><b class="grow">Suggested: ${esc(TYPES[ad.type].name)}</b><em>Plan</em></div><div class="ps">${esc(ad.why)}</div></button>`;
   }
   // the colonists along the top, like a game's party bar
   colbar(U) {

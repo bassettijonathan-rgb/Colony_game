@@ -15,11 +15,11 @@ import { PRINT_TICKS, planCrews, autoCrew } from './work.js';
 
 export const SCAN_EVERY = SEASON_DAYS;
 const yrs = (sim, c) => (sim.S.tick / DAY_TICKS - c.born) / YEAR_DAYS;
-// whether this person agrees to be scanned: fixed for each person, and less likely for anyone born here
+// whether this person agrees to be scanned: fixed for each person, and less likely for anyone born on this world
 export function willScan(c) {
   if (c.scanOk != null) return c.scanOk;
   const r = lcg((c.look || 1) * 31 + 17)(), has = t => c.traits.includes(t);
-  const no = .08 + (c.native ? .3 : 0) + (has('stubborn') ? .15 : 0) + (has('anxious') ? .1 : 0) - (has('steady') ? .05 : 0);
+  const no = .08 + (c.native ? .3 : 0) + (c.nbr != null ? .25 : 0) + (has('stubborn') ? .15 : 0) + (has('anxious') ? .1 : 0) - (has('steady') ? .05 : 0);
   return r >= no;
 }
 // each night at four: the scanners take as many of those due as they have places for, the longest unscanned first
@@ -36,7 +36,7 @@ export function scanNight(sim) {
   }
   if (n && !S.scanSeen) { S.scanSeen = 1; sim.log(`The scanner made its first recordings last night: ${n === 1 ? 'one person' : `${n} people`}. From now on the Seed scans every adult who agrees once a season, at night. If someone with a scan dies, the Seed can print them again from it.`, 'good', { e: 'scanned', lvl: 2, pid: sc[0].id, title: 'The first scans' }); }
   const refuse = S.cols.filter(c => !c.dead && c.life >= 3 && !willScan(c) && !c.scanSaid);
-  for (const c of refuse.slice(0, 1)) { c.scanSaid = 1; remember(sim, c, 'Refused to be scanned.'); sim.log(`${c.name} won’t be scanned. ${c.native ? 'Born here, they never went through it, and they don’t want a copy of themselves kept in the Seed.' : 'They say one life is enough, and they don’t want a copy kept.'}`, '', { e: 'noscan', lvl: 1, who: c.id, title: 'No scan' }); }
+  for (const c of refuse.slice(0, 1)) { c.scanSaid = 1; remember(sim, c, 'Refused to be scanned.'); sim.log(`${c.name} won’t be scanned. ${c.native || c.nbr != null ? 'Born on this world, they never went through it, and they don’t want a copy of themselves kept in the Seed.' : 'They say one life is enough, and they don’t want a copy kept.'}`, '', { e: 'noscan', lvl: 1, who: c.id, title: 'No scan' }); }
 }
 // someone dead the Seed could wake again, and why not if it can't
 export function canRestore(sim, c) {

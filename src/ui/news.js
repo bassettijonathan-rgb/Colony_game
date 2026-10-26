@@ -14,6 +14,7 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;',
 const KEY = 'colony-news';
 const SMALL_S = 90, SMALL_NEW_S = 180, MAX_LETTERS = 12;   // seconds of play a small letter stays; how many fit
 
+const ACT_LABEL = { nb: 'Neighbours (V)' };
 // what an event means, said once, the first time it happens
 export const EXPLAIN = {
   woke: 'A founder is awake in a printed body. For the first ten days a new body feels strange: they tire faster and work a little slower. Unless you have taken over the crews, the Seed puts each new founder in one.',
@@ -77,6 +78,11 @@ export const EXPLAIN = {
   flarewarn: 'This sun throws off big flares now and then, and the planet’s magnetic field is too weak to turn the particles away. While a storm is overhead everyone shelters and work outside stops. Dose adds up over a lifetime (each person’s Health tab shows it after a check-up): it raises the risk of growths years later, and a parent’s dose shows in their children. A timber roof halves it, the lander’s hull keeps out more, rooms below ground nearly all of it, and a deep vault reached by a lift shaft all of it.',
   flare: 'People shelter in the best cover there is room in: a deep vault first, then rooms below ground, then the shelter, then any building. Children in the Seed’s nursery are inside the hull already.',
   rare: 'Rare earths are a handful of metals, scattered thin through some of the ore deep down. The miners bring them up apart from the rest, and the yard keeps them. A scanner (Build window) needs them for its imaging magnets: with it, the Seed can keep a scan of everyone who agrees, and wake them again if they die.',
+  nbsight: 'Strangers are walking in from the edge of the map. Nobody can tell yet who they are or what they want. The Seed will say more when they reach the camp.',
+  nbmeet: 'Other people live on this world, in settlements beyond the map. They will come back to trade, now and then. The Neighbours window (V) keeps what is known of each settlement: where they live, how far they trust the colony, what they want and what they bring.',
+  told: 'The neighbours have lived here far longer than the colony, so they know things about this land it doesn’t. What they tell is as good as a test in the lab. They teach more in trade, so look for it in the Neighbours window (V) when traders come.',
+  caravan: 'Traders stay the day and the night, and leave in the morning. In the Neighbours window (V), choose what you want from them and what the colony gives: goods are valued in meals, what they want is worth more to them, and the more they trust the colony, the less extra they ask. A fair deal raises their trust; a gift raises it more.',
+  nbjoin: 'Someone from another settlement wants to join the colony. A newcomer arrives grown, with skills of their own, and costs no feedstock. They grew up here, not in the Seed’s archive, so they may be slower to agree to a scan. Their settlement trusts the colony a little less for losing them.',
   scanned: 'A scan is kept for each person until the next one replaces it. If someone with a scan dies, the Health tab of their card (click them in Records, K) has a button to wake them from it: it costs a body’s worth of feedstock, and they lose everything since that night. The founders’ charter allows only one of anyone at a time, so only the dead can be woken.',
   restored: 'Someone woken from a scan is the same person, in a new body, missing whatever happened after the scan. The people around them remember those days; they don’t.',
   noscan: 'Nobody is scanned against their will. Those who refuse can’t be woken again if they die.',
@@ -164,6 +170,7 @@ export class News {
     $('alerts').addEventListener('click', e => { const a = e.target.closest('[data-a]'); if (a) this.goAlert(a.dataset.a); });
     $('lGo').onclick = () => { const k = this.cur; this.closeLetter(); if (k) this.go(k.e); };
     $('lOk').onclick = () => this.closeLetter();
+    $('lAct').onclick = () => { const k = this.cur; this.closeLetter(); if (k && k.e.act) this.api.tab(k.e.act); };
     $('nPause').onchange = e => { this.pause = e.target.checked; this.keep(); };
     $('nExplain').onchange = e => { this.explain = e.target.checked; this.keep(); };
     $('nAgain').onclick = () => { this.seen.clear(); this.explain = true; $('nExplain').checked = true; this.keep(); this.api.toast('New things will be explained again as they happen.'); };
@@ -236,6 +243,7 @@ export class News {
     $('lText').textContent = e.m;
     $('lWhy').hidden = !k.why; $('lWhyT').textContent = k.why || '';
     $('lGo').hidden = !target(e);
+    $('lAct').hidden = !e.act; $('lAct').textContent = ACT_LABEL[e.act] || 'Open';
     const more = this.stack.length - 1; $('lMore').textContent = more > 0 ? `${more} more on the right` : '';
     $('letter').className = 'glass ' + tone(e) + (e.e === 'chronicle' ? ' chron' : ''); $('letter').hidden = false;
     $('lPaused').hidden = !this.resume;

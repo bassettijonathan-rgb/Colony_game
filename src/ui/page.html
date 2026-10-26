@@ -232,6 +232,13 @@ ol.how{margin:0 0 10px;padding:8px 10px 8px 28px;border-left:2px solid var(--acc
 .seg button.on{background:linear-gradient(180deg,rgba(143,224,255,.24),rgba(143,224,255,.1));color:var(--txt);box-shadow:inset 0 0 0 1px rgba(143,224,255,.4)}
 .seg button.pk{color:var(--txt);box-shadow:inset 0 0 0 1px rgba(255,200,120,.55);background:rgba(255,200,120,.1)}
 .box.rule>b{display:block;margin-bottom:6px;color:#e9edf3}.box.rule.off{opacity:.6}.box.rule .seg button{height:auto;min-height:28px;padding:4px 3px;line-height:1.2}
+.tk.sug{border-left:2px solid var(--seed)}.tk.sug .ps{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tk.sug em{color:var(--seed);font-style:normal}
+.box.adv{display:flex;align-items:center;gap:10px}.box.adv>div{flex:1;min-width:0}.box.adv .bi{flex:none;width:30px;height:30px;border-radius:3px;display:grid;place-items:center;background:rgba(143,224,255,.08);color:var(--seed)}.box.adv .btn{flex:none}
+.trow{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 6px;border-radius:2px;font-size:12px}.trow.on{background:rgba(143,224,255,.08)}
+.trow>span:first-child{display:flex;flex-direction:column;min-width:0}.trow small{color:var(--mut);font-size:10.5px}.trow.lk{justify-content:flex-start;cursor:pointer}.trow.lk input{margin:0 4px 0 0}
+.step{display:flex;align-items:center;gap:2px;flex:none}.step button{min-width:24px;height:22px;padding:0 4px;border:0;border-radius:2px;background:rgba(255,255,255,.08);color:#d6dce6;font:700 11px Manrope,system-ui,sans-serif;cursor:pointer}.step button:hover{background:rgba(255,255,255,.16)}
+.step em{min-width:26px;text-align:center;font-style:normal;font-weight:700}.deal{margin-top:10px}.deal .bar u.ok{background:linear-gradient(90deg,#5fbf72,#9be38f);box-shadow:0 0 8px #7fdc8a}
+.nbp .ask{margin-top:8px;padding:8px;border-radius:2px;background:rgba(243,182,92,.1)}.nbp .ask .row2{margin-top:6px;gap:6px}.chip .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:-1px}
 .sup{font-size:11px;color:var(--mut);margin-top:6px;line-height:1.4}.sup .bar{margin:0 0 4px}.sup b{color:#d7dde6;font-weight:600}.box.rule .row2{margin-top:6px;gap:6px;flex-wrap:wrap}
 .seg.sm button{height:26px;font-size:11.5px}
 .seg.wrap{display:grid;grid-template-columns:repeat(3,1fr)}
@@ -542,6 +549,7 @@ table.rt{width:100%;border-collapse:collapse;font-size:11px;margin:4px 0 8px}tab
   <symbol id="i-school" viewBox="0 0 16 16"><path d="M1.5 6L8 3l6.5 3L8 9z"/><path d="M4 7.3v3.2c1.2 1.3 2.5 1.8 4 1.8s2.8-.5 4-1.8V7.3"/><path d="M14.5 6v4"/></symbol>
   <symbol id="i-library" viewBox="0 0 16 16"><path d="M2.5 2.5h2.5v11H2.5zM6 2.5h2.5v11H6z"/><path d="M9.6 3.2l2.4-.6 2.4 10.4-2.4.6z"/></symbol>
   <symbol id="i-watch" viewBox="0 0 16 16"><path d="M5 14.5L6 6h4l1 8.5"/><path d="M4.5 6h7L8 2.5z"/><circle cx="8" cy="9.5" r="1.1"/></symbol>
+  <symbol id="i-nb" viewBox="0 0 16 16"><circle cx="4.6" cy="4.4" r="1.7"/><circle cx="11.4" cy="4.4" r="1.7"/><path d="M1.8 12.5c.4-2.6 1.6-4 2.8-4s2.4 1.4 2.8 4M8.6 12.5c.4-2.6 1.6-4 2.8-4s2.4 1.4 2.8 4M6.2 6.8h3.6M8.6 5.6l1.2 1.2-1.2 1.2"/></symbol>
   <symbol id="i-society" viewBox="0 0 16 16"><circle cx="8" cy="3.6" r="1.6"/><circle cx="3.4" cy="10.4" r="1.6"/><circle cx="12.6" cy="10.4" r="1.6"/><path d="M6.6 5L4.4 8.8M9.4 5l2.2 3.8M5.2 11h5.6"/></symbol>
 </svg>
 <div id="app">
@@ -678,6 +686,7 @@ table.rt{width:100%;border-collapse:collapse;font-size:11px;margin:4px 0 8px}tab
       <button data-tab="life" title="Food and local life (G)"><kbd>G</kbd><svg class="ic"><use href="#i-life"/></svg>Life</button>
       <button data-tab="records" title="Clinic records (K)"><kbd>K</kbd><svg class="ic"><use href="#i-clinic"/></svg>Records</button>
       <button data-tab="society" title="Society: rules, council, school, library, watch and customs (P)"><kbd>P</kbd><svg class="ic"><use href="#i-society"/></svg>Society</button>
+      <button data-tab="nb" title="Neighbours: other settlements, visitors and trade (V)"><kbd>V</kbd><svg class="ic"><use href="#i-nb"/></svg>Neighbours</button>
       <button id="bStats" title="Colony record and charts (T)"><kbd>T</kbd><svg class="ic"><use href="#i-chart"/></svg>Stats</button>
       <button data-tab="log" title="Log (L)"><kbd>L</kbd><svg class="ic"><use href="#i-log"/></svg>Log<span class="badge" id="logNew" hidden></span></button>
     </nav>
@@ -710,7 +719,7 @@ table.rt{width:100%;border-collapse:collapse;font-size:11px;margin:4px 0 8px}tab
         <h2 id="lTitle"></h2>
         <p id="lText"></p>
         <div class="why" id="lWhy"><i>New</i><span id="lWhyT"></span></div>
-        <div class="acts"><span id="lPaused">Paused</span><span id="lMore"></span><button class="pill" id="lGo">Show me</button><button class="go" id="lOk">OK</button></div>
+        <div class="acts"><span id="lPaused">Paused</span><span id="lMore"></span><button class="pill" id="lGo">Show me</button><button class="pill" id="lAct" hidden>Open</button><button class="go" id="lOk">OK</button></div>
       </div>
     </div>
     <div id="toast"></div>

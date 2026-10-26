@@ -21,7 +21,7 @@ const STYLES = ['bob', 'curly', 'short', 'bun', 'pony', 'cap', 'bald', 'bandana'
 // y is the body's age in years: children wear their own bright clothes until they join a crew, and hair greys after fifty
 export function lookOf(c, crew, y = 30) {
   const r = lcg(c.look + 11);
-  const app = crew < 0 && y < 13 ? hsl((c.look * .37) % 360, .4, .56) : crewColour(crew);
+  const app = c.coat ? c.coat : crew < 0 && y < 13 ? hsl((c.look * .37) % 360, .4, .56) : crewColour(crew);   // visitors wear their own settlement's colours
   const skin = SKIN[(r() * SKIN.length) | 0], hair0 = HAIR[(r() * HAIR.length) | 0], style = STYLES[(r() * STYLES.length) | 0], capc = hsl(r() * 360, .35, .4), trim = r();
   const hair = y > 50 ? mix3(hair0, [206, 206, 210], Math.min(.85, (y - 50) / 28)) : hair0;
   return { app, app2: mix3(app, [240, 230, 210], .55), skin, hair, style: y < 13 && (style === 'helmet' || style === 'cap' || style === 'bald') ? 'short' : style, capc, trim };

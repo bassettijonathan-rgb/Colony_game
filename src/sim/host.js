@@ -1,7 +1,7 @@
 // The simulation's side of the conversation with the page. It runs inside a Web Worker when the
 // browser allows one, or on the page itself otherwise; either way it only talks through messages.
 //   page -> sim: init {seed, mode, count, save}, land {site}, speed {v}, save {id}, cmd {op, ...}, watch {id}
-//   sim -> page: survey {world, sites}, ready {world, site, roster, ui, ...}, snap {pos, clock, perf},
+//   sim -> page: survey {world, sites}, ready {world, site, roster, ui, ...}, snap {pos, gpos, clock, perf},
 //                state {ui, log, roster?}, wear {chunks}, known {chunks}, marks {gone, quarry, ground}, saved {id, data}, cmd {id, r}
 //   skips: page -> sim skip {kind}, skipStop; sim -> page skip {from, to, at} while it runs, skipEnd {why, chron} or skipNo {why}
 import { generateWorld, findSites, landAt } from '../core/world.js';
@@ -25,8 +25,8 @@ export function createSimCore(post) {
       const t0 = now();
       for (let i = 0; i < n; i++) sim.tick();
       const ms = now() - t0; perf.ticks += n; perf.tickMs += ms; perf.worst = Math.max(perf.worst, ms / n);
-      const pos = sim.snapshot(new Float32Array(sim.S.cols.length * 4));
-      post({ t: 'snap', tick: sim.S.tick, pos, clock: sim.clock(), perf: perfOut() }, [pos.buffer]);
+      const pos = sim.snapshot(new Float32Array(sim.S.cols.length * 4)), gpos = guests();
+      post({ t: 'snap', tick: sim.S.tick, pos, gpos, clock: sim.clock(), perf: perfOut() }, [pos.buffer, gpos.buffer]);
     }
     if (t - lastWear > 500) { lastWear = t; chunks('wear', sim.dirty, k => sim.wearChunk(k)); chunks('known', sim.kdirty, k => sim.knownChunk(k)); marks(); }
     if (t - lastState > 400) { lastState = t; state(); }
@@ -40,8 +40,8 @@ export function createSimCore(post) {
     perf.ticks += n;
     if (t - K.shown > 120) {
       K.shown = t;
-      const pos = sim.snapshot(new Float32Array(S.cols.length * 4));
-      post({ t: 'snap', tick: S.tick, pos, clock: sim.clock(), perf: perfOut() }, [pos.buffer]);
+      const pos = sim.snapshot(new Float32Array(S.cols.length * 4)), gpos = guests();
+      post({ t: 'snap', tick: S.tick, pos, gpos, clock: sim.clock(), perf: perfOut() }, [pos.buffer, gpos.buffer]);
       post({ t: 'skip', from: K.from, to: K.until, at: S.tick });
     }
     if (t - lastWear > 1000) { lastWear = t; chunks('wear', sim.dirty, k => sim.wearChunk(k)); chunks('known', sim.kdirty, k => sim.knownChunk(k)); marks(); }
@@ -55,6 +55,8 @@ export function createSimCore(post) {
     post({ t: 'skipEnd', why, chron: C, stop: K.stop ? K.stop.n : 0 });
     last = now(); acc = 0;
   }
+  // visitors walking in from the edge, four numbers each like the colonists
+  const guests = () => sim.guestSnap(new Float32Array((sim.S.nb ? sim.S.nb.g.length : 0) * 4));
   function chunks(kind, set, get) {
     if (!set.size) return;
     const out = []; for (const k of set) out.push([k, get(k)]); set.clear();
@@ -90,7 +92,7 @@ export function createSimCore(post) {
       t: 'ready', seed: W.seed, land: W.land, site: W.site, siteId: site.id, tag: sites && sites[site.id] ? sites[site.id].tag : '', patch, rock: W.rock, mode: S.mode,
       world: { type: W.type, elev: W.elev, moist: W.moist },
       roster: sim.roster(), ui: sim.ui(-1), log: sim.logSince(0), gone: S.gone, quarry: S.quarry, hist: S.hist.rows,
-      pos: sim.snapshot(new Float32Array(S.cols.length * 4)), clock: sim.clock(),
+      pos: sim.snapshot(new Float32Array(S.cols.length * 4)), gpos: guests(), clock: sim.clock(),
       timing: { world: t1 - t0, land: t2 - t1, graph: t3 - t2, field: t4 - t3, nodes: P.nodes.length }
     });
     sentLog = S.logN; sim.gnew = []; sim.qnew = []; sim.tnew = [];

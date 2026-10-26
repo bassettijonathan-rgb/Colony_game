@@ -17,7 +17,7 @@ export const GENES = ['heart', 'lungs', 'joints', 'kidney', 'growth'];
 
 // ---------- what a body starts with ----------
 // family risks, from the stored genome (no draw from the main stream), and how much it takes before each condition shows
-function seedBody(c, gn) {
+export function seedBody(c, gn) {
   const b = c.bd, r = lcg((c.look || 1) * 7 + 3);
   b.sl = { rad: 0, diet: 0, sleep: 0, joint: 0, lung: 0 };
   b.gn = gn || Object.fromEntries(GENES.map(k => [k, Math.round(((r() + r()) / 2 - .4) * 50) / 100]));   // mostly near zero, some a real risk

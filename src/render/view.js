@@ -218,6 +218,13 @@ export class View {
       const r = Math.max(.35, 2.2 / k);
       for (const i of order) drawDot(dc, arts[i], pos[i * 4], pos[i * 4 + 1], r);
     }
+    // visitors from another settlement, in their own colours
+    const G = F.G;
+    if (G) for (let i = 0; i < G.n; i++) {
+      const o = i * 4, f = G.pos[o + 3], act = f >> 1; if (hidden(act) || !vis(G.pos[o], G.pos[o + 1], 1.5)) continue;
+      if (near) { drawPerson(dc, G.arts[i], G.pos[o], G.pos[o + 1], G.pos[o + 2], f & 1, act, F.time); if (act !== ACT.BED) hDisc(G.pos[o], G.pos[o + 1], .28, 1.2); }
+      else drawDot(dc, G.arts[i], G.pos[o], G.pos[o + 1], Math.max(.35, 2.2 / k));
+    }
     if (C && C.hz) this.drawFlames(dc, hDisc, C, vis, k, F.time);
     hc.globalCompositeOperation = 'source-over';
   }
@@ -374,6 +381,15 @@ export class View {
     };
     if (this.labels && z >= 14) for (const i of this.order) if (i !== F.sel) label(i, false);
     if (F.hover >= 0 && F.hover !== F.sel) label(F.hover, false);
+    // visitors' names, on a tag in their colours
+    if (F.G && F.G.n && !this.below) for (let i = 0; i < F.G.n; i++) {
+      if (!(i === F.ghover || (this.labels && z >= 14))) continue;
+      const o = i * 4; if (hidden(F.G.pos[o + 3] >> 1)) continue;
+      const X = sx(F.G.pos[o]), Y = sy(F.G.pos[o + 1]); if (X < -60 || Y < -40 || X > this.VW + 60 || Y > this.VH + 40) continue;
+      const name = F.G.names[i] || '', ly = Y + Math.max(10, z * .62) + fs * .2, tw = ui.measureText(name).width + 12, c = F.G.arts[i].L.app;
+      ui.fillStyle = `rgba(${c[0] * .5 | 0},${c[1] * .5 | 0},${c[2] * .5 | 0},.88)`; ui.beginPath(); ui.roundRect(X - tw / 2, ly - fs * .65, tw, fs * 1.3, fs * .65); ui.fill(); ui.strokeStyle = `rgb(${Math.min(255, c[0] * 1.5) | 0},${Math.min(255, c[1] * 1.5) | 0},${Math.min(255, c[2] * 1.5) | 0})`; ui.lineWidth = 1.5; ui.stroke();
+      ui.fillStyle = '#f2f4f8'; ui.fillText(name, X, ly + .5);
+    }
     if (F.sel >= 0 && F.sel < F.n) {
       const o = F.sel * 4, X = sx(F.pos[o]), Y = sy(F.pos[o + 1]), r = Math.max(9, z * .56) + Math.sin(F.time * 4) * 1.2, l = Math.max(5, z * .16);
       ui.strokeStyle = 'rgba(255,236,190,.95)'; ui.lineWidth = 1.6; ui.shadowColor = 'rgba(0,0,0,.6)'; ui.shadowBlur = 4; ui.beginPath();
@@ -564,6 +580,7 @@ export class View {
     if (F.colony) for (const s of F.colony.stakes) { g.fillStyle = '#9ff0ff'; g.fillRect(s.x * k - 1.5 * D, s.y * k - 1.5 * D, 3 * D, 3 * D); }
     if (F.colony) for (const p of F.colony.projects) if (p.below) { if (p.door) { g.fillStyle = '#c9a26b'; g.fillRect(p.door.x * k - D, p.door.y * k - D, 2 * D, 2 * D); } } else if (p.type !== 'test') { g.fillStyle = p.done ? 'rgba(220,226,232,.95)' : 'rgba(243,182,92,.9)'; g.fillRect(p.x * k, p.y * k, Math.max(2 * D, p.w * k), Math.max(2 * D, p.h * k)); }
     if (F.colony && F.colony.hz) { g.fillStyle = '#ff7a2a'; for (const tl of F.colony.hz.fire) g.fillRect((tl % MAP) * k - D, (tl / MAP | 0) * k - D, 2 * D, 2 * D); }
+    if (F.G) for (let i = 0; i < F.G.n; i++) { const o = i * 4; if (hidden(F.G.pos[o + 3] >> 1)) continue; const c = F.G.arts[i].L.app; g.fillStyle = '#fff'; g.fillRect(F.G.pos[o] * k - 2 * D, F.G.pos[o + 1] * k - 2 * D, 4 * D, 4 * D); g.fillStyle = `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`; g.fillRect(F.G.pos[o] * k - D, F.G.pos[o + 1] * k - D, 2 * D, 2 * D); }
     for (let i = 0; i < F.n; i++) { const act = F.pos[i * 4 + 3] >> 1; if (hidden(act)) continue; const c = F.arts[i].L.app; g.fillStyle = `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`; g.fillRect(F.pos[i * 4] * k - D, F.pos[i * 4 + 1] * k - D, 2 * D, 2 * D); }
     const Ld = this.W.land; if (Ld) { g.strokeStyle = '#8fe0ff'; g.lineWidth = 1.5 * D; g.beginPath(); g.arc(Ld.x * k, Ld.y * k, 4 * D, 0, 6.3); g.stroke(); }
     const [L, T, R, B] = this.rect; g.strokeStyle = 'rgba(255,236,190,.9)'; g.lineWidth = 1.2 * D; g.strokeRect(L * k, T * k, (R - L) * k, (B - T) * k);
