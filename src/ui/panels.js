@@ -63,7 +63,7 @@ const topSkills = (sk, n = 3) => SKILLS.map(k => [k, sk[k]]).sort((a, b) => b[1]
 // a field's crop in words, and the buttons to choose what goes in it next
 function fieldBits(p) {
   const c = p.crop || {}, cr = CROPS[c.k];
-  const state = c.st === 'grow' ? `${cr.name}, ${pct(c.g)} grown${c.eta == null ? '' : c.eta === Infinity || c.eta === null ? ', won’t ripen before the frost' : `, ripe in about ${c.eta} day${c.eta === 1 ? '' : 's'}`}` : c.st === 'ripe' ? `${cr.name}, ripe: ready to harvest` : c.st === 'dead' ? `${cr ? cr.name : 'The crop'} killed by frost: to be cleared` : c.plan ? `Bare: ${CROPS[c.plan].name.toLowerCase()} next` : 'Bare: nothing has time to ripen before Deep cold';
+  const state = c.st === 'grow' ? `${cr.name}, ${pct(c.g)} grown${c.eta == null ? '' : c.eta === Infinity || c.eta === null ? ', won’t ripen before the frost' : `, ripe in about ${c.eta} day${c.eta === 1 ? '' : 's'}`}` : c.st === 'ripe' ? `${cr.name}, ripe: ready to harvest` : c.st === 'dead' ? `${cr ? cr.name : 'The crop'} killed by frost: to be cleared` : c.plan ? `Bare: ${CROPS[c.plan].name.toLowerCase()} next` : c.soon ? `Bare: ${CROPS[c.soon.k].name.toLowerCase()} in about ${c.soon.days} day${c.soon.days === 1 ? '' : 's'}, when it is warm enough (they keep far longer than a quick crop)` : 'Bare: nothing has time to ripen before Deep cold';
   return [esc(state) + (c.st === 'grow' && c.h < .99 ? ` · ${pct(1 - c.h)} lost` : ''),
     `<div class="seg sm wrap">${['auto', ...CROP_KEYS, 'fallow'].map(k => `<button data-act="crop" data-id="${p.id}" data-v="${k}" class="${(c.want || 'auto') === k ? 'on' : ''}">${k === 'auto' ? 'Seed chooses' : k === 'fallow' ? 'Leave fallow' : CROPS[k].name}</button>`).join('')}</div>`];
 }
@@ -204,7 +204,7 @@ export class Panels {
       for (const f of suggestFirst(pool, capLeft)) this.chosen.add(f);
     }
     for (const f of [...this.chosen]) { const p = arch[f]; if (!p || p.woke != null || sd.queue.includes(f) || (sd.printing && sd.printing.fid === f)) this.chosen.delete(f); }
-    const G = U.gen, sig = ['a', U.rv, sd.feed, sd.fb, sd.queue.join('.'), sd.printing ? sd.printing.fid : -1, [...this.chosen].join('.'), arch.length, JSON.stringify(G)].join('|');
+    const G = U.gen, sig = ['a', U.rv, JSON.stringify(sd.short), sd.feed, sd.fb, sd.queue.join('.'), sd.printing ? sd.printing.fid : -1, [...this.chosen].join('.'), arch.length, JSON.stringify(G)].join('|');
     return [sig, () => {
       const names = new Map(arch.map(p => [p.fid, p.name]));
       const plants = U.projects.filter(p => p.type === 'plant' && p.done);
@@ -216,6 +216,7 @@ export class Panels {
       h += `</div>`;
       h += this.tanksBox(U);
       if (capLeft > 0) {
+        if (sd.short) h += `<div class="note warn">Food is short: the larder holds about ${sd.short.days} day${sd.short.days === 1 ? '' : 's'} of food a person, and the colony needs about ${sd.short.need} to reach the first crops after Deep cold. Everyone woken now eats from it too. The feedstock keeps, so they can wait in the archive.</div>`;
         h += `<div class="note">Pick who wakes first. The archive keeps everyone you don't pick; ${capLeft} ${capLeft === 1 ? 'body is' : 'bodies are'} left to print.</div>
           <div class="row2" style="margin-bottom:6px"><button class="btn" data-act="seedpick">Seed's pick</button><button class="btn" data-act="clear"${this.chosen.size ? '' : ' disabled'}>Clear</button><span class="grow"></span><button class="btn go" data-act="print"${this.chosen.size ? '' : ' disabled'}>Print ${this.chosen.size || ''} selected</button></div>
           ${this.chosen.size ? `<div class="note">In this order: ${[...this.chosen].map(f => esc(names.get(f))).join(', ')}.</div>` : ''}`;

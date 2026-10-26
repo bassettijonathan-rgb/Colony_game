@@ -2,7 +2,7 @@
 // body to print), crews and what they do (building, quarrying, felling, foraging, farming, the kitchen, workshop
 // and lab benches, surveying), and the commands the player gives through the page. The books for buildings are
 // kept in build.js, and for food in food.js.
-import { MAP, HOUR, DAY_TICKS, ACT, SHIFTS, T, WORKS, WORK_NAME } from './consts.js';
+import { MAP, HOUR, DAY_TICKS, ACT, SHIFTS, T, WORKS, WORK_NAME, SEASON_DAYS, YEAR_DAYS } from './consts.js';
 import { rnd, ri, clamp } from './rng.js';
 import { remember, trustAll, playAt } from './life.js';
 import { suggestFirst } from './founders.js';
@@ -16,8 +16,8 @@ import { FIRE_STEP, beat } from './hazards.js';
 import { take, order, release } from './control.js';
 import { restoreStart, restoreDone, queueRestore } from './scan.js';
 import { storyPlot, storyBuilt } from './story.js';
-import { eat, analyse, labHour, kitchenJob, cookMeals, foodOf, add, patchLeft, takePatch, inSeason, cropPlan, sowUnits, harvestLoads, keyOf, isCrop, mealsInStore, kitchenOnly, hasKitchen, vatLimit, SAMPLES, PROC_DAYS, CROPS, CROP_KEYS } from './food.js';
-import { dayWeather, untilDeep, doyOf, seasonOf } from './year.js';
+import { eat, analyse, labHour, kitchenJob, cookMeals, foodOf, add, patchLeft, takePatch, inSeason, cropPlan, cropWait, sowUnits, harvestLoads, keyOf, isCrop, mealsInStore, kitchenOnly, hasKitchen, vatLimit, vatsFor, VAT_LOADS, VAT_FILL, SAMPLES, PROC_DAYS, CROPS, CROP_KEYS } from './food.js';
+import { dayWeather, untilDeep, doyOf, seasonOf, DEEP } from './year.js';
 import { careArrive, careTimer, MED_KIT, MED_MADE, TRIAGE, MEDIC } from './care.js';
 import { capOf as bodyCap } from './body.js';
 import { worker, portion, playSpot, BIT } from './lives.js';
@@ -98,7 +98,7 @@ function plantTick(sim) {
           sd.fb -= FEED.per; sd.feed++; S.stats.feedstock = (S.stats.feedstock || 0) + 1;
           const asleep = S.archive.some(q => q.woke == null && !sd.queue.includes(q.fid)), ask = S.gen.asks[0], couple = ask && `${S.cols[ask.a].name} and ${S.cols[ask.b].name}`;
           const next = sd.queue.length ? `The fabricator starts on ${S.archive[sd.queue[0]].name}, next in line.` : asleep ? `The fabricator can print one more founder: choose who in the Archive.${couple ? ` If you choose nobody before dawn, it goes to the child ${couple} asked for.` : ''}` : couple ? `At dawn it goes to the child ${couple} asked for.` : 'It waits in the fabricator.';
-          sim.log(`${p.name} has made feedstock for another body. ${next}`, 'good', { e: 'feedmade', lvl: asleep || sd.queue.length ? 2 : 1, pid: p.id, title: 'Feedstock for one more person' });
+          sim.log(`${p.name} has made feedstock for another body. ${next}${asleep || sd.queue.length ? shortNote(foodShort(sim)) : ''}`, 'good', { e: 'feedmade', lvl: asleep || sd.queue.length ? 2 : 1, pid: p.id, title: 'Feedstock for one more person' });
         }
       }
       const stop = plantStop(S);
@@ -145,6 +145,20 @@ function fitFor(c, w) {
 }
 // after Deep cold, the weeks of thaw before the first crops ripen: the larder has to cover them too
 export const THAW_GAP = 20;
+// days of food a person the colony needs in store now to reach the first crops after the next Deep cold, or 0 in the
+// months when food can still be found and grown
+export function leanNeed(sim) {
+  const doy = doyOf(sim.cal), ahead = untilDeep(sim.cal), deepStart = DEEP * SEASON_DAYS;
+  if (doy >= deepStart) return YEAR_DAYS - doy + THAW_GAP;
+  if (doy < THAW_GAP) return THAW_GAP - doy;
+  return ahead <= 30 ? ahead + SEASON_DAYS + THAW_GAP : 0;
+}
+// food for fewer days than the lean months ahead need: what the fabricator's messages and the archive warn of
+export function foodShort(sim) {
+  const live = sim.S.cols.filter(c => !c.dead).length || 1, days = Math.floor(mealsInStore(sim, true) / live), need = leanNeed(sim);
+  return days < need ? { days, need } : null;
+}
+const shortNote = q => q ? ` The larder holds food for about ${q.days} day${q.days === 1 ? '' : 's'}, and the colony needs about ${q.need} to reach the first crops after Deep cold: everyone woken now eats from it too.` : '';
 export function crewNeeds(sim) {
   const S = sim.S, F = S.F, Y = S.stores.yard, people = S.cols.filter(c => !c.dead), n = people.filter(worker).length, B = built(S), has = t => B.filter(p => p.type === t && (p.powered || t === 'field'));
   const need = [];   // in order of what matters most
@@ -156,7 +170,7 @@ export function crewNeeds(sim) {
   add('forage', days < 3 ? Math.ceil(people.length / 4) : days < 8 ? Math.max(1, Math.ceil(people.length / 8)) : 1);
   // the last weeks before Deep cold: enough put by to see the cold through, when nothing grows and little can be found
   // and the thaw after it, until the first crops ripen: the hungry weeks
-  const ahead = untilDeep(sim.cal); if (ahead > 0 && ahead <= 30 && days < ahead + 20 + THAW_GAP) add('forage', Math.ceil(people.length / (days < ahead + 20 ? 3 : 5)));
+  const ahead = untilDeep(sim.cal); if (ahead > 0 && ahead <= 40 && days < ahead + 20 + THAW_GAP) add('forage', Math.ceil(people.length / (days < ahead + 20 ? 2 : 3)));
   { const doy = doyOf(sim.cal); if (seasonOf(doy) === 0 && doy < 25 && days < 12) add('forage', Math.ceil(people.length / 3)); }
   if (tested || F.firstHarvest || F.vats.length) add('kitchen', Math.max(1, Math.ceil(people.length / 10)) + (people.some(c => c.hungry) && kitchenOnly(sim) > 4 ? 1 : 0));
   // a working feedstock plant eats biomass and stone every half day: a quarry crew for as long as it runs, and another
@@ -542,8 +556,8 @@ function finish(sim, p) {
     trustAll(sim, 6, 'Slept under a roof again.');
   } else if (p.type === 'field') {
     p.crop = { k: '', st: 'bare', g: 0, h: 1, want: 'auto', todo: null, sowK: '', left: null, total: 0, ripe: 0, sown: 0 };
-    const k = cropPlan(sim, p), farmers = S.crews.some(cr => !cr.gone && cr.work === 'farm' && cr.members.length);
-    sim.log(`${p.name} is ready: ${cap.tiles} tiles of made soil.${k ? ` The Seed would sow ${CROPS[k].name.toLowerCase()}.` : ' Nothing in the seed bank could ripen before Deep cold now, so it stays bare until Thaw.'}${farmers ? '' : ' It needs a farm crew to sow and harvest it.'}`, 'good', { e: 'field', lvl: 1, pid: p.id, title: 'A field of made soil' });
+    const k = cropPlan(sim, p), soon = !k && cropWait(sim, p), farmers = S.crews.some(cr => !cr.gone && cr.work === 'farm' && cr.members.length);
+    sim.log(`${p.name} is ready: ${cap.tiles} tiles of made soil.${k ? ` The Seed would sow ${CROPS[k].name.toLowerCase()}.` : soon ? ` The Seed will sow ${CROPS[soon.k].name.toLowerCase()} in about ${soon.days} day${soon.days === 1 ? '' : 's'}, when it is warm enough.` : ' Nothing in the seed bank could ripen before Deep cold now, so it stays bare until Thaw.'}${farmers ? '' : ' It needs a farm crew to sow and harvest it.'}`, 'good', { e: 'field', lvl: 1, pid: p.id, title: 'A field of made soil' });
     trustAll(sim, 2, `Watched ${p.name} being made out of bare local ground.`);
   } else {
     const what = { cellar: `cool storage for ${cap.store} loads of food`, burrow: `${cap.beds} bunks, warm under the ground`, dorm: `${cap.beds} bunks`, commons: `seats for ${cap.seats}`, workshop: `${cap.benches} bench${cap.benches > 1 ? 'es' : ''}`, clinic: `${cap.beds} beds`, solar: `${cap.panels} panels making ${cap.supply} kW`, lab: `${cap.benches} bench${cap.benches > 1 ? 'es' : ''}`,
@@ -891,8 +905,9 @@ export function onTimer(sim, c) {
     case 'vat': {
       const f = foodOf(sim, c.food), F = S.F;
       if (f) {
-        const v = F.vats.find(q => q.src === c.food && q.n < 4 && q.start > S.tick - 3 * HOUR);
-        if (v) v.n++; else { F.vid = (F.vid || 0) + 1; F.vats.push({ id: F.vid, src: c.food, n: 1, proc: f.proc, start: S.tick, ready: S.tick + PROC_DAYS[f.proc] * DAY_TICKS, taken: 0 }); }
+        const v = F.vats.find(q => q.src === c.food && q.n < VAT_LOADS && q.start > S.tick - VAT_FILL);
+        if (v) v.n++; else if (F.vats.length >= vatsFor(S)) add(F.larder.raw, c.food, 1);   // someone else filled the last one first: back in the larder
+        else { F.vid = (F.vid || 0) + 1; F.vats.push({ id: F.vid, src: c.food, n: 1, proc: f.proc, start: S.tick, ready: S.tick + PROC_DAYS[f.proc] * DAY_TICKS, taken: 0 }); }
         S.rv++;
       }
       c.carry = ''; c.food = ''; c.from = ''; c.job = ''; c.act = ACT.IDLE; break;
