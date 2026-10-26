@@ -42,7 +42,7 @@ export function skipMark(sim) {
 }
 
 // the chronicle of a skip, from the events it collected; kept on the colony and logged as a letter
-export function chronicle(sim, M, why) {
+export function chronicle(sim, M, why, o = {}) {
   const S = sim.S, live = S.cols.filter(c => !c.dead), ev = M.ev, of = (...k) => ev.filter(e => k.includes(e.e));
   const name = e => e.who != null && S.cols[e.who] ? S.cols[e.who].name : '';
   const days = sim.day - M.day, P = [];
@@ -68,7 +68,7 @@ export function chronicle(sim, M, why) {
   if (p) P.push(p.trim());
   // what got built, and the work
   p = '';
-  const done = built(S).filter(q => !M.built.has(q.id) && q.type !== 'test').map(q => q.name);
+  const had = M.built instanceof Set ? M.built : new Set(M.built), done = built(S).filter(q => !had.has(q.id) && q.type !== 'test').map(q => q.name);
   if (done.length) p += `Finished: ${some(done, 8)}. `;
   const har = of('harvested', 'harvest').length, hung = of('nofood').length, blight = of('blight', 'frost').length;
   if (har) p += `${cap(num(har, 'harvest', 'harvests'))} came in.${blight ? ` Frost or blight spoiled ${num(blight, 'field', 'fields')}.` : ''} `;
@@ -80,6 +80,7 @@ export function chronicle(sim, M, why) {
   // the colony as a society
   p = '';
   for (const e of of('council', 'councilnew', 'rule', 'custom', 'protest', 'lost', 'nativelead', 'lastfounder')) p += e.m + ' ';
+  for (const e of of('moment')) if (e.m) p += `${e.title}: ${e.m} `;
   const fights = of('fight', 'firstfight').length, bd = of('breakdown').length;
   if (fights) p += `There ${fights === 1 ? 'was one fight' : `were ${fights} fights`}. `;
   if (bd) p += `${cap(num(bd, 'person', 'people'))} broke down under the strain. `;
@@ -100,9 +101,10 @@ export function chronicle(sim, M, why) {
   if (small.length) p += `Also: ${list([...new Set(small.map(e => `“${e.title}”`))])}. `;
   if (p) P.push(p.trim());
   // and why it ended
-  P.push(why ? `The skip stopped early, for “${why}”.` : 'Nothing needed you, so the skip ran its full length.');
-  const C = { d0: M.cal, d1: sim.cal, title: `${cap(dateOf(M.cal))} to ${dateOf(sim.cal)}`, text: P };
+  if (!o.year) P.push(why ? `The skip stopped early, for “${why}”.` : 'Nothing needed you, so the skip ran its full length.');
+  const yr = Math.floor((M.cal - 1) / YEAR_DAYS) + 1, id = S.chronN = (S.chronN || 0) + 1;
+  const C = { id, d0: M.cal, d1: sim.cal, title: o.year ? `Year ${yr}` : `${cap(dateOf(M.cal))} to ${dateOf(sim.cal)}`, text: P, year: !!o.year };
   S.chron = (S.chron || []).concat(C).slice(-MAX_KEPT); S.rv++;
-  sim.log(P.join('\n\n'), '', { e: 'chronicle', lvl: 2, title: 'The chronicle' });
+  sim.log(P.join('\n\n'), '', { e: 'chronicle', lvl: o.year ? 1 : 2, title: o.year ? `The chronicle of year ${yr}` : 'The chronicle', ci: id });
   return C;
 }

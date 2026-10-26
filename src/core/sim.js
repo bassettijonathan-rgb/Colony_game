@@ -28,6 +28,8 @@ import { newSoc, socHour, socUI, migrateSoc } from './society.js';
 import { buildAdvice } from './advice.js';
 import { newNb, nbMorning, guestsThink, guestArrive, guestSnap, nbUI, migrateNb, trade, answerJoin } from './nb.js';
 import { raidMorning, raidThink, raidArrive, raidMode, setGuard, autoGuard, captives } from './raid.js';
+import { newNar, narCheck, narMorning, narApply, narChronText, yearNote, yearMark, narChron } from './narrator.js';
+import { chronicle } from './chronicle.js';
 import { storyInit, storyLoad, storyHour, storyMorning, storyAct, storyUI, storyCard } from './story.js';
 
 export const CREW_NAMES = ['Basalt', 'Kestrel', 'Cedar', 'Drift', 'Ember', 'Fern', 'Gale', 'Heron', 'Iris', 'Juniper', 'Lichen', 'Moss', 'Nettle', 'Onyx', 'Pike', 'Quartz', 'Rowan', 'Sedge', 'Thistle', 'Umber', 'Vetch', 'Willow', 'Yarrow', 'Zinc', 'Alder', 'Bramble', 'Cobalt', 'Dune', 'Flint', 'Garnet', 'Hazel', 'Ivy', 'Jasper', 'Kelp', 'Larch', 'Marl'];
@@ -100,7 +102,7 @@ export class Sim {
       F: newFood(this.kinds.length), gen: newGen(), hist: newHist(), med: { ...MED_KIT }, care: { triage: 'worst', medics: 0, iso: false }, ill: newIll(), hz: newHz(), dir: newDir(), ctl: -1, soc: newSoc(),
     };
     this.S.nb = newNb(this);
-    if (mode === 'landfall') storyInit(this);
+    if (mode === 'landfall') { storyInit(this); this.S.nar = newNar(); this.S.yev = []; this.S.ymark = yearMark(this); }
     this.S.F.sun = sunFactor(season); this.S.F.seasonSaid = season; this.S.F.temp = tempAt(W.seed, this.cal, 6);
     if (season === DEEP) { this.S.F.snow = .55; this.S.F.ice = .35; }   // landing into a winter already under way
     this.resetGround();
@@ -153,6 +155,7 @@ export class Sim {
   log(m, k = '', ev) {
     const S = this.S, e = ev ? { n: ++S.logN, t: S.tick, m, k, ...ev } : { n: ++S.logN, t: S.tick, m, k };
     S.log.push(e); if (S.log.length > 300) S.log.shift();
+    if (ev && ev.e) yearNote(S, e);
     if (this.tap && ev && ev.e) this.tap(e);   // a skip collecting what happens, for its chronicle
   }
 
@@ -302,9 +305,13 @@ export class Sim {
     const S = this.S, F = S.F, s = seasonOf(doy);
     hzMorning(this);
     dirMorning(this);
+    narCheck(this);
+    narMorning(this);
     raidMorning(this);
     nbMorning(this);
     storyMorning(this);
+    // a new year: its chronicle, written by rules now and maybe by Claude later
+    if (doy === 0 && d > 1 && S.ymark && S.ymark.day < d) { const C = chronicle(this, { ...S.ymark, ev: S.yev || [] }, '', { year: true }); S.yev = []; S.ymark = yearMark(this); narChron(this, C); }
     if (F.seasonSaid !== s && doy % 20 === 0) {
       F.seasonSaid = s; F.sun = sunFactor(s); for (const p of powerCheck(this)) if (p.type !== 'solar') this.log(p.powered ? `${p.name} has power again.` : `${p.name} went dark: the solar panels make less now.`, p.powered ? 'good' : 'bad', p.powered ? { pid: p.id } : { e: 'dark', lvl: 1, pid: p.id, title: 'Not enough power' });
       if (d > 1) this.log(SEASON_TEXT[s] + (s === DEEP ? ` ${this.foodNote()}` : ''), s === DEEP ? 'bad' : '', { e: 'season' + s, lvl: 2, title: SEASON_TITLE[s] });
@@ -552,6 +559,8 @@ export class Sim {
   logSince(n) { return this.S.log.filter(e => e.n > n); }
   command(m) { if (m.op === 'trade') return trade(this, m); if (m.op === 'join') return answerJoin(this, !!m.yes);
     if (m.op === 'story') return storyAct(this, m);
+    if (m.op === 'narrate') return narApply(this, m);
+    if (m.op === 'chronText') return narChronText(this, m);
     if (m.op === 'raidMode') return raidMode(this, m.m); if (m.op === 'guard') return setGuard(this, m.id, m.on); if (m.op === 'guardAuto') return autoGuard(this); if (m.op === 'captives') return captives(this, !!m.treat);
     return command(this, m); }
 
@@ -581,7 +590,7 @@ export class Sim {
     migrateLives(this);
     migrateSoc(this);
     migrateNb(this);
-    if (this.S.mode === 'landfall') storyLoad(this);
+    if (this.S.mode === 'landfall') { storyLoad(this); if (!this.S.nar) { this.S.nar = newNar(); this.S.yev = []; this.S.ymark = yearMark(this); } }
     this.resetGround(); this.gnew = []; this.qnew = [];
     if (old) projectsThink(this); // give the migrated crews their project now, not at the next check
     this.wear.set(unrle(wear, MAP * MAP)); this.known.set(unrle(known, MAP * MAP)); this.dirty.clear(); this.kdirty.clear();

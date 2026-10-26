@@ -3,12 +3,14 @@
 //   page -> sim: init {seed, mode, count, save}, land {site}, speed {v}, save {id}, cmd {op, ...}, watch {id}
 //   sim -> page: survey {world, sites}, ready {world, site, roster, ui, ...}, snap {pos, gpos, clock, perf},
 //                state {ui, log, roster?}, wear {chunks}, known {chunks}, marks {gone, quarry, ground}, saved {id, data}, cmd {id, r}
+//   in-game Claude: sim -> page state {nar: [questions]}; page -> sim cmd narrate / chronText with the answers
 //   skips: page -> sim skip {kind}, skipStop; sim -> page skip {from, to, at} while it runs, skipEnd {why, chron} or skipNo {why}
 import { generateWorld, findSites, landAt } from '../core/world.js';
 import { Pathfinder } from '../core/path.js';
 import { Sim } from '../core/sim.js';
 import { TPS, SPEEDS } from '../core/consts.js';
 import { STOP, skipBlock, skipTarget, skipMark, chronicle } from '../core/chronicle.js';
+import { narChron, narTake } from '../core/narrator.js';
 
 const now = () => performance.now();
 
@@ -50,7 +52,7 @@ export function createSimCore(post) {
   }
   function endSkip(why) {
     const K = skip; skip = null; sim.tap = null; speed = 0;
-    const C = chronicle(sim, K.mark, why);
+    const C = chronicle(sim, K.mark, why); narChron(sim, C);
     lastState = 0; state();
     post({ t: 'skipEnd', why, chron: C, stop: K.stop ? K.stop.n : 0 });
     last = now(); acc = 0;
@@ -74,7 +76,8 @@ export function createSimCore(post) {
     if (S.rv !== sentRv) { sentRv = S.rv; m.roster = sim.roster(); }
     if (recs && now() - recsAt > 2000) { recsAt = now(); m.recs = sim.recordsUI(); }   // only while the records are open
     if (soc && now() - socAt > 1000 && sim.S.soc) { socAt = now(); m.soc = sim.socUI(); }   // and the Society window
-    if (S.chron && S.chron.length !== sentChron) { sentChron = S.chron.length; m.chron = S.chron; }
+    if (S.chron && S.chron.length + (S.chronV || 0) * 1e4 !== sentChron) { sentChron = S.chron.length + (S.chronV || 0) * 1e4; m.chron = S.chron; }
+    const nar = narTake(S); if (nar) m.nar = nar;   // questions for in-game Claude, which only the page can ask
     if (S.story && S.story.rv !== sentStory) { sentStory = S.story.rv; m.story = sim.storyUI(); }
     post(m);
   }

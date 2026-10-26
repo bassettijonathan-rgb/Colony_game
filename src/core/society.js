@@ -382,7 +382,7 @@ const kindOf = (Q, ds, day) => {
 };
 const SNAME = SEASONS.map(n => n === 'Storm' ? 'the storm season' : n);
 const seasonDay = doy => `day ${doy % SEASON_DAYS + 1} of ${SNAME[seasonOf(doy)]}`;
-function addCustom(sim, cu, text, title) {
+export function addCustom(sim, cu, text, title) {
   const S = sim.S; cu.d = sim.day; S.soc.cust.push(cu); S.rv++;
   sim.log(text, 'good', { e: 'custom', lvl: 2, title });
 }

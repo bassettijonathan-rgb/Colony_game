@@ -7,7 +7,7 @@
 // (lightning, floods, illness caught from the world), never people's own illness passing between them. When the
 // colony is struggling it can plan relief instead: salvage found, a wild crop fruiting heavily.
 // Nothing here is shown to the player. This is the rule-based director; in-game Claude plans the seasons later
-// through the same plan list, and this one takes over whenever Claude can't be reached.
+// through the same plan list (narrator.js), and this one stands whenever Claude can't be reached.
 import { MAP, T, SEASON_DAYS, YEAR_DAYS, ACT, hidden } from './consts.js';
 import { rnd, clamp } from './rng.js';
 import { seasonOf, doyOf } from './year.js';
@@ -22,6 +22,7 @@ import { startFlare } from './sky.js';
 
 const GRACE = 12;                       // days after landing with nothing planned and half the budget
 const BASE = [3, 5, 6, 4];              // by season: thaw, long light, storms, deep cold
+export const PLAN_SHARE = .65;          // the share of the budget planned ahead; the rest is left for the world
 export const newDir = () => ({ s: -1, budget: 0, spent: 0, calm: 0, damp: 1, plan: [], hist: [], relief: 0 });
 
 // ---------- spending ----------
@@ -46,7 +47,7 @@ function strength(sim) {
 }
 
 // ---------- the season's plan ----------
-const EVENTS = {
+export const EVENTS = {
   strike: { cost: 2, seasons: [1, 2], w: 3 },
   burst: { cost: 3, seasons: [0, 2], w: 2 },
   wear: { cost: 1, seasons: [0, 1, 2, 3], w: 3 },
@@ -60,7 +61,7 @@ function newSeason(sim, s) {
   D.s = s; D.spent = 0; D.plan = [];
   D.budget = +(BASE[s] * strength(sim) * (1 + .3 * year) * (sim.day < GRACE ? .5 : 1)).toFixed(1);
   // about two thirds planned, the rest left for whatever the world does by itself
-  let left = D.budget * .65, day = Math.max(sim.day + 2, GRACE), end = sim.day + SEASON_DAYS - (doyOf(sim.cal) % SEASON_DAYS) - 1;
+  let left = D.budget * PLAN_SHARE, day = Math.max(sim.day + 2, GRACE), end = sim.day + SEASON_DAYS - (doyOf(sim.cal) % SEASON_DAYS) - 1;
   while (left >= 1 && day < end) {
     day += 3 + Math.floor(rnd() * 5);
     const can = Object.entries(EVENTS).filter(([, e]) => e.seasons.includes(s) && e.cost <= left + .5);

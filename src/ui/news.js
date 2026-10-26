@@ -256,6 +256,7 @@ export class News {
     $('lPaused').hidden = !this.resume;
   }
   closeLetter() { if (this.cur) this.remove(this.cur); }
+  refresh(e) { if (this.cur && this.cur.e === e) $('lText').textContent = e.m; }
   get open() { return !!this.cur; }
   // the game picks up again once every big letter that paused it has been read or thrown away, unless the
   // player has set a speed meanwhile
