@@ -71,7 +71,9 @@ export function botBuild(sim) {
   // once the opening is built, the bot keeps up with a growing colony: power, bunks, seats, fields, clinic beds, cool storage
   let spot = next && findPlot(sim, next[0], next[1], next[2]);
   // a growing colony's wants in order; one with no room left on the map doesn't hold up the rest
-  if (!next) for (const g of grow(sim)) { const [t, lv] = Array.isArray(g) ? g : [g], z = sizeFor(sim, t); spot = z && findPlot(sim, t, z.w, z.h, lv); if (spot) { next = [t, z.w, z.h]; break; } }
+  // where the Seed says a kind of building belongs (the story's advice may say), it goes there
+  const at = t => { const a = storyAdvice(sim).find(q => q.type === t && q.at); return a ? a.at : undefined; };
+  if (!next) for (const g of grow(sim)) { const [t, lv] = Array.isArray(g) ? g : [g], z = sizeFor(sim, t); spot = z && findPlot(sim, t, z.w, z.h, lv, at(t)); if (spot) { next = [t, z.w, z.h]; break; } }
   if (spot) sim.command({ op: 'place', type: next[0], ...spot });
 }
 // the story: every find goes to the lab, whatever the Seed suggests for its sake is built, the cards on its buildings
@@ -82,8 +84,9 @@ function botStory(sim) {
   for (const p of S.projects) if (!p.gone && p.done) { const a = storyCard(sim, p).find(q => !q.off); if (a) sim.command({ op: 'story', pid: p.id, id: a.id }); }
   for (const k in STORY_RULES) if (storyRuleOn(S, k)) { const o = STORY_RULES[k].opts, v = o[o.length - 1][0]; if (S.soc.rules[k] !== v) sim.command({ op: 'rule', k, v }); }
   for (const a of storyAdvice(sim)) {
-    if (S.projects.some(p => !p.gone && !p.done && p.type === a.type)) continue;
-    const z = sizeFor(sim, a.type) || (TYPES[a.type].size && { w: TYPES[a.type].size[0], h: TYPES[a.type].size[1] }), spot = z && findPlot(sim, a.type, z.w, z.h);
+    if (a.close != null) { const p = S.projects.find(q => q.id === a.close); if (p && !p.closed) sim.command({ op: 'projBunks', id: p.id, closed: true }); continue; }
+    if (!a.type || a.soft || S.projects.some(p => !p.gone && !p.done && p.type === a.type)) continue;
+    const z = sizeFor(sim, a.type) || (TYPES[a.type].size && { w: TYPES[a.type].size[0], h: TYPES[a.type].size[1] }), spot = z && findPlot(sim, a.type, z.w, z.h, undefined, a.at);
     if (spot) { sim.command({ op: 'place', type: a.type, ...spot }); break; }
   }
 }
@@ -95,7 +98,7 @@ function grow(sim) {
   const shaft = mine.some(p => p.type === 'shaft' && p.done), none = t => !mine.some(p => p.type === t);
   // power: a heat tap in the deep once a shaft reaches it, as it runs through the winter; solar fields otherwise
   if (draw > supply - 1) out.push(...(shaft && mine.filter(p => p.type === 'geo').length < 3 ? [['geo', 3], 'solar'] : ['solar']));
-  if (sum(['shelter', 'dorm', 'burrow'], 'beds') < soon + 2) out.push('dorm');
+  if (mine.filter(p => ['shelter', 'dorm', 'burrow'].includes(p.type) && !p.closed).reduce((a, p) => a + (capacity(p.type, p.w, p.h).beds || 0), 0) < soon + 2) out.push('dorm');
   if (sum(['commons'], 'seats') < soon) out.push('commons');
   if (mine.filter(p => p.type === 'field').length < Math.ceil(soon / 3.5)) out.push('field');
   if (sum(['clinic'], 'beds') < Math.ceil(soon / 6)) out.push('clinic');

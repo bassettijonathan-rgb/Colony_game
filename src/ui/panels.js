@@ -42,6 +42,7 @@ function ageLine(p, r) {
 }
 const TAB = { nb: ['Neighbours', 'nb'], society: ['Society', 'society'], records: ['Clinic records', 'clinic'], archive: ['Archive', 'archive'], crews: ['Crews', 'crews'], build: ['Build', 'build'], life: ['Food and local life', 'life'], log: ['Log', 'log'] };
 // what a building holds, in a few words
+const BUNKS = ['shelter', 'dorm', 'burrow'];
 const holds = (type, c) => ({ shelter: `${c.beds} bunks`, dorm: `${c.beds} bunks`, commons: `seats for ${c.seats}`, workshop: `${c.benches} bench${c.benches > 1 ? 'es' : ''}`, clinic: `${c.beds} beds`, solar: `${c.panels} panels, ${c.supply} kW`, field: `${c.tiles} tiles of beds`, lab: `${c.benches} lab bench${c.benches > 1 ? 'es' : ''}`, plant: `${c.tanks} tank${c.tanks > 1 ? 's' : ''}`, cellar: `cool shelves for ${c.store} loads of food`, burrow: `${c.beds} bunks`, mine: `${c.faces} face${c.faces > 1 ? 's' : ''} to work`, pit: `${c.faces} face${c.faces > 1 ? 's' : ''} to cut`, school: `${c.desks} desks`, library: `${c.shelves} shelves`, watch: 'a lamp and a post', nursery: `${c.tanks} growth tank${c.tanks > 1 ? 's' : ''}` })[type] || '';
 const UG_TXT = { soil: 'soft soil: quick to dig, but the walls need a lot of shoring', clay: 'clay: heavier digging, and it holds its shape', stone: 'stone: slow digging, little shoring, and the spoil gives stone for the yard', 'hard rock': 'hard rock: very slow digging, but it barely needs shoring and gives stone', 'hot rock': 'hot rock: the deep’s own heat, very slow to cut, and hot enough to run a heat engine' };
 const loads = L => Object.entries(L).filter(([k, n]) => n > 0 && k !== 'mark' && k !== 'test').map(([k, n]) => matName(k, n)).join(', ');const SHIFT_TXT = SHIFTS.map(s => `${s.name} ${s.a}–${s.b}`);
@@ -569,6 +570,7 @@ export class Panels {
       case 'rcancel': this.socPick = null; break;
       case 'logView': this.logView = el.dataset.v; break;
       case 'sact': this.api.cmd('story', { pid: +el.dataset.pid, id: el.dataset.id }); break;
+      case 'bunks': this.api.cmd('projBunks', { id: +el.dataset.id, closed: el.dataset.v === '1' }); break;
       case 'sfind': this.api.cmd('story', { do: el.dataset.do, i: +el.dataset.i }); break;
       case 'rkeep': this.socPick = null; if (A.soc && A.soc.verdict) { A.soc.verdict = null; this.api.cmd('ruleKeep', {}); } break;
       case 'area': this.api.pickArea(crew); break;
@@ -710,6 +712,9 @@ export class Panels {
     else if (p.wet) h += `<div class="pw">Flood water is standing in it${p.done || p.type === 'field' ? ': it is out of use until the water goes down' : ': building waits until the water goes down'}. The longer it stands, the more repairs it will need.</div>`;
     else if (p.dmg && !p.done) h += `<div class="note" style="margin:0 0 6px">Damaged by ${DMG[p.dmg] || 'damage'}: it is out of use until the build crews finish the repairs below.</div>`;
     if (!test) { const hd = holds(p.type, p.cap), kw = p.type === 'solar' || !p.cap.kw ? '' : `draws ${p.cap.kw} kW`; h += `<div class="note" style="margin:8px 0 0">${esc(T.use || 'Twelve bunks in the lander\'s own modules, the first roof on this world')}.${hd ? ` It holds ${esc(hd)}${kw ? ' and ' + kw : ''}.` : kw ? ` It ${kw}.` : ''}</div>`; }
+    if (BUNKS.includes(p.type) && p.done) {
+      h += `<div class="sec">Bunks</div><div class="box"><div class="row2"><span class="grow">${p.closed ? 'Closed: nobody sleeps here.' : `${p.sleepers} of ${p.cap.beds} taken.`}</span><button class="btn" data-act="bunks" data-id="${p.id}" data-v="${p.closed ? 0 : 1}">${p.closed ? 'Open the bunks' : 'Close the bunks'}</button></div><div class="note">${p.closed ? 'Open them and the Seed fills them again with anyone who has no bunk.' : 'Closed bunks stand empty: whoever sleeps here moves to a free bunk elsewhere, or sleeps outside if there is none. New bunks are given to people without one, so close the old ones to move people into new ones.'}</div></div>`;
+    }
     if (p.type === 'clinic' && p.done && U.care) {
       const C = U.care, M = U.med, here = C.ward.filter(q => q[1] === p.id).map(q => q[0]);
       h += `<div class="sec">Patients</div>${here.length ? `<div class="chips">${here.map(id => `<button class="chip" data-act="person" data-id="${id}">${esc(A.people[id] ? A.people[id].name : '')}</button>`).join('')}</div>` : '<div class="note" style="margin:0">No one is in here.</div>'}`;

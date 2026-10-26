@@ -18,7 +18,7 @@ export function buildAdvice(sim) {
   const add = (type, why, lvl = 0) => { if (!open(type) && !out.some(o => o.type === type)) out.push({ type, why, lvl }); };
   const shafts = mine.filter(p => p.type === 'shaft' && p.done && !p.shut), shaft = shafts.length > 0, Y = S.stores.yard;
   // whatever the colony has learned it needs, ahead of the everyday list
-  for (const a of storyAdvice(sim)) add(a.type, a.why, a.lvl || 0);
+  for (const a of storyAdvice(sim)) if (a.type && !a.soft) add(a.type, a.why, a.lvl || 0);   // soft: only where it goes, if it is built
   // power first: a dark building does nothing
   const draw = mine.filter(p => p.type !== 'solar').reduce((a, p) => a + (capacity(p.type, p.w, p.h).kw || 0), 0), supply = LANDER_KW + sum(['solar'], 'supply') * DEEP_SUN + sum(['geo'], 'supply');
   const dark = built(S).filter(p => p.type !== 'solar' && !p.powered && !p.shut).length;
@@ -33,7 +33,7 @@ export function buildAdvice(sim) {
   if (none('workshop')) add('workshop', 'Only the Seed’s slow fabricator makes seals, pipe, power units and panels now. Most buildings need them.');
   if (none('plant')) add('plant', `Once the Seed’s feedstock is used up, no more founders can wake${S.seedc.feed ? ` (it has enough for ${n(S.seedc.feed, 'more body', 'more bodies')})` : ''}. The plant makes feedstock from biomass and stone.`);
   // places to sleep, eat and heal
-  const beds = sum(['shelter', 'dorm', 'burrow'], 'beds');
+  const beds = mine.filter(p => ['shelter', 'dorm', 'burrow'].includes(p.type) && !p.closed).reduce((a, p) => a + (capacity(p.type, p.w, p.h).beds || 0), 0);
   if (beds < soon + 2) add('dorm', `${n(soon, 'person', 'people')} awake or on the way, and ${n(beds, 'bunk', 'bunks')}. Sleeping outside wears people down, and in Deep cold it is dangerous.`);
   const store = sum(['cellar'], 'store');
   if (store < soon * 4) add('cellar', store ? `The root cellars keep about ${store} loads cool, and the colony will soon store more than that.` : 'Food spoils in the open. A root cellar keeps the larder cool all year, and much longer.', 1);

@@ -10,7 +10,7 @@ import { SEALED } from '../sealed/texts.js';
 import { MAP, DAY_TICKS, HOUR, YEAR_DAYS, T, ACT, hidden } from './consts.js';
 import { rnd, clamp } from './rng.js';
 import { doyOf, seasonOf, dayWeather, tempAt } from './year.js';
-import { built, TYPES } from './build.js';
+import { built, TYPES, capOf } from './build.js';
 import { remember, trustAll, die } from './life.js';
 import { spend, happen } from './director.js';
 import { scar } from './trauma.js';
@@ -75,6 +75,7 @@ function api(sim) {
     // the colony
     built: type => built(S).filter(p => !type || p.type === type),
     projects: () => S.projects.filter(p => !p.gone),
+    cap: p => capOf(p), sleepers: p => S.cols.filter(c => !c.dead && c.home === p.id).length,
     food: () => mealsInStore(sim, true) / Math.max(1, S.cols.filter(c => !c.dead).length),
     struggling: () => struggling(sim),
     spend: (n, why) => spend(sim, n, why),
