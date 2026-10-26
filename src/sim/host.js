@@ -3,17 +3,19 @@
 //   page -> sim: init {seed, mode, count, save}, land {site}, speed {v}, save {id}, cmd {op, ...}, watch {id}
 //   sim -> page: survey {world, sites}, ready {world, site, roster, ui, ...}, snap {pos, gpos, clock, perf},
 //                state {ui, log, roster?}, wear {chunks}, known {chunks}, marks {gone, quarry, ground}, saved {id, data}, cmd {id, r}
+//   in-game Claude: sim -> page state {nar: [questions]}; page -> sim cmd narrate / chronText with the answers
 //   skips: page -> sim skip {kind}, skipStop; sim -> page skip {from, to, at} while it runs, skipEnd {why, chron} or skipNo {why}
 import { generateWorld, findSites, landAt } from '../core/world.js';
 import { Pathfinder } from '../core/path.js';
 import { Sim } from '../core/sim.js';
 import { TPS, SPEEDS } from '../core/consts.js';
 import { STOP, skipBlock, skipTarget, skipMark, chronicle } from '../core/chronicle.js';
+import { narChron, narTake } from '../core/narrator.js';
 
 const now = () => performance.now();
 
 export function createSimCore(post) {
-  let W = null, P = null, sim = null, sites = null, speed = 1, last = 0, acc = 0, timer = null, lastWear = 0, lastState = 0, watch = -1, recs = false, recsAt = 0, soc = false, socAt = 0, skip = null, sentChron = 0, sentLog = 0, sentRv = -1, sentHist = 0;
+  let W = null, P = null, sim = null, sites = null, speed = 1, last = 0, acc = 0, timer = null, lastWear = 0, lastState = 0, watch = -1, recs = false, recsAt = 0, soc = false, socAt = 0, skip = null, sentChron = 0, sentLog = 0, sentRv = -1, sentHist = 0, sentStory = -1;
   const perf = { ticks: 0, tickMs: 0, tps: 0, window: now(), worst: 0 };
 
   function step() {
@@ -50,7 +52,7 @@ export function createSimCore(post) {
   }
   function endSkip(why) {
     const K = skip; skip = null; sim.tap = null; speed = 0;
-    const C = chronicle(sim, K.mark, why);
+    const C = chronicle(sim, K.mark, why); narChron(sim, C);
     lastState = 0; state();
     post({ t: 'skipEnd', why, chron: C, stop: K.stop ? K.stop.n : 0 });
     last = now(); acc = 0;
@@ -74,7 +76,9 @@ export function createSimCore(post) {
     if (S.rv !== sentRv) { sentRv = S.rv; m.roster = sim.roster(); }
     if (recs && now() - recsAt > 2000) { recsAt = now(); m.recs = sim.recordsUI(); }   // only while the records are open
     if (soc && now() - socAt > 1000 && sim.S.soc) { socAt = now(); m.soc = sim.socUI(); }   // and the Society window
-    if (S.chron && S.chron.length !== sentChron) { sentChron = S.chron.length; m.chron = S.chron; }
+    if (S.chron && S.chron.length + (S.chronV || 0) * 1e4 !== sentChron) { sentChron = S.chron.length + (S.chronV || 0) * 1e4; m.chron = S.chron; }
+    const nar = narTake(S); if (nar) m.nar = nar;   // questions for in-game Claude, which only the page can ask
+    if (S.story && S.story.rv !== sentStory) { sentStory = S.story.rv; m.story = sim.storyUI(); }
     post(m);
   }
   function perfOut() {
@@ -87,11 +91,11 @@ export function createSimCore(post) {
     const patch = landAt(W, site); W.siteId = site.id;
     const t2 = now(); P = new Pathfinder(W); const t3 = now(); sim = new Sim(W, P); const t4 = now();
     if (save) sim.load(save); else sim.newGame(mode, count, season);
-    const S = sim.S; sentLog = 0; sentRv = S.rv; sentHist = S.hist.rows.length; sentChron = 0; skip = null;
+    const S = sim.S; sentLog = 0; sentRv = S.rv; sentHist = S.hist.rows.length; sentChron = 0; sentStory = S.story ? S.story.rv : -1; skip = null;
     post({
       t: 'ready', seed: W.seed, land: W.land, site: W.site, siteId: site.id, tag: sites && sites[site.id] ? sites[site.id].tag : '', patch, rock: W.rock, mode: S.mode,
       world: { type: W.type, elev: W.elev, moist: W.moist },
-      roster: sim.roster(), ui: sim.ui(-1), log: sim.logSince(0), gone: S.gone, quarry: S.quarry, hist: S.hist.rows,
+      roster: sim.roster(), ui: sim.ui(-1), story: sim.storyUI(), log: sim.logSince(0), gone: S.gone, quarry: S.quarry, hist: S.hist.rows,
       pos: sim.snapshot(new Float32Array(S.cols.length * 4)), gpos: guests(), clock: sim.clock(),
       timing: { world: t1 - t0, land: t2 - t1, graph: t3 - t2, field: t4 - t3, nodes: P.nodes.length }
     });

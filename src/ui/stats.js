@@ -62,7 +62,7 @@ export class Stats {
     if (!this.open || !this.A.ui) return;
     const U = this.A.ui, rows = this.rows(), n = this.range === 'all' ? rows.length : +this.range, from = Math.max(0, rows.length - n), shown = rows.slice(from), prev = from > 0 ? rows[from - 1] : null;
     document.querySelectorAll('#stRange [data-r]').forEach(b => b.classList.toggle('on', b.dataset.r === this.range));
-    const sig = JSON.stringify([this.range, rows.length, rows[rows.length - 1], U.stats, $('stBody').clientWidth]);
+    const Y = this.A.story, sig = JSON.stringify([this.range, rows.length, rows[rows.length - 1], U.stats, $('stBody').clientWidth, Y ? Y.rv : 0]);
     if (sig === this.sig) return;
     this.sig = sig;
     const today = rows[rows.length - 1], first = U.mode === 'stress';
@@ -82,12 +82,26 @@ export class Stats {
     h += `<div class="stgrid">` + this.charts.map((c, i) => `<div class="stc"><div class="sth"><b>${esc(c.title)}</b><em>${esc(c.unit)}</em></div>` +
       (c.series.length > 1 ? `<div class="stleg">${c.series.map(([nm], j) => `<span><i style="background:${C[j]}"></i>${esc(nm)}</span>`).join('')}</div>` : '') +
       `<canvas data-c="${i}"></canvas></div>`).join('') + `</div>`;
+    // readings the colony takes for itself, once it has started to, by days since landing; series that share a
+    // unit share a chart
+    const rd = Y ? Y.rd : [], units = [...new Set(rd.map(R => R.unit))];
+    if (units.length) {
+      const base = this.charts.length;
+      for (const u of units) {
+        const ss = rd.filter(R => R.unit === u).sort((a, b) => a.fixed - b.fixed), N = Math.max(...ss.map(R => R.d0 + R.v.length - 1)), days = [], data = [];
+        for (let d = 1; d <= N; d++) { days.push(d); data.push(ss.map(R => { const j = d - R.d0; return j >= 0 && j < R.v.length && R.v[j] != null ? R.v[j] : null; })); }
+        this.charts.push({ rd: true, title: ss[0].name, unit: u, series: ss.map(R => [R.fixed ? R.name : ss.length > 1 ? 'This colony' : R.name]), data, days, xl: N > 2 * YEAR_DAYS ? d => `Year ${Math.floor((d - 1) / YEAR_DAYS) + 1}` : null, fmt: v => v == null ? '–' : `${+v.toFixed(2)}` });
+      }
+      h += `<div class="sec">Readings</div><div class="stgrid">` + this.charts.slice(base).map((c, k) => `<div class="stc"><div class="sth"><b>${esc(c.title)}</b><em>${esc(c.unit)}</em></div>` +
+        (c.series.length > 1 ? `<div class="stleg">${c.series.map(([nm], j) => `<span><i style="background:${C[j]}"></i>${esc(nm)}</span>`).join('')}</div>` : '') +
+        `<canvas data-c="${base + k}"></canvas></div>`).join('') + `</div>`;
+    }
     // totals
     const S = U.stats;
     h += `<div class="sec">Since landing</div><div class="sttot">${TOTALS.map(([k, l]) => `<div><span>${l}</span><b>${S[k] || 0}</b></div>`).join('')}</div>`;
     // the same numbers as a table, for reading exact values
-    h += `<details class="sttab"><summary>All days as a table</summary><div class="sttw"><table><thead><tr><th>Day</th>${this.charts.flatMap(c => c.series.map(([nm]) => `<th>${esc(nm)}</th>`)).join('')}</tr></thead><tbody>` +
-      shown.map((r, i) => `<tr><td>${r[K.day]}${U.today && r === U.today ? ' (today)' : ''}</td>${this.charts.flatMap(c => c.data[i].map(v => `<td>${this.fmt(c, v)}</td>`)).join('')}</tr>`).reverse().join('') + `</tbody></table></div></details>`;
+    h += `<details class="sttab"><summary>All days as a table</summary><div class="sttw"><table><thead><tr><th>Day</th>${this.charts.filter(c => !c.rd).flatMap(c => c.series.map(([nm]) => `<th>${esc(nm)}</th>`)).join('')}</tr></thead><tbody>` +
+      shown.map((r, i) => `<tr><td>${r[K.day]}${U.today && r === U.today ? ' (today)' : ''}</td>${this.charts.filter(c => !c.rd).flatMap(c => c.data[i].map(v => `<td>${this.fmt(c, v)}</td>`)).join('')}</tr>`).reverse().join('') + `</tbody></table></div></details>`;
     const body = $('stBody'), top = body.scrollTop, open = body.querySelector('details') && body.querySelector('details').open;
     body.innerHTML = h; body.scrollTop = top; if (open) body.querySelector('details').open = true;
     this.redraw();
@@ -102,7 +116,8 @@ export class Stats {
     if (cv.width !== Math.round(W * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
     const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
     const n = c.days.length; if (!n) return;
-    const all = c.data.flat(), lo0 = Math.min(0, ...all), hi0 = Math.max(...all, c.warn || 0);
+    const all = c.data.flat().filter(v => v != null); if (!all.length) all.push(0);
+    const lo0 = Math.min(0, ...all), hi0 = Math.max(...all, c.warn || 0);
     const ax = c.max ? { lo: 0, hi: c.max, step: c.max / 4 } : axis(lo0, hi0, c.int || c.bars), lo = ax.lo, hi = ax.hi;
     const L = 34, R = 8, T = 16, B = 20, pw = W - L - R, ph = H - T - B;
     const X = i => c.bars ? L + (i + .5) * pw / n : L + (n === 1 ? pw / 2 : i / (n - 1) * pw), Y = v => T + ph - (v - lo) / (hi - lo || 1) * ph;
@@ -129,7 +144,7 @@ export class Stats {
     // x labels: a few day numbers
     g.textAlign = 'center'; g.textBaseline = 'top'; g.fillStyle = '#6b7486';
     const step = Math.max(1, Math.ceil(n / Math.max(2, Math.floor(pw / 70))));
-    for (let i = 0; i < n; i += step) g.fillText(`Day ${c.days[i]}`, Math.min(W - R - 22, Math.max(L + 22, X(i))), H - B + 5);
+    for (let i = 0; i < n; i += step) g.fillText(c.xl ? c.xl(c.days[i]) : `Day ${c.days[i]}`, Math.min(W - R - 22, Math.max(L + 22, X(i))), H - B + 5);
     // the marks
     const m = c.series.length;
     if (c.bars) {
@@ -143,7 +158,7 @@ export class Stats {
       for (let j = 0; j < m; j++) {
         g.strokeStyle = C[j]; g.lineWidth = 2; g.lineJoin = 'round'; g.lineCap = 'round';
         const end = c.live && n > 1 ? n - 1 : n;
-        g.beginPath(); for (let i = 0; i < end; i++) { const x = X(i), y = Y(c.data[i][j]); i ? g.lineTo(x, y) : g.moveTo(x, y); } g.stroke();
+        g.beginPath(); let up = true; for (let i = 0; i < end; i++) { const v = c.data[i][j]; if (v == null) { up = true; continue; } const x = X(i), y = Y(v); up ? g.moveTo(x, y) : g.lineTo(x, y); up = false; } g.stroke();
         if (c.live && n > 1) { g.setLineDash([3, 3]); g.beginPath(); g.moveTo(X(n - 2), Y(c.data[n - 2][j])); g.lineTo(X(n - 1), Y(c.data[n - 1][j])); g.stroke(); g.setLineDash([]); }
         if (n === 1) { g.fillStyle = C[j]; g.beginPath(); g.arc(X(0), Y(c.data[0][j]), 4, 0, 6.3); g.fill(); }
       }
@@ -153,7 +168,7 @@ export class Stats {
     if (hv && hv.cv === cv && hv.i < n) {
       const x = X(hv.i);
       g.strokeStyle = 'rgba(238,241,246,.35)'; g.lineWidth = 1; g.beginPath(); g.moveTo(Math.round(x) + .5, T); g.lineTo(Math.round(x) + .5, T + ph); g.stroke();
-      if (!c.bars) for (let j = 0; j < m; j++) { const y = Y(c.data[hv.i][j]); g.fillStyle = '#141a24'; g.beginPath(); g.arc(x, y, 5.5, 0, 6.3); g.fill(); g.fillStyle = C[j]; g.beginPath(); g.arc(x, y, 4, 0, 6.3); g.fill(); }
+      if (!c.bars) for (let j = 0; j < m; j++) { if (c.data[hv.i][j] == null) continue; const y = Y(c.data[hv.i][j]); g.fillStyle = '#141a24'; g.beginPath(); g.arc(x, y, 5.5, 0, 6.3); g.fill(); g.fillStyle = C[j]; g.beginPath(); g.arc(x, y, 4, 0, 6.3); g.fill(); }
     }
     cv.style.height = H + 'px';
     c.geo = { L, R, pw, n, bars: c.bars };
@@ -166,7 +181,7 @@ export class Stats {
     const i = Math.max(0, Math.min(n - 1, bars ? Math.floor((x - L) / pw * n) : Math.round((x - L) / pw * (n - 1 || 1))));
     if (!this.hover || this.hover.cv !== cv || this.hover.i !== i) { const old = this.hover && this.hover.cv; this.hover = { cv, i }; if (old && old !== cv) this.draw(old, this.charts[+old.dataset.c]); this.draw(cv, c); }
     const live = c.live && i === n - 1;
-    tip.innerHTML = `<b>Day ${c.days[i]}${live ? ' · so far' : ''}</b>` + c.series.map(([nm], j) => `<div><i style="background:${C[j]}"></i><span>${esc(nm)}</span><em>${this.fmt(c, c.data[i][j])}</em></div>`).join('');
+    tip.innerHTML = `<b>Day ${c.days[i]}${c.xl ? ' · ' + c.xl(c.days[i]).toLowerCase() : ''}${live ? ' · so far' : ''}</b>` + c.series.map(([nm], j) => `<div><i style="background:${C[j]}"></i><span>${esc(nm)}</span><em>${this.fmt(c, c.data[i][j])}</em></div>`).join('');
     tip.hidden = false;
     const box = $('stats').getBoundingClientRect(), tw = tip.offsetWidth;
     let tx = e.clientX - box.left + 14; if (tx + tw > box.width - 8) tx = e.clientX - box.left - tw - 14;

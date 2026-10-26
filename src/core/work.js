@@ -15,6 +15,7 @@ import { illMeal } from './illness.js';
 import { FIRE_STEP, beat } from './hazards.js';
 import { take, order, release } from './control.js';
 import { restoreStart, restoreDone, queueRestore } from './scan.js';
+import { storyPlot, storyBuilt } from './story.js';
 import { eat, analyse, labHour, kitchenJob, cookMeals, foodOf, add, patchLeft, takePatch, inSeason, cropPlan, sowUnits, harvestLoads, keyOf, isCrop, mealsInStore, kitchenOnly, hasKitchen, SAMPLES, PROC_DAYS, CROPS, CROP_KEYS } from './food.js';
 import { dayWeather, untilDeep, doyOf, seasonOf } from './year.js';
 import { careArrive, careTimer, MED_KIT, MED_MADE, TRIAGE, MEDIC } from './care.js';
@@ -171,7 +172,7 @@ export function crewNeeds(sim) {
   if (S.stakes.length < STAKES_ALL) add('survey', n >= 8 ? 2 : n >= 4 ? 1 : 0);
   // stone and timber for the projects: the builders cut their own only when the yard runs dry
   for (const k of ['stone', 'timber']) { const short = rawWanted(S, k) - (Y[k] || 0); if (short > 8 && active(S).length) add(k === 'stone' ? 'quarry' : 'timber', short > 25 && n >= 10 ? 2 : 1); }
-  if (has('lab').length && (F.lab.cur >= 0 || F.lab.queue.length)) add('lab', Math.min(2, has('lab').reduce((a, p) => a + capOf(p).benches, 0)));
+  if (has('lab').length && (F.lab.cur !== -1 || F.lab.queue.length)) add('lab', Math.min(2, has('lab').reduce((a, p) => a + capOf(p).benches, 0)));
   // the workshop, while it has salvage or ore to work; then miners while the colony is short of metal
   if (has('workshop').length && (Y.salvage >= 1 || (Y.ore || 0) >= SMELT.ore)) add('workshop', n >= 15 ? 2 : 1);
   if (mines.length && metal < METAL_WANT) add('mine', 1);
@@ -419,7 +420,7 @@ function kitchenNext(sim, c) {
 // ---------- the lab ----------
 function labNext(sim, c) {
   const S = sim.S, F = S.F;
-  if (F.lab.cur < 0 && !F.lab.queue.length) return false;
+  if (F.lab.cur === -1 && !F.lab.queue.length) return false;
   for (const p of built(S)) {
     if (p.type !== 'lab' || !p.powered) continue;
     let used = 0; for (const o of S.cols) if (!o.dead && o.ws === p.id && o.job === 'lab') used++;
@@ -550,6 +551,7 @@ function finish(sim, p) {
     trustAll(sim, 2, `Watched ${p.name} go up.`);
   }
   assignHomes(sim);
+  if (!p.dmg) storyBuilt(sim, p);
 }
 // why a project isn't moving, or '' when there is work for a crew to do
 // loads of stone still lying about near camp, in boulders and rock faces: for the bot, to plan a pit in time
@@ -1020,7 +1022,7 @@ export function command(sim, m) {
       if (!TYPES[m.type] || TYPES[m.type].fixed) return { ok: false, why: 'That is not something the colony can plan.' };
       const chk = checkPlot(sim, m.type, m.x, m.y, m.w, m.h, m.side, m.lvl), cap = capacity(m.type, m.w, m.h), pw = powerPlan(S);
       const after = { supply: +(pw.supply + (cap.supply || 0)).toFixed(1), draw: +(pw.draw + cap.kw).toFixed(1) };
-      return { ...chk, bill: billOf(S, m.type, m.w, m.h, chk.ground), load: loadCheck(S, m.type, m.w, m.h), cap, power: after, short: +Math.max(0, after.draw - after.supply).toFixed(1) };
+      return { ...chk, bill: billOf(S, m.type, m.w, m.h, chk.ground), load: loadCheck(S, m.type, m.w, m.h), cap, power: after, short: +Math.max(0, after.draw - after.supply).toFixed(1), site: storyPlot(sim, m.x, m.y, m.w, m.h) };
     }
     case 'sizeFor': return sizeFor(sim, m.type);
     case 'place': {

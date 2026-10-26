@@ -4,6 +4,7 @@
 import { MAP, T } from './consts.js';
 import { hash, clamp } from './rng.js';
 import { propsIn, floodPlain, FLOOD_LINE, underOf, UG, ORE, RARE, U_NAME } from './world.js';
+import { SEALED } from '../sealed/texts.js';
 
 // ---------- materials ----------
 export const MAT = {
@@ -26,7 +27,7 @@ export const FIELD_STAGES = ['Marking out', 'Breaking ground', 'Making soil', 'D
 export const DIG_STAGES = ['Marking out', 'Digging', 'Shoring', 'Venting', 'Fit-out'];
 export const PIT_STAGES = ['Marking out', 'Stripping the soil', 'Cutting benches', 'The hoist', 'Opening the face'];
 export const SHAFT_STAGES = ['Marking out', 'Sinking to the middle', 'Sinking to the deep', 'The hoist', 'The cage'];
-export const stagesOf = type => type === 'test' ? TEST_STAGES : type === 'field' ? FIELD_STAGES : type === 'pit' ? PIT_STAGES : type === 'shaft' ? SHAFT_STAGES : TYPES[type] && TYPES[type].below ? DIG_STAGES : STAGE_NAMES;
+export const stagesOf = type => TYPES[type] && TYPES[type].stages ? TYPES[type].stages : type === 'test' ? TEST_STAGES : type === 'field' ? FIELD_STAGES : type === 'pit' ? PIT_STAGES : type === 'shaft' ? SHAFT_STAGES : TYPES[type] && TYPES[type].below ? DIG_STAGES : STAGE_NAMES;
 const SHELTER_STAGES = [['mark', 4], ['module', 8], ['module', 12], ['module', 12], ['module', 10]];
 export const SHELTER_FITS = SHELTER_STAGES.reduce((t, s) => t + s[1], 0), CARGO = SHELTER_STAGES.reduce((t, s) => t + (s[0] === 'module' ? s[1] : 0), 0);
 
@@ -55,8 +56,14 @@ export const TYPES = {
   geo: { name: 'Heat tap', min: 3, max: 6, size: [4, 4], below: true, lv: [3], use: 'Bores into the hot rock of the deep level and runs a heat engine on it: power day and night, in any season. Draw it over hot rock' },
   test: { name: 'Load test', fixed: true },
 };
+// things the hidden story opens to build: they come from the sealed texts, and can't be planned until the story
+// says so (S.story.unlock)
+export const STORY_TYPES = Object.keys((SEALED.story && SEALED.story.devices) || {});
+for (const k of STORY_TYPES) TYPES[k] = { ...SEALED.story.devices[k], story: true };
 // the levels below ground a type can be dug at: 1 by stairs, 2 and 3 from the foot of a lift shaft
 export const levelsOf = type => TYPES[type] && TYPES[type].below ? TYPES[type].lv || [1] : [0];
+// open-air builds have no door: solar fields, and the story's devices, which stand in the open
+export const doorless = Ty => !!(Ty && (Ty.open || Ty.look));
 export const SHAFT_CREW = 4, SHAFT_REACH = 40;
 export const PLANNABLE = ['field', 'workshop', 'plant', 'commons', 'clinic', 'dorm', 'solar', 'lab', 'cellar', 'burrow', 'mine', 'pit', 'school', 'library', 'watch', 'nursery', 'shaft', 'vault', 'geo', 'scanner'];
 const inner = (w, h) => Math.max(0, (w - 2) * (h - 2));
@@ -86,7 +93,7 @@ export function capacity(type, w, h) {
     case 'nursery': { const tanks = clamp(Math.floor(a / 6), 1, 3); return { tanks, kw: 1 + tanks }; }
     case 'scanner': { const slots = clamp(Math.floor(a / 4), 1, 3); return { slots, kw: 3 + slots }; }
   }
-  return { kw: 0 };
+  return TYPES[type] && TYPES[type].cap ? { ...TYPES[type].cap } : { kw: 0 };
 }
 
 // ---------- load checks ----------
@@ -111,6 +118,11 @@ export function loadsOf(S, p, st) {
   return out;
 }
 export function stageLoads(S, type, w, h, st, mat, ground) {
+  const L = baseLoads(S, type, w, h, st, mat, ground), ex = TYPES[type] && TYPES[type].add && TYPES[type].add[st];
+  if (ex) for (const k in ex) L[k] = (L[k] || 0) + ex[k];
+  return L;
+}
+function baseLoads(S, type, w, h, st, mat, ground) {
   if (type === 'shelter') { const [k, n] = SHELTER_STAGES[st]; return { [k]: n }; }
   if (type === 'test') return st === 0 ? { [mat]: 3 } : { test: 3 };
   const a = w * h, per = 2 * (w + h) - 4, ms = margin(S, 'stone'), mt = margin(S, 'timber'), cap = capacity(type, w, h), L = {};
@@ -190,7 +202,7 @@ export function reservedAt(sim, x, y, m = 1, skip = -1, below = false) {
 }
 export function checkPlot(sim, type, x, y, w, h, side, lvl) {
   const W = sim.W, Ty = TYPES[type], bad = [], out = { ok: false, why: '', bad, door: null };
-  if (!Ty || Ty.fixed) { out.why = 'That is not something the colony can plan.'; return out; }
+  if (!Ty || Ty.fixed || (Ty.story && !(sim.S.story && sim.S.story.unlock.includes(type)))) { out.why = 'That is not something the colony can plan.'; return out; }
   const sh = Math.min(w, h), lg = Math.max(w, h);
   if (sh < Ty.min) { out.why = `Too small: a ${Ty.name.toLowerCase()} needs at least ${Ty.min} by ${Ty.min} tiles.`; return out; }
   if (lg > Ty.max) { out.why = `Too big: a ${Ty.name.toLowerCase()} can be at most ${Ty.max} tiles long.`; return out; }
@@ -208,10 +220,12 @@ export function checkPlot(sim, type, x, y, w, h, side, lvl) {
     else { const r = reservedAt(sim, tx, ty, 1); if (r) note(t, `Too close to ${r}.`); else if (!W.cost[t] || !W.reach[t]) note(t, "Part of it can't be reached on foot."); }
   }
   const L = W.land;
-  if (!bad.length && Math.hypot(x + w / 2 - L.x, y + h / 2 - L.y) > 70) { out.why = 'Too far from camp: keep it within 140 m of the Seed.'; return out; }
+  const far = Ty.far || 70;
+  if (!bad.length && Math.hypot(x + w / 2 - L.x, y + h / 2 - L.y) > far) { out.why = `Too far from camp: keep it within ${far * 2} m of the Seed.`; return out; }
   if (!bad.length && type === 'shaft') { const U = underOf(W); for (let ty = y; ty < y + h; ty++) for (let tx = x; tx < x + w; tx++) if ((U[ty * MAP + tx] & 7) === UG.WET) { out.why = 'The ground under it is waterlogged: the shaft would flood. The view below ground (U) shows the dry ground.'; return out; } }
+  if (!bad.length && Ty.near != null) { let near = false; for (let ty = y - 6; ty < y + h + 6 && !near; ty++) for (let tx = x - 6; tx < x + w + 6; tx++) if (W.type[ty * MAP + tx] === Ty.near) { near = true; break; } if (!near) { out.why = Ty.nearWhy || 'It has to stand close to the water.'; return out; } }
   if (!bad.length && type === 'pit') { const g = groundOf(W, x, y, w, h); if (g.stone < .5) { out.why = 'The ground here is too deep in soil and clay for a pit: the view below ground (U) shows where the stone lies near the surface.'; return out; } out.ground = g; }
-  if (!Ty.open) {
+  if (!doorless(Ty)) {
     const d = doorOf(x, y, w, h, side), t = d.y * MAP + d.x; out.door = d;
     if (!bad.length && (!W.cost[t] || !W.reach[t] || reservedAt(sim, d.x, d.y, 0))) { bad.push(t); why.set('The door would open onto blocked ground. Turn it to another side.', 1); }
   }
@@ -303,7 +317,7 @@ export function addProject(sim, type, x, y, w, h, side, mat, lvl) {
   const S = sim.S, Ty = TYPES[type], id = S.pid++, lv = Ty.below ? (levelsOf(type).includes(lvl) ? lvl : levelsOf(type)[0]) : 0, sh = lv > 1 ? shaftFor(S, x, y, w, h) : null;
   const n = S.projects.filter(p => p.type === type).length + 1;
   const p = {
-    id, type, name: type === 'test' ? `Load test: ${mat}` : `${Ty.name} ${n}`, x, y, w, h, side, door: Ty.open || type === 'test' ? null : sh ? { x: sh.door.x, y: sh.door.y } : doorOf(x, y, w, h, side),
+    id, type, name: type === 'test' ? `Load test: ${mat}` : `${Ty.name} ${n}`, x, y, w, h, side, door: doorless(Ty) || type === 'test' ? null : sh ? { x: sh.door.x, y: sh.door.y } : doorOf(x, y, w, h, side),
     below: !!Ty.below, lvl: lv, via: sh ? sh.id : undefined, ug: Ty.below ? groundOf(sim.W, x, y, w, h, lv) : type === 'shaft' ? groundOf(sim.W, x, y, w, h, 2) : undefined,
     stage: 0, need: stageLoads(S, type, w, h, 0, mat), got: {}, done: false, powered: false, paused: false, gone: false, blocked: false, wait: '', stall: 0, since: S.tick, out: {}, used: {}, mat,
   };

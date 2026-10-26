@@ -12,7 +12,7 @@ import { generateWorld, findSites, landAt } from '../core/world.js';
 import { Pathfinder } from '../core/path.js';
 import { Sim } from '../core/sim.js';
 import { DAY_TICKS, HOUR, ACT } from '../core/consts.js';
-import { findPlot, built, capacity, LANDER_KW } from '../core/build.js';
+import { findPlot, built, capacity, LANDER_KW, TYPES } from '../core/build.js';
 import { laidUp } from '../core/body.js';
 import { sizeFor, DEEP_SUN, stoneLeft } from '../core/work.js';
 import { ruleOk } from '../core/lives.js';
@@ -20,6 +20,7 @@ import { mealsInStore, kitchenOnly } from '../core/food.js';
 import { toIsolate } from '../core/illness.js';
 import { doyOf, seasonOf, dayWeather } from '../core/year.js';
 import { nbUI, valueOf, KINDS, GOODS } from '../core/nb.js';
+import { storyAdvice, storyCard, storyRuleOn, STORY_RULES } from '../core/story.js';
 
 const now = () => performance.now();
 export const siteScore = s => s.open + (s.water != null ? 30 - Math.min(30, s.water / 4) : 0) + s.wood * .3 - s.marsh - s.stone * .5;
@@ -40,6 +41,7 @@ export function botBuild(sim) {
   botFood(sim);
   botNb(sim);
   if (!S.projects[0].done) return;   // the shelter comes first
+  botStory(sim);
   for (const m of ['stone', 'timber']) if (!S.mat[m].tested) sim.command({ op: 'test', mat: m });
   // new feedstock wakes the Seed's pick from the archive, unless a couple is waiting for a tank
   const sd = S.seedc;
@@ -71,6 +73,19 @@ export function botBuild(sim) {
   // a growing colony's wants in order; one with no room left on the map doesn't hold up the rest
   if (!next) for (const g of grow(sim)) { const [t, lv] = Array.isArray(g) ? g : [g], z = sizeFor(sim, t); spot = z && findPlot(sim, t, z.w, z.h, lv); if (spot) { next = [t, z.w, z.h]; break; } }
   if (spot) sim.command({ op: 'place', type: next[0], ...spot });
+}
+// the story: every find goes to the lab, whatever the Seed suggests for its sake is built, the cards on its buildings
+// are answered the first way offered, and any new rule is set to its last option
+function botStory(sim) {
+  const S = sim.S, Y = S.story; if (!Y) return;
+  for (const f of Y.finds) if (f.st === 0) sim.command({ op: 'story', do: 'analyse', i: f.i });
+  for (const p of S.projects) if (!p.gone && p.done) { const a = storyCard(sim, p).find(q => !q.off); if (a) sim.command({ op: 'story', pid: p.id, id: a.id }); }
+  for (const k in STORY_RULES) if (storyRuleOn(S, k)) { const o = STORY_RULES[k].opts, v = o[o.length - 1][0]; if (S.soc.rules[k] !== v) sim.command({ op: 'rule', k, v }); }
+  for (const a of storyAdvice(sim)) {
+    if (S.projects.some(p => !p.gone && !p.done && p.type === a.type)) continue;
+    const z = sizeFor(sim, a.type) || (TYPES[a.type].size && { w: TYPES[a.type].size[0], h: TYPES[a.type].size[1] }), spot = z && findPlot(sim, a.type, z.w, z.h);
+    if (spot) { sim.command({ op: 'place', type: a.type, ...spot }); break; }
+  }
 }
 function grow(sim) {
   const out = [];
@@ -169,7 +184,7 @@ export function runColony(seed, days = 1, mode = 'landfall', count = 300, onTick
   while (S.tick < end) {
     const a = now(); sim.tick(); const d = now() - a; total += d; if (d > worst) worst = d;
     const t = S.tick % DAY_TICKS, live = S.cols.filter(c => !c.dead);
-    if (t === Math.round(3 * HOUR)) nights.push(live.filter(c => c.act === ACT.BED || c.act === ACT.INSIDE || c.alone > 0 || (c.fid >= 0 && S.archive[c.fid].woke > S.tick - 2 * HOUR) || c.life === 0 || c.plan === 'ward').length + '/' + live.length);   // someone who broke down may sit out the night, and someone just printed is still finding their bedroll
+    if (t === Math.round(3 * HOUR)) nights.push(live.filter(c => c.act === ACT.BED || c.act === ACT.INSIDE || c.alone > 0 || (c.fid >= 0 && S.archive[c.fid].woke > S.tick - 2 * HOUR) || c.life === 0 || c.plan === 'ward' || c.plan === 'care').length + '/' + live.length);   // a medic may be up with a patient, someone who broke down may sit out the night, and someone just printed is still finding their bedroll
     if (t % HOUR === 0) { peak = Math.max(peak, ...live.map(c => c.chill)); }
     if (t === Math.round(12 * HOUR)) noons.push(live.filter(c => c.plan === 'work').length);
     if (t === Math.round(23 * HOUR)) {

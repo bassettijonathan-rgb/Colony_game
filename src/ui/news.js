@@ -17,6 +17,7 @@ const SMALL_S = 90, SMALL_NEW_S = 180, MAX_LETTERS = 12;   // seconds of play a 
 const ACT_LABEL = { nb: 'Neighbours (V)' };
 // what an event means, said once, the first time it happens
 export const EXPLAIN = {
+  find: 'Something someone found and brought back. The Seed’s analyser can look at it, the same way it tests local life: open the Log (L), Finds, and press Look at it. People at a lab’s benches do it much faster. Everything found, and what the lab made of it, stays under Finds.',
   woke: 'A founder is awake in a printed body. For the first ten days a new body feels strange: they tire faster and work a little slower. Unless you have taken over the crews, the Seed puts each new founder in one.',
   nocrew: 'Since you took over the crews from the Seed, new founders wait at camp until you put them in one. Open Crews (C) to choose.',
   feedstock: 'The feedstock the Seed brought down is used up. A body is mostly water and the molecules of life, with minerals for the bones: a feedstock plant makes that from local biomass and crushed stone, slowly. Plan one in the Build window (B), give it power, and keep a forage crew and a quarry crew filling the yard.',
@@ -255,6 +256,7 @@ export class News {
     $('lPaused').hidden = !this.resume;
   }
   closeLetter() { if (this.cur) this.remove(this.cur); }
+  refresh(e) { if (this.cur && this.cur.e === e) $('lText').textContent = e.m; }
   get open() { return !!this.cur; }
   // the game picks up again once every big letter that paused it has been read or thrown away, unless the
   // player has set a speed meanwhile

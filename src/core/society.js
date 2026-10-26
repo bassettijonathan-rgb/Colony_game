@@ -14,6 +14,7 @@ import { injure, woundText } from './body.js';
 import { mealsInStore } from './food.js';
 import { scar } from './trauma.js';
 import { doyOf, seasonOf } from './year.js';
+import { STORY_RULES, storyRuleOn, storyOpinion, storyRule } from './story.js';
 
 export const newSoc = () => ({ rules: { rations: 'equal', appr: 13, retire: 72, watch: 'calm', school: 'all' }, rec: {}, council: null, verdict: null, q: null, cust: [], deaths: [], alias: {}, night: -1, fear: 0, sch: -1, lib: -1, lean: 0, hv: 0, said: {}, view: null, lost: 0 });
 const adultsOf = S => S.cols.filter(c => !c.dead && c.life >= 4);
@@ -34,6 +35,7 @@ export const RULES = {
   school: { name: 'What the school teaches', opts: [['all', 'A little of everything'], ['trades', 'Building and making'], ['land', 'The land and food'], ['care', 'Healing and teaching']], need: 'school' },
   watch: { name: 'What the watch may do', opts: [['calm', 'Talk them down'], ['hold', 'Lock them up for a day']], need: 'watch' },
 };
+for (const k in STORY_RULES) RULES[k] = { ...STORY_RULES[k], story: true };   // rules the hidden story adds, once it does
 export const RULE_KEYS = Object.keys(RULES);
 export function ruleNow(S, k) {
   if (k === 'children') return S.gen.rule;
@@ -42,7 +44,7 @@ export function ruleNow(S, k) {
 }
 const optName = (k, v) => { const o = RULES[k].opts.find(q => q[0] === v); return o ? o[1] : String(v); };
 const has = (S, t) => built(S).some(p => p.type === t && !p.shut);
-const ruleLive = (S, k) => !RULES[k].need || has(S, RULES[k].need) || crewOf(S, RULES[k].need === 'school' ? 'teach' : 'watch').length > 0;
+const ruleLive = (S, k) => RULES[k].story ? storyRuleOn(S, k) : !RULES[k].need || has(S, RULES[k].need) || crewOf(S, RULES[k].need === 'school' ? 'teach' : 'watch').length > 0;
 
 // what the colony looks like today, for everyone's opinions at once
 function situation(sim) {
@@ -58,6 +60,7 @@ export function opinion(sim, c, k, X) {
   const ri = RULE_KEYS.indexOf(k);
   RULES[k].opts.forEach(([v], i) => add(v, hash(c.id, ri * 7 + i, 4441) * .24 - .12, ''));
   const work = c.crew >= 0 && S.crews[c.crew] ? S.crews[c.crew].work : '';
+  if (RULES[k].story) storyOpinion(sim, c, k, add);
   switch (k) {
     case 'children':
       add('fed', .3, 'wants food put by before more mouths');
@@ -229,6 +232,7 @@ export function setRule(sim, k, v) {
   }
   S.rv++;
   sim.log(`The colony’s rule on ${RULES[k].name.toLowerCase()} is now: ${optName(k, v).toLowerCase()}.${note}`, '', { e: 'rule', lvl: 1, title: 'A rule changed' });
+  if (RULES[k].story) storyRule(sim, k, v);
   return true;
 }
 export function askCouncil(sim, k, v) {
@@ -378,7 +382,7 @@ const kindOf = (Q, ds, day) => {
 };
 const SNAME = SEASONS.map(n => n === 'Storm' ? 'the storm season' : n);
 const seasonDay = doy => `day ${doy % SEASON_DAYS + 1} of ${SNAME[seasonOf(doy)]}`;
-function addCustom(sim, cu, text, title) {
+export function addCustom(sim, cu, text, title) {
   const S = sim.S; cu.d = sim.day; S.soc.cust.push(cu); S.rv++;
   sim.log(text, 'good', { e: 'custom', lvl: 2, title });
 }
@@ -458,7 +462,7 @@ export const seasonAlias = (S, s) => S.soc && S.soc.alias[s] || '';
 export function socUI(sim) {
   const S = sim.S, Q = S.soc, V = Q.view ? Q.view.rules : {}, nm = i => S.cols[i] ? S.cols[i].name : '';
   const live = S.cols.filter(o => !o.dead), adults = live.filter(c => c.life >= 4);
-  const rules = RULE_KEYS.map(k => {
+  const rules = RULE_KEYS.filter(k => !RULES[k].story || storyRuleOn(S, k)).map(k => {
     const v = V[k], cur = ruleNow(S, k), alt = v ? Object.entries(v.pref).sort((a, b) => b[1] - a[1]) : [];
     const top = alt.length ? alt[0] : null, why = top && v.why[top[0]] ? Object.entries(v.why[top[0]]).filter(([w]) => w).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([w]) => w) : [];
     return { k, name: RULES[k].name, opts: RULES[k].opts, cur, live: ruleLive(S, k), need: RULES[k].need || '', n: v ? v.n : 0, for: v ? v.for : 0, alt: alt.map(([a, n]) => [optName(k, isNaN(+a) ? a : +a), n]), why, opp: v ? v.opp.length : 0 };

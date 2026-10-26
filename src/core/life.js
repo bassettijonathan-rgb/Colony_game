@@ -34,6 +34,7 @@ export function want(sim, c) {
   const S = sim.S, h = sim.hour, cr = c.crew >= 0 ? S.crews[c.crew] : null, sh = cr ? SHIFTS[cr.shift] : SHIFTS[1];
   if (c.carried >= 0) return 'carried';
   if (c.down) return 'down';
+  if (c.flee >= 0 && c.fleeT > S.tick) return 'flee';   // sent running somewhere by an alarm
   if (c.care) return 'care';
   if (c.ctl) return 'ctl';          // under the player's direct orders in an emergency
   if (c.fight > 0) return 'fire';   // all hands to a fire near the camp
@@ -90,6 +91,7 @@ function start(sim, c, w) {
   if (c.carry || c.make) dropCarry(sim, c);
   c.plan = w; c.job = ''; c.timer = 0; c.where = -1; c.pj = -1;
   if (w === 'wake') return;
+  if (w === 'flee') { c.job = 'flee'; sim.goTo(c, c.flee, ACT.IDLE, ACT.WALK); return; }
   if (w === 'ctl') { ctlStart(sim, c); return; }
   if (w === 'fire') { c.job = 'fire'; sim.goTo(c, fightSpot(sim, c.fight), ACT.FIGHT, ACT.WALK); return; }
   if (w === 'defend') {
@@ -361,7 +363,7 @@ export function daily(sim, c) {
 export function trustAll(sim, v, why) {
   for (const c of sim.S.cols) if (!c.dead) { c.tru = clamp(c.tru + v * (c.traits.includes('stubborn') ? .6 : 1), 0, 100); if (why) remember(sim, c, why); }
 }
-const DIED = { old: ' of old age', starved: ' of hunger', froze: ' of the cold', diet: ' after a long sickness from what they ate', bled: ': they lost too much blood', shock: ' of shock from their injuries', infection: ' of an infection that got into their wounds', head: ' of a head injury', heart: ': their heart failed', kidney: ' when their kidneys failed', growth: ' of a growth the clinic could not stop', operation: ' on the operating table' };
+const DIED = { sleep: ' in their sleep, without a mark on them', old: ' of old age', starved: ' of hunger', froze: ' of the cold', diet: ' after a long sickness from what they ate', bled: ': they lost too much blood', shock: ' of shock from their injuries', infection: ' of an infection that got into their wounds', head: ' of a head injury', heart: ': their heart failed', kidney: ' when their kidneys failed', growth: ' of a growth the clinic could not stop', operation: ' on the operating table' };
 export function die(sim, c, why) {
   if (c.care) endCare(sim, c);
   c.dday = sim.day; c.dtick = sim.S.tick; c.why = why;   // for the clinic's records

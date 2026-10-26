@@ -6,6 +6,7 @@ import { underOf, UG, LEVELS } from './world.js';
 import { MAP } from './consts.js';
 import { DEEP_SUN, stoneLeft } from './work.js';
 import { mealsInStore } from './food.js';
+import { storyAdvice } from './story.js';
 
 const n = (k, a, b) => `${k} ${k === 1 ? a : b}`;
 export function buildAdvice(sim) {
@@ -16,6 +17,8 @@ export function buildAdvice(sim) {
   const alive = S.cols.filter(c => !c.dead).length, soon = alive + (S.gen ? S.gen.womb.length : 0) + Math.max(S.seedc.feed, S.seedc.queue.length) + (S.seedc.printing ? 1 : 0);
   const add = (type, why, lvl = 0) => { if (!open(type) && !out.some(o => o.type === type)) out.push({ type, why, lvl }); };
   const shafts = mine.filter(p => p.type === 'shaft' && p.done && !p.shut), shaft = shafts.length > 0, Y = S.stores.yard;
+  // whatever the colony has learned it needs, ahead of the everyday list
+  for (const a of storyAdvice(sim)) add(a.type, a.why, a.lvl || 0);
   // power first: a dark building does nothing
   const draw = mine.filter(p => p.type !== 'solar').reduce((a, p) => a + (capacity(p.type, p.w, p.h).kw || 0), 0), supply = LANDER_KW + sum(['solar'], 'supply') * DEEP_SUN + sum(['geo'], 'supply');
   const dark = built(S).filter(p => p.type !== 'solar' && !p.powered && !p.shut).length;

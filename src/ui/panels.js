@@ -6,11 +6,11 @@ import { ACT, ACT_NAME, SHIFTS, WORKS, RULES, SKILLS, SKILL_NAME, DAY_TICKS, HOU
 import { TRAITS, suggestFirst } from '../core/founders.js';
 import { PRINT_TICKS, SMELT } from '../core/work.js';
 import { CROPS, CROP_KEYS, SAMPLES, TEST_H, PROC_NAME } from '../core/food.js';
-import { TYPES, PLANNABLE, STAGE_NAMES, TEST_STAGES, stagesOf, matName, LANDER_KW, FEED, seamOf, PIT_ROCK } from '../core/build.js';
+import { doorless, TYPES, PLANNABLE, STAGE_NAMES, TEST_STAGES, stagesOf, matName, LANDER_KW, FEED, seamOf, PIT_ROCK } from '../core/build.js';
 import { progress } from '../render/buildings.js';
 import { crewColour, portrait } from '../render/people.js';
 import { LETTERS } from '../render/view.js';
-import { thingCard } from './things.js';
+import { thingCard, labItem } from './things.js';
 import { healthTab } from './health.js';
 import { TRIAGE } from '../core/care.js';
 import { EM_TXT } from '../core/control.js';
@@ -29,6 +29,8 @@ const pct = f => Math.round(f * 100) + '%';
 const icon = (id, cls = 'ic') => `<svg class="${cls}"><use href="#i-${id}"/></svg>`;
 const WHY = { old: 'of old age', starved: 'of hunger', froze: 'of the cold', diet: 'of the diet', bled: 'of blood loss', shock: 'of shock', infection: 'of an infection', head: 'of a head injury', heart: 'of heart failure', kidney: 'of kidney failure', growth: 'of a growth', operation: 'in an operation' };
 const TICON = { shelter: 'seed', dorm: 'dorm', commons: 'commons', workshop: 'tool', clinic: 'clinic', solar: 'solar', test: 'test', field: 'field', lab: 'lab', plant: 'tank', cellar: 'cellar', burrow: 'below', mine: 'mine', pit: 'stone', school: 'school', library: 'library', watch: 'watch', nursery: 'tank', shaft: 'shaft', vault: 'vault', geo: 'power', scanner: 'scan' };
+const LOOK_ICON = { post: 'test', stack: 'below', pump: 'tank', mast: 'scan' };
+const tic = t => TICON[t] || (TYPES[t] && LOOK_ICON[TYPES[t].look]) || 'build';
 const KIN = { partner: 'Partner', parent: 'Parent', child: 'Child', sibling: 'Brother or sister' }, KIN_ORDER = ['partner', 'parent', 'child', 'sibling'];
 const GEN = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth'];
 // how old someone is: a founder's mind is older than the body the Seed printed for it
@@ -405,10 +407,10 @@ export class Panels {
       }
       // the lab
       h += how(['People notice the local life around them as they work outside; it appears below.', 'Foragers and survey crews take samples as they pass. Three samples are enough for a test.', 'Press <b>Test it</b>. The Seed’s analyser tests one kind at a time, slowly; a lab with a lab crew is much faster.', 'The result says whether it can be eaten, and how: raw, cooked, leached or fermented.']);
-      const cur = F.lab.cur >= 0 ? F.life[F.lab.cur] : null, labs = U.projects.filter(p => p.type === 'lab' && p.done && p.powered).length;
+      const cur = labItem(this.A, F, F.lab.cur), labs = U.projects.filter(p => p.type === 'lab' && p.done && p.powered).length;
       if (cur || F.lab.queue.length) h += `<div class="sec">Testing</div>`;
-      h += cur ? `<div class="box"><div class="row2"><b class="grow">Testing ${esc(cur.name.toLowerCase())}</b><span class="num">${pct(F.lab.work / TEST_H)}</span></div><div class="bar"><u style="width:${pct(F.lab.work / TEST_H)}"></u></div></div>` : '';
-      if (F.lab.queue.length) h += `<div class="note">Waiting: ${F.lab.queue.map(o => esc(F.life[o].name.toLowerCase())).join(', ')}.</div>`;
+      h += cur ? `<div class="box"><div class="row2"><b class="grow">${cur.find ? 'Looking at' : 'Testing'} ${esc(cur.name)}</b><span class="num">${pct(F.lab.work / cur.h)}</span></div><div class="bar"><u style="width:${pct(F.lab.work / cur.h)}"></u></div></div>` : '';
+      if (F.lab.queue.length) h += `<div class="note">Waiting: ${F.lab.queue.map(o => esc((labItem(this.A, F, o) || { name: '?' }).name)).join(', ')}.</div>`;
       if (labs) h += `<div class="note">People at the lab benches test much faster than the Seed alone.</div>`;
       // local life
       const seen = F.life.filter(Boolean);
@@ -439,9 +441,9 @@ export class Panels {
       let h = sub('btab', bt, [['plan', 'Plan'], ['list', `Projects · ${open.length}`], ['mat', 'Materials']]);
       if (bt === 'plan') {
         const AD = U.advice;
-        if (AD) h += `<div class="sec">The Seed suggests</div>` + (AD.note ? `<div class="note">${esc(AD.note)}</div>` : AD.list.length ? AD.list.slice(0, 3).map((o, i) => `<div class="box adv"><i class="bi">${icon(TICON[o.type])}</i><div><b>${i ? '' : 'Next: '}${esc(TYPES[o.type].name)}</b><div class="note" style="margin:2px 0 0">${esc(o.why)}</div></div><button class="btn${i ? '' : ' go'}" data-act="plan" data-type="${o.type}" data-lvl="${o.lvl || 0}">Plan it</button></div>`).join('') : '<div class="note">Nothing is short just now. Build what you like.</div>') + `<div class="sec">How to build</div>`;
+        if (AD) h += `<div class="sec">The Seed suggests</div>` + (AD.note ? `<div class="note">${esc(AD.note)}</div>` : AD.list.length ? AD.list.slice(0, 3).map((o, i) => `<div class="box adv"><i class="bi">${icon(tic(o.type))}</i><div><b>${i ? '' : 'Next: '}${esc(TYPES[o.type].name)}</b><div class="note" style="margin:2px 0 0">${esc(o.why)}</div></div><button class="btn${i ? '' : ' go'}" data-act="plan" data-type="${o.type}" data-lvl="${o.lvl || 0}">Plan it</button></div>`).join('') : '<div class="note">Nothing is short just now. Build what you like.</div>') + `<div class="sec">How to build</div>`;
         h += how(['Pick a building below.', 'Drag on the map to draw it. <kbd>R</kbd> turns the door; the card shows what it needs. Confirm to add it to the projects.', 'Build crews (Crews window, <kbd>C</kbd>) work through the projects from the top, cutting stone and felling trees for what each needs.', 'A finished building only works with power: see Materials.', 'Root cellars, dug quarters and mines go below ground: the map switches to the view underneath (<kbd>U</kbd>), where the Seed’s soundings show what can be dug and where the seams of ore run. A lift shaft opens the middle and the deep below it (press <kbd>U</kbd> again to go down), for deep vaults, heat taps and richer seams.']);
-        h += `<div class="sec">Everything you can build</div><div class="types">${PLANNABLE.map(t => `<button data-act="plan" data-type="${t}"><i class="bi">${icon(TICON[t])}</i><b>${TYPES[t].name}</b><span>${esc(TYPES[t].use)}</span></button>`).join('')}</div>`;
+        h += `<div class="sec">Everything you can build</div><div class="types">${PLANNABLE.concat(this.A.story ? this.A.story.unlock : []).map(t => `<button data-act="plan" data-type="${t}"><i class="bi">${icon(tic(t))}</i><b>${TYPES[t].name}</b><span>${esc(TYPES[t].use)}</span></button>`).join('')}</div>`;
         if (U.blueprints.length) h += `<div class="sec">Blueprints</div><div class="note" style="margin:0 0 6px">Buildings you saved to place again, same size and layout.</div>` + U.blueprints.map((b, i) => `<div class="q"><span>${esc(b.name)} <em class="dim">${TYPES[b.type].name.toLowerCase()} · ${b.w} × ${b.h}</em></span><button class="btn" data-act="bp" data-i="${i}">Place</button><button data-act="bpDel" data-i="${i}" title="Forget this blueprint">Forget</button></div>`).join('');
         return h;
       }
@@ -469,7 +471,7 @@ export class Panels {
         let r = `<div class="proj${sel ? ' sel' : ''}${p.stall ? ' stuck' : ''}"><div class="row2"><button class="pn grow" data-act="pGo" data-id="${p.id}">${esc(p.name)}</button>`;
         if (p.type !== 'shelter') r += `<button data-act="pUp" data-id="${p.id}" title="Earlier in the list">↑</button><button data-act="pDown" data-id="${p.id}" title="Later in the list">↓</button>`;
         r += `</div>`;
-        if (p.done) r += `<div class="ps">${esc(holds(p.type, p.cap))}${p.type === 'solar' ? '' : ` · ${p.cap.kw} kW · ${p.powered ? 'has power' : 'dark'}`}</div>${p.wait ? `<div class="pw">${esc(p.wait)}</div>` : ''}`;
+        if (p.done) r += `<div class="ps">${[holds(p.type, p.cap), p.type === 'solar' ? '' : `${p.cap.kw || 0} kW`, p.type === 'solar' || !p.cap.kw ? '' : p.powered ? 'has power' : 'dark'].filter(Boolean).map(esc).join(' · ')}</div>${p.wait ? `<div class="pw">${esc(p.wait)}</div>` : ''}`;
         else r += `<div class="ps">${p.paused ? 'Paused · ' : ''}${esc(stage)} · ${pct(f)}${p.type !== 'test' ? ` · stage ${p.stage + 1} of 5` : ''}</div><div class="bar"><u style="width:${pct(f)}"></u></div>
           ${left ? `<div class="ps">Still needs ${esc(left)}</div>` : ''}${p.wait ? `<div class="pw">${esc(p.wait)}</div>` : p.crews.length ? `<div class="ps">${esc(p.crews.join(', '))} crew${p.crews.length > 1 ? 's' : ''} on it</div>` : ''}`;
         if (p.type !== 'shelter') {
@@ -493,12 +495,13 @@ export class Panels {
     const sig = JSON.stringify([P.type, P.x, P.y, P.w, P.h, P.side, P.check.ok, P.check.why, P.check.warn, P.sug]); if (sig === this.planSig) { el.hidden = false; return; }
     this.planSig = sig;
     const c = P.check, T = TYPES[P.type];
-    $('plName').textContent = T.name; $('plPic').innerHTML = icon(TICON[P.type] || 'build');
-    $('plMeta').textContent = `${P.w} × ${P.h} tiles${T.open ? '' : T.below ? ` · stairs on the ${SIDE[P.side]} side` : ` · door on the ${SIDE[P.side]} side`}`;
+    $('plName').textContent = T.name; $('plPic').innerHTML = icon(tic(P.type));
+    $('plMeta').textContent = `${P.w} × ${P.h} tiles${doorless(T) ? '' : T.below ? ` · stairs on the ${SIDE[P.side]} side` : ` · door on the ${SIDE[P.side]} side`}`;
     let h = '';
     if (!c.ok) h += `<div class="pw bad">${esc(c.why)}</div>`;
     else if (c.warn) h += `<div class="pw">${esc(c.warn)}</div>`;
-    h += `<div class="note" style="margin:8px 0 4px">${esc(T.use)}. It holds ${esc(holds(P.type, c.cap))}.</div>`;
+    { const hd = holds(P.type, c.cap); h += `<div class="note" style="margin:8px 0 4px">${esc(T.use)}.${hd ? ` It holds ${esc(hd)}.` : ''}</div>`; }
+    if (c.site && c.site.note) h += `<div class="note" style="margin:0 0 4px">The ground here: ${esc(c.site.note)}</div>`;
     const sg = P.sug;
     if (sg && sg.w === P.w && sg.h === P.h) h += `<div class="note sug">The size the Seed suggests. ${esc(sg.why)}</div>`;
     else if (sg) h += `<div class="row2 sug"><span class="grow">The Seed suggests ${sg.w} × ${sg.h} tiles for what the colony needs.</span><button class="btn" data-act="useSug">Use ${sg.w} × ${sg.h}</button></div>`;
@@ -512,7 +515,7 @@ export class Panels {
     }
     if (P.type === 'pit' && c.ground) h += `<div class="sec">The ground</div><div class="note">The Seed's soundings show stone under ${Math.round(c.ground.stone * 100)}% of it, close to the surface: about ${PIT_ROCK * P.w * P.h} loads to cut.</div>`;
     const L = c.load;
-    if (L && !T.open && !T.below) {
+    if (L && !doorless(T) && !T.below) {
       h += `<div class="sec">Load check</div><div class="note">`;
       h += L.posts ? `The roof spans ${L.span} tiles, more than ${L.timber ? 'this' : 'untested'} timber can carry (${L.limit}), so ${L.posts} posts go down the middle.` : `The roof spans ${L.span} tiles: timber beams carry that${L.timber ? '' : ' even untested'}.`;
       h += ` ${L.stone ? 'Stone is tested.' : 'Stone is untested: 40% extra as a margin.'} ${L.timber ? 'Timber is tested.' : 'Timber is untested: 40% extra as a margin.'}</div>`;
@@ -531,9 +534,11 @@ export class Panels {
 
   // ---------- the log ----------
   log(U) {
-    const L = this.A.log, C = this.A.chron || [], v = this.logView === 'chron' ? 'chron' : 'log';
-    return ['l' + v + U.logN + '|' + L.length + '|' + C.length, () => {
-      let h = `<div class="seg sm" style="margin-bottom:8px"><button data-act="logView" data-v="log" class="${v === 'log' ? 'on' : ''}">Everything</button><button data-act="logView" data-v="chron" class="${v === 'chron' ? 'on' : ''}">Chronicle${C.length ? ' · ' + C.length : ''}</button></div>`;
+    const L = this.A.log, C = this.A.chron || [], Y = this.A.story, finds = Y && (Y.finds.length || Y.arch.length || Y.notes.length);
+    const v = this.logView === 'chron' ? 'chron' : this.logView === 'finds' && finds ? 'finds' : 'log';
+    return ['l' + v + U.logN + '|' + L.length + '|' + C.length + '|' + (Y ? Y.rv : 0), () => {
+      let h = `<div class="seg sm" style="margin-bottom:8px"><button data-act="logView" data-v="log" class="${v === 'log' ? 'on' : ''}">Everything</button>${finds ? `<button data-act="logView" data-v="finds" class="${v === 'finds' ? 'on' : ''}">Finds${Y.finds.length ? ' · ' + Y.finds.length : ''}</button>` : ''}<button data-act="logView" data-v="chron" class="${v === 'chron' ? 'on' : ''}">Chronicle${C.length ? ' · ' + C.length : ''}</button></div>`;
+      if (v === 'finds') return h + findsView(Y, U);
       if (v === 'chron') return h + (C.length ? `<div class="chron">${C.slice().reverse().map(c => `<h4>${esc(c.title)}</h4>${c.text.map(t => `<p>${esc(t)}</p>`).join('')}`).join('')}</div>` : '<div class="note">The chronicle is written when you skip ahead (N, or the button beside the speeds): what happened while the colony was left to itself.</div>');
       return h + (L.length ? L.slice().reverse().map(e => `<div class="lg ${e.k}"><em>${when(e.t)}</em><span>${esc(e.e === 'chronicle' ? 'The chronicle was written: see the Chronicle above.' : e.m)}</span></div>`).join('') : '<div class="note">Nothing has happened yet.</div>');
     }];
@@ -563,6 +568,8 @@ export class Panels {
       case 'rask': this.api.cmd('ask', { k: el.dataset.k, v: JSON.parse(el.dataset.v) }); this.socPick = null; break;
       case 'rcancel': this.socPick = null; break;
       case 'logView': this.logView = el.dataset.v; break;
+      case 'sact': this.api.cmd('story', { pid: +el.dataset.pid, id: el.dataset.id }); break;
+      case 'sfind': this.api.cmd('story', { do: el.dataset.do, i: +el.dataset.i }); break;
       case 'rkeep': this.socPick = null; if (A.soc && A.soc.verdict) { A.soc.verdict = null; this.api.cmd('ruleKeep', {}); } break;
       case 'area': this.api.pickArea(crew); break;
       case 'areaClear': this.api.cmd('crewSet', { crew, target: -1 }); break;
@@ -690,8 +697,8 @@ export class Panels {
     this.bSig = sig;
     const T = TYPES[p.type], test = p.type === 'test', names = stagesOf(p.type), n = names.length;
     const f = progress(p), all = p.done ? 1 : (p.stage + f) / n;
-    $('bName').textContent = p.name; $('bPic').innerHTML = icon(TICON[p.type] || 'build');
-    $('bMeta').textContent = test ? `At the rig in the yard` : `${T.name} · ${p.w} × ${p.h} tiles${T.open ? '' : T.below ? ` · dug into ${p.ug || 'the ground'}` : ` · door on the ${SIDE[p.side]} side`}`;
+    $('bName').textContent = p.name; $('bPic').innerHTML = icon(tic(p.type));
+    $('bMeta').textContent = test ? `At the rig in the yard` : `${T.name} · ${p.w} × ${p.h} tiles${doorless(T) ? '' : T.below ? ` · dug into ${p.ug || 'the ground'}` : ` · door on the ${SIDE[p.side]} side`}`;
     $('bJob').textContent = p.done ? (p.type === 'solar' ? `Finished · making ${p.cap.supply} kW` : !p.cap.kw ? 'Finished · in use' : `Finished · ${p.powered ? 'has power' : 'dark: not enough power'}`)
       : p.paused ? `Paused at ${names[p.stage].toLowerCase()}` : p.stall ? 'Stalled' : p.crews.length ? `Being built · ${names[p.stage].toLowerCase()}` : `Waiting · ${names[p.stage].toLowerCase()}`;
     if (p.fire) $('bJob').textContent = `On fire · ${Math.round(p.burn * 100)}% burned`;
@@ -702,7 +709,7 @@ export class Panels {
     if (p.fire) h += `<div class="pw bad">It is burning. Everyone inside got out, and anyone who can is beating it out. The longer it burns, the more of it the build crews will have to put back.</div>`;
     else if (p.wet) h += `<div class="pw">Flood water is standing in it${p.done || p.type === 'field' ? ': it is out of use until the water goes down' : ': building waits until the water goes down'}. The longer it stands, the more repairs it will need.</div>`;
     else if (p.dmg && !p.done) h += `<div class="note" style="margin:0 0 6px">Damaged by ${DMG[p.dmg] || 'damage'}: it is out of use until the build crews finish the repairs below.</div>`;
-    if (!test) h += `<div class="note" style="margin:8px 0 0">${esc(T.use || 'Twelve bunks in the lander\'s own modules, the first roof on this world')}. It holds ${esc(holds(p.type, p.cap))}${p.type === 'solar' || !p.cap.kw ? '' : ` and draws ${p.cap.kw} kW`}.</div>`;
+    if (!test) { const hd = holds(p.type, p.cap), kw = p.type === 'solar' || !p.cap.kw ? '' : `draws ${p.cap.kw} kW`; h += `<div class="note" style="margin:8px 0 0">${esc(T.use || 'Twelve bunks in the lander\'s own modules, the first roof on this world')}.${hd ? ` It holds ${esc(hd)}${kw ? ' and ' + kw : ''}.` : kw ? ` It ${kw}.` : ''}</div>`; }
     if (p.type === 'clinic' && p.done && U.care) {
       const C = U.care, M = U.med, here = C.ward.filter(q => q[1] === p.id).map(q => q[0]);
       h += `<div class="sec">Patients</div>${here.length ? `<div class="chips">${here.map(id => `<button class="chip" data-act="person" data-id="${id}">${esc(A.people[id] ? A.people[id].name : '')}</button>`).join('')}</div>` : '<div class="note" style="margin:0">No one is in here.</div>'}`;
@@ -728,6 +735,7 @@ export class Panels {
       h += `<div class="sec">The seam</div><div class="note" style="margin:0">${p.seam > 0 ? `About ${p.seam} loads of ore are left to bring up${p.done ? '' : ', once the galleries are dug'}.` : 'Worked out: there is no ore left under it. Plan a new mine over another seam.'} ${p.done && p.seam > 0 ? 'A crew set to mine work cuts it, a load at a time, and piles it in the yard, while the colony is short of metal.' : ''} Every three loads of ore smelt into two of salvage at a workshop bench, or more slowly in the Seed's fabricator.${Y.ore ? ` The yard holds ${Y.ore} ${Y.ore === 1 ? 'load' : 'loads'} of ore.` : ''}</div>`;
     }
     if (p.type === 'pit') h += `<div class="sec">The stone</div><div class="note" style="margin:0">${p.rock > 0 ? `About ${p.rock} loads of stone are left to cut${p.done ? '' : ', once the face is open'}.` : 'Cut out: the stone left is too deep to reach. Plan a new pit on stony ground.'} ${p.done && p.rock > 0 ? 'Quarry crews and builders cut here when it is nearer than the rocks left lying about, or when nothing else is left.' : ''}</div>`;
+    if (p.acts && p.acts.length) h += `<div class="sec">What it can do</div>` + p.acts.map(a => `<div class="box"><div class="row2"><span class="grow">${a.note && a.off ? `<span class="note" style="margin:0">${esc(a.note)}</span>` : ''}</span><button class="btn go" data-act="sact" data-pid="${p.id}" data-id="${esc(a.id)}"${a.off ? ' disabled' : ''}>${esc(a.label)}</button></div></div>`).join('');
     if (p.type === 'field' && p.done) { const [state, sel] = fieldBits(p); h += `<div class="sec">Crop</div><div class="note" style="margin:0 0 6px">${state}</div>${sel}`; }
     if (!p.done) {
       h += `<div class="sec">Progress · ${pct(all)}</div><div class="bar"><u style="width:${pct(all)}"></u></div>`;
@@ -764,4 +772,27 @@ export class Panels {
     $('bPause').hidden = true; $('bCancel').hidden = true; $('bList').hidden = !c.btn; if (c.btn) $('bList').textContent = c.btn.label;
     el.hidden = false;
   }
+}
+
+// the Log window's Finds tab: what the colony has found and what the lab made of it, the records it has opened,
+// what the Seed has noticed, and what the colony knows
+function findsView(Y, U) {
+  const day = d => `Day ${d}`, cur = U.F && U.F.lab.cur;
+  let h = '';
+  if (Y.end) h += `<div class="box"><b>${esc(Y.end.title)}</b><div class="note" style="color:var(--txt);margin-top:4px">${esc(Y.end.text)}</div><div class="note">${day(Y.end.d)}</div></div>`;
+  if (Y.finds.length) {
+    h += `<div class="sec">Finds · ${Y.finds.length}</div>`;
+    for (const f of Y.finds.slice().reverse()) {
+      h += `<div class="crew"><h3><i style="background:${f.st === 2 ? '#7fd38f' : f.st === 1 ? '#e0c46a' : '#8a96a6'}"></i>${esc(f.name)}<em>${f.st === 2 ? 'looked at' : f.st === 1 ? 'at the lab' : 'not looked at'}</em></h3>
+        <div class="note" style="margin:2px 0 6px">${day(f.d)}${f.who ? ' · ' + esc(f.who) : ''}</div>${f.text ? `<div class="note">${esc(f.text)}</div>` : ''}`;
+      if (f.st === 2) h += `<div class="note" style="margin-top:8px;color:var(--txt)">${esc(f.res)}</div><div class="note">The lab, ${day(f.dd)}</div>`;
+      else if (f.st === 1) { const on = cur === 'f' + f.i; h += `<div class="row2" style="margin-top:8px"><span class="grow" style="font-size:12px;font-weight:600">${on ? `At the analyser, about ${Math.max(1, Math.ceil(f.left))} hours left` : 'Waiting for the analyser'}</span>${on ? '' : `<button class="btn" data-act="sfind" data-do="unanalyse" data-i="${f.i}">Take out</button>`}</div>`; }
+      else h += `<div class="row2" style="margin-top:8px"><span class="grow" style="font-size:12px;font-weight:600">The Seed’s analyser can look at it</span><button class="btn" data-act="sfind" data-do="analyse" data-i="${f.i}">Look at it</button></div>`;
+      h += `</div>`;
+    }
+  }
+  if (Y.facts && Y.facts.length) h += `<div class="sec">What the colony knows</div>` + Y.facts.map(f => `<div class="li2"><span>${esc(f.text)}</span></div>`).join('');
+  if (Y.arch.length) h += `<div class="sec">Records</div>` + Y.arch.slice().reverse().map(a => `<details class="box"><summary><b>${esc(a.title)}</b> · ${day(a.d)}</summary><div class="note" style="color:var(--txt);margin-top:6px">${esc(a.text)}</div></details>`).join('');
+  if (Y.notes.length) h += `<div class="sec">Noticed</div>` + Y.notes.slice().reverse().map(n => `<div class="lg"><em>${day(n.d)}</em><span>${esc(n.m)}</span></div>`).join('');
+  return h;
 }
