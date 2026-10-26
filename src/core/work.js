@@ -741,6 +741,7 @@ export function onArrive(sim, c) {
     case 'mine': { const p = byId(S, c.ws); if (p) c.where = p.id; c.timer = Math.round(MINE_H * HOUR / eff(sim, c, 'cut')); break; }
     case 'plant': c.timer = Math.round(HOUR / 6); break;
     case 'fire': c.timer = FIRE_STEP; break;
+    case 'defend': c.timer = 20; break;
     case 'ctl': c.job = ''; c.act = ACT.IDLE; if (c.ord && c.ord.k === 'go') { c.ord.k = 'hold'; c.ord.t = c.tile; } break;   // there, or as near as they could get
     case 'mind': if (c.plan === 'work') c.timer = Math.round(HOUR * (.5 + rnd())); break;
     case 'eat':
@@ -907,6 +908,7 @@ export function onTimer(sim, c) {
     case 'keep': keepHour(sim, c); c.job = ''; c.where = -1; c.ws = -1; break;
     case 'patrol': c.job = ''; break;
     case 'fire': beat(sim, c); c.job = ''; if (!(c.fight > 0)) c.plan = ''; break;
+    case 'defend': c.job = ''; if (!(c.def >= 0)) c.plan = ''; break;
     case 'ctl': c.job = ''; break;
     case 'mind': c.job = ''; break;
   }

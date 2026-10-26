@@ -157,6 +157,7 @@ export function drawPerson(g, a, x, y, ang, moving, act, t) {
   else if (act === 25) { lh = [-.16, -.1]; rh = [.12, -.2]; prop = 'sack'; }
   else if (act === 27 && still) { const k = Math.sin(t * 3.2 + a.walk * 2); lh = [-.09, -.3 + k * .02]; rh = [.1, -.31 - k * .03]; prop = 'kit'; }   // tending someone on the ground
   else if (act === 28) { lh = [-.14, .27]; rh = [.14, .27]; }   // dragging someone behind them
+  else if (act === 37 && still) { const k = Math.max(0, Math.sin(t * 7.5 + a.walk * 2)); a.k = k; lh = [.06, -.2 + k * .04]; rh = [.16 + k * .1, -.16 - k * .12]; prop = 'tool'; }   // a pole swung at someone
   else if (act === 29 && still) { const k = Math.max(0, Math.sin(t * 6.5 + a.walk * 2)); a.k = k; lh = [-.04, -.21 - k * .05]; rh = [.08, -.24 - k * .09]; prop = 'beater'; }   // beating at the flames
   if (prop === 'crate') { g.fillStyle = 'rgba(0,0,0,.25)'; rrect(g, -.2, -.5, .42, .3, .03); g.fill(); }
   hand(lh[0], lh[1]); hand(rh[0], rh[1]);

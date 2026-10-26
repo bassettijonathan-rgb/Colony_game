@@ -27,6 +27,7 @@ import { printedBody, migrateLives, livesDay, minders, newGen, genUI, yearsOf, m
 import { newSoc, socHour, socUI, migrateSoc } from './society.js';
 import { buildAdvice } from './advice.js';
 import { newNb, nbMorning, guestsThink, guestArrive, guestSnap, nbUI, migrateNb, trade, answerJoin } from './nb.js';
+import { raidMorning, raidThink, raidArrive, raidMode, setGuard, autoGuard, captives } from './raid.js';
 
 export const CREW_NAMES = ['Basalt', 'Kestrel', 'Cedar', 'Drift', 'Ember', 'Fern', 'Gale', 'Heron', 'Iris', 'Juniper', 'Lichen', 'Moss', 'Nettle', 'Onyx', 'Pike', 'Quartz', 'Rowan', 'Sedge', 'Thistle', 'Umber', 'Vetch', 'Willow', 'Yarrow', 'Zinc', 'Alder', 'Bramble', 'Cobalt', 'Dune', 'Flint', 'Garnet', 'Hazel', 'Ivy', 'Jasper', 'Kelp', 'Larch', 'Marl'];
 export const STAKES = 10, FOOD_DAYS = 40, FIRST_BODIES = 6;
@@ -268,7 +269,7 @@ export class Sim {
     if (S.tick % FIRE_STEP === 0 && S.mode === 'landfall') fireStep(this);
     for (let i = 0; i < cols.length; i++) this.move(cols[i]);
     for (let i = 0; i < cols.length; i++) if (cols[i].carried >= 0) follow(this, cols[i]);
-    const G = S.nb && S.nb.g; if (G && G.length) { for (const g of G) if (!g.out) this.move(g); if (S.tick % 30 === 0) guestsThink(this); }
+    const G = S.nb && S.nb.g; if (G && G.length) { for (const g of G) if (!g.out) this.move(g); if (S.tick % 30 === 0) { if (S.nb.party && S.nb.party.kind === 'raid') raidThink(this); else guestsThink(this); } }
     this.separate();
     this.groundTick();
     if (S.tick % HOUR === 0) this.hourly();
@@ -298,6 +299,7 @@ export class Sim {
     const S = this.S, F = S.F, s = seasonOf(doy);
     hzMorning(this);
     dirMorning(this);
+    raidMorning(this);
     nbMorning(this);
     if (F.seasonSaid !== s && doy % 20 === 0) {
       F.seasonSaid = s; F.sun = sunFactor(s); for (const p of powerCheck(this)) if (p.type !== 'solar') this.log(p.powered ? `${p.name} has power again.` : `${p.name} went dark: the solar panels make less now.`, p.powered ? 'good' : 'bad', p.powered ? { pid: p.id } : { e: 'dark', lvl: 1, pid: p.id, title: 'Not enough power' });
@@ -327,7 +329,7 @@ export class Sim {
     if (!r) { this.arrived(c); return; }   // no way there: do it where they stand
     c.wps = r.length ? r : [tile]; c.wi = 0; c.leg = []; c.li = 0; c.mv = 1;
   }
-  arrived(c) { c.mv = 0; c.wps = []; c.leg = []; c.li = 0; c.wi = 0; c.act = c.then; if (c.guest) guestArrive(this, c); else onArrive(this, c); }
+  arrived(c) { c.mv = 0; c.wps = []; c.leg = []; c.li = 0; c.wi = 0; c.act = c.then; if (c.guest) { if (c.raider) raidArrive(this, c); else guestArrive(this, c); } else onArrive(this, c); }
   move(c) {
     c.moving = 0;
     if (c.dead) return;
@@ -498,7 +500,7 @@ export class Sim {
     return {
       rv: S.rv, mode: S.mode, logN: S.logN, spots: { cook: this.cookTile, vat: this.vatTile },
       p: S.cols.map(c => [c.act, c.crew, Math.round(c.fat), Math.round(c.str), Math.round(c.tru), Math.round(Math.min(c.hp, 100 - danger(c) * 100)), (c.fresh > 0 ? 1 : 0) | (c.hurt > 0 ? 2 : 0) | (c.alone > 0 ? 4 : 0) | (c.hungry ? 8 : 0) | (c.dead ? 16 : 0) | (c.carry && c.mv ? 32 : 0) | (c.chill > 50 ? 64 : 0) | (c.unwell ? 128 : 0)
-        | (c.bd.w.some(w => w.kn && w.bl > .01) ? 256 : 0) | (c.down ? 512 : 0) | (c.plan === 'ward' || c.medBy >= 0 || c.carried >= 0 ? 1024 : 0) | (c.bd.worse && !c.dead ? 2048 : 0) | (c.bd.ill.some(q => q.st === 1 || q.st === 2) ? 4096 : 0) | (c.iso ? 8192 : 0) | (c.bd.ill.some(q => q.st === 2) ? 16384 : 0) | (toIsolate(c) ? 32768 : 0) | (c.life < 3 ? 65536 : 0) | (c.retired ? 131072 : 0) | (c.minding ? 262144 : 0), Math.round(c.chill), Math.round(yearsOf(this, c) * 10) / 10, Math.floor(mindAge(this, c)), hidden(c.act) ? c.where : -1]),
+        | (c.bd.w.some(w => w.kn && w.bl > .01) ? 256 : 0) | (c.down ? 512 : 0) | (c.plan === 'ward' || c.medBy >= 0 || c.carried >= 0 ? 1024 : 0) | (c.bd.worse && !c.dead ? 2048 : 0) | (c.bd.ill.some(q => q.st === 1 || q.st === 2) ? 4096 : 0) | (c.iso ? 8192 : 0) | (c.bd.ill.some(q => q.st === 2) ? 16384 : 0) | (toIsolate(c) ? 32768 : 0) | (c.life < 3 ? 65536 : 0) | (c.retired ? 131072 : 0) | (c.minding ? 262144 : 0) | (c.grd ? 524288 : 0), Math.round(c.chill), Math.round(yearsOf(this, c) * 10) / 10, Math.floor(mindAge(this, c)), hidden(c.act) ? c.where : -1]),
       crews: S.crews.map(cr => ({ id: cr.id, name: cr.name, gone: cr.gone, lead: cr.lead, members: cr.members, work: cr.work, shift: cr.shift, rules: cr.rules, target: cr.target, dest: cr.dest, recalled: cr.recalled, proj: cr.proj })),
       seed: { feed: sd.feed, fb: sd.fb || 0, stored: S.archive.filter(p => p.woke == null).length, per: FEED.per, queue: sd.queue, printing: sd.printing && { fid: sd.printing.fid, rid: sd.printing.rid, name: sd.printing.rid != null ? S.cols[sd.printing.rid].name : S.archive[sd.printing.fid].name, left: sd.printing.left }, restore: sd.restore || [], stakes: sd.stakes, fab: S.fab.job && { k: S.fab.job.k, left: S.fab.job.left } },
       shelter: { stage: sh.stage, done: sh.done, beds: 12 },
@@ -543,7 +545,9 @@ export class Sim {
     };
   }
   logSince(n) { return this.S.log.filter(e => e.n > n); }
-  command(m) { if (m.op === 'trade') return trade(this, m); if (m.op === 'join') return answerJoin(this, !!m.yes); return command(this, m); }
+  command(m) { if (m.op === 'trade') return trade(this, m); if (m.op === 'join') return answerJoin(this, !!m.yes);
+    if (m.op === 'raidMode') return raidMode(this, m.m); if (m.op === 'guard') return setGuard(this, m.id, m.on); if (m.op === 'guardAuto') return autoGuard(this); if (m.op === 'captives') return captives(this, !!m.treat);
+    return command(this, m); }
 
   // ---------- saving ----------
   serialize() {

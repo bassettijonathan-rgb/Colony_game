@@ -7,6 +7,12 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;',
 const cap1 = s => s.charAt(0).toUpperCase() + s.slice(1);
 const list = a => a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1];
 const gname = k => GOODS[k].name.toLowerCase();
+const WHY = { hunger: 'They have come for food.', scan: 'They have come to break the scanner.', grudge: 'They have come to take what they can.' };
+const MODE = {
+  guard: 'The guard and the watch crew go out to meet them near the camp; everyone else stays inside.',
+  all: 'Every able adult goes out to meet them. More hands, and more people hurt.',
+  hide: 'Nobody stands in their way: everyone stays inside, and they take what they came for and go.',
+};
 
 export class NbPanel {
   constructor(api) { this.api = api; this.deal = { seq: -1, give: {}, get: {} }; this.msg = ''; }
@@ -21,11 +27,11 @@ export class NbPanel {
       for (const k in D.get) { const n = GOODS[k] ? Math.min(D.get[k], P.goods[k] || 0) : L.has(k) ? 1 : 0; if (n) D.get[k] = n; else delete D.get[k]; }
       for (const k in D.give) { const n = Math.min(D.give[k], N.have[k] || 0); if (n) D.give[k] = n; else delete D.give[k]; }
     }
-    return ['nb' + JSON.stringify([N.list, P, N.have, D, this.msg, this.busy]), () => {
+    return ['nb' + JSON.stringify([N.list, P, N.have, D, this.msg, this.busy, N.guard, N.watch]), () => {
       let h = '';
       if (!N.list.length && !P) return '<div class="note" style="margin-top:0">Nobody else is known on this world. The orbital survey saw no settlement within reach of the landing, but it only covered the ground around it.</div>';
-      if (P) h += this.party(U, N, P, D);
-      if (N.list.length) h += `<div class="sec">Settlements</div>` + N.list.map(q => this.place(q, P)).join('');
+      if (P) h += P.kind === 'raid' ? this.raid(N, P) : this.party(U, N, P, D);
+      if (N.list.length) h += this.guard(N) + `<div class="sec">Settlements</div>` + N.list.map(q => this.place(q, P)).join('');
       return h;
     }];
   }
@@ -56,12 +62,36 @@ export class NbPanel {
       <div class="note">Goods are valued in meals. The more they trust the colony, the less extra they ask for, and goods they want are worth more to them.</div></div>`;
     return h;
   }
+  // raiders: why they came, who meets them, and the hurt they left behind
+  raid(N, P) {
+    const q = N.list.find(o => o.i === P.i), place = q ? q.place : 'another settlement', on = P.st === 'come' || P.st === 'loot';
+    const where = P.st === 'come' ? `on their way to ${P.tname}` : P.st === 'loot' ? `at ${P.tname}` : P.st === 'held' ? 'gone, leaving their hurt behind' : P.home ? 'the hurt are walking home' : 'leaving';
+    const took = Object.entries(P.took).filter(([, n]) => n > 0).map(([k, n]) => k === 'meals' ? `${Math.round(n)} meals` : `${Math.round(n)} loads of ${k === 'rare' ? 'rare earths' : k}`);
+    let h = `<div class="box nbp raid"><b>Raiders from ${esc(place)}</b> <span class="note" style="margin:0">· ${where}</span>
+      <div class="note" style="margin:4px 0 6px">${on ? WHY[P.why] || '' : ''}${took.length ? ` They ${on ? 'have taken' : 'took'} ${list(took)}.` : on ? '' : ' They took nothing.'}</div>
+      <div class="chips">${P.people.map(p => `<span class="chip${p.dead ? ' bad' : ''}"><i class="dot" style="background:rgb(${p.coat.join(',')})"></i>${esc(p.name)}${p.dead ? ' · dead' : p.down ? ' · down' : p.load ? ' · carrying' : ''}</span>`).join('')}</div>`;
+    if (on) {
+      const n = N.guard.length + N.watch.filter(id => !N.guard.includes(id)).length;
+      h += `<div class="sec">Who meets them</div><div class="seg">${[['guard', `The guard (${n})`], ['all', 'Everyone who can fight'], ['hide', 'Stay inside']].map(([m, t]) => `<button data-act="nbraid" data-m="${m}" class="${P.mode === m ? 'on' : ''}">${t}</button>`).join('')}</div>
+        <div class="note">${MODE[P.mode]}${P.mode === 'guard' && !n ? ' Nobody is on the guard yet, so nobody will go.' : ''}</div>`;
+    }
+    if (P.st === 'held') h += `<div class="ask"><b>${P.people.filter(p => p.down && !p.dead).map(p => esc(p.name)).join(', ')}: left behind, hurt.</b> Treated, they go home when they can walk, and their people will hear of it. Sent away now, they go as they are, and their people will hear of that too.<div class="row2"><button class="btn go" data-act="nbcapt" data-v="1">Treat and send home</button><button class="btn" data-act="nbcapt" data-v="0">Send away now</button></div></div>`;
+    return h + '</div>';
+  }
+  // the guard: who goes out when raiders come
+  guard(N) {
+    const name = id => esc(this.api.name(id) || ''), extra = N.watch.filter(id => !N.guard.includes(id));
+    return `<div class="sec">The guard</div><div class="box"><div class="chips">${N.guard.length ? N.guard.map(id => `<span class="chip">${name(id)}</span>`).join('') : '<span class="note" style="margin:0">Nobody is on the guard.</span>'}</div>
+      ${extra.length ? `<div class="note">The watch crew goes out with them: ${extra.map(name).join(', ')}.</div>` : ''}
+      <div class="row2" style="margin-top:6px"><button class="btn" data-act="nbguard">Let the Seed choose the guard</button></div>
+      <div class="note">Mark someone for the guard on their card. When raiders come, the guard goes out to meet them near the camp and everyone else stays inside, unless you choose otherwise.</div></div>`;
+  }
   place(q, P) {
     const here = P && P.i === q.i, bar = Math.round((q.trust + 100) / 2);
-    return `<div class="box"><b>${esc(q.place)}</b>${here ? ' <span class="chip g">in camp</span>' : ''}
+    return `<div class="box"><b>${esc(q.place)}</b>${here ? (P.kind === 'raid' ? ' <span class="chip">raiding</span>' : ' <span class="chip g">in camp</span>') : ''}
       <div class="note" style="margin:2px 0 4px">${esc(cap1(q.folk))}: about ${q.pop} people, ${q.km} km to the ${q.dir}, by their own account.</div>
       <div class="sup"><div class="bar"><u style="width:${bar}%"></u></div><span>${esc(cap1(q.word))}.</span></div>
-      <div class="note">Met on day ${q.met}; ${q.visits} visit${q.visits === 1 ? '' : 's'}, ${q.trades} trade${q.trades === 1 ? '' : 's'}${q.joined ? `, ${q.joined} stayed` : ''}. They bring ${list(q.offers.map(gname))}${q.wants.length ? `, and want ${list(q.wants.slice(0, 4).map(gname))} most` : ''}.${q.taught ? ` They have taught the colony ${q.taught} thing${q.taught === 1 ? '' : 's'}.` : ''}${q.left ? ` They know ${q.left} more about this land that the colony doesn’t.` : ''}</div></div>`;
+      <div class="note">Met on day ${q.met}; ${q.visits} visit${q.visits === 1 ? '' : 's'}, ${q.trades} trade${q.trades === 1 ? '' : 's'}${q.joined ? `, ${q.joined} stayed` : ''}. They bring ${list(q.offers.map(gname))}${q.wants.length ? `, and want ${list(q.wants.slice(0, 4).map(gname))} most` : ''}.${q.taught ? ` They have taught the colony ${q.taught} thing${q.taught === 1 ? '' : 's'}.` : ''}${q.left ? ` They know ${q.left} more about this land that the colony doesn’t.` : ''}${q.hungry ? ' They are short of food this year.' : ''}${q.raids ? ` They have raided the colony ${q.raids === 1 ? 'once' : q.raids + ' times'}.` : ''}</div></div>`;
   }
   // clicks inside the window
   click(el, U) {
@@ -74,6 +104,9 @@ export class NbPanel {
     if (act === 'nbclear') { D.give = {}; D.get = {}; this.msg = ''; return true; }
     if (act === 'nboffer') { if (this.busy) return true; this.busy = true; this.api.cmd('trade', { give: D.give, get: D.get }).then(r => { if (r && r.ok) { D.give = {}; D.get = {}; this.msg = ''; this.api.toast('They took it.'); } else this.msg = r && r.why || 'They said no.'; this.busy = false; this.api.refresh(); }, () => { this.busy = false; this.api.refresh(); }); this.api.refresh(); return true; }
     if (act === 'nbjoin') { this.api.cmd('join', { yes: el.dataset.v === '1' }); return true; }
+    if (act === 'nbraid') { this.api.cmd('raidMode', { m: el.dataset.m }); return true; }
+    if (act === 'nbcapt') { this.api.cmd('captives', { treat: el.dataset.v === '1' }); return true; }
+    if (act === 'nbguard') { this.api.cmd('guardAuto', {}).then(() => this.api.refresh()); return true; }
     return false;
   }
 }

@@ -10,7 +10,7 @@ import { built } from './build.js';
 // what stops a skip: the things the player would want to see happen, or has to answer
 // (an illness at its crisis is left to the medics: the skip stops if it ends in a death)
 export const STOP = new Set(['death', 'bfire', 'wildfire', 'flood', 'floodwarn', 'nofood', 'protest', 'verdict', 'lost', 'gutted', 'tremor', 'nosalvage', 'nostone',
-  'firstfight', 'fight', 'unseen', 'nbsight', 'nbjoin']);
+  'firstfight', 'fight', 'unseen', 'nbsight', 'nbjoin', 'raid', 'raidheld', 'raidkill']);
 const MAX_KEPT = 120;
 
 const dateOf = cal => { const d = doyOf(cal); return `day ${d % SEASON_DAYS + 1} of ${SEASONS[seasonOf(d)]}, year ${Math.floor((cal - 1) / YEAR_DAYS) + 1}`; };

@@ -31,7 +31,7 @@ const inside = c => c.where >= 0 && (c.act === ACT.INDOORS || c.act === ACT.INSI
 const atClinic = (S, c) => { const p = inside(c) ? byId(S, c.where) : null; return !!p && p.type === 'clinic'; };
 // can this person help someone else right now? emergency: wake them if they are asleep
 function free(c, emergency) {
-  if (c.dead || c.life < 3 || c.down || c.care || c.ctl || c.carried >= 0 || c.alone > 0 || c.act === ACT.WAKE || c.plan === 'ward') return false;
+  if (c.dead || c.life < 3 || c.down || c.care || c.ctl || c.def >= 0 || c.carried >= 0 || c.alone > 0 || c.act === ACT.WAKE || c.plan === 'ward') return false;
   if (c.cap && (laidUp(c) || c.cap.consc < .6)) return false;
   if ((c.act === ACT.BED || c.act === ACT.INSIDE) && !emergency) return false;
   return true;

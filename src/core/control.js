@@ -10,12 +10,14 @@ import { dropCarry } from './work.js';
 import { sendToHelp, endCare } from './care.js';
 import { fightSpot } from './hazards.js';
 import { ailing, danger, laidUp } from './body.js';
+import { raidOn } from './raid.js';
 
-export const EM_TXT = { fire: 'a fire near the camp', down: 'someone is down', bleed: 'someone is bleeding', flood: 'the river is in flood', cold: 'someone is dangerously cold', crisis: 'someone is in danger' };
+export const EM_TXT = { raid: 'raiders in the camp', fire: 'a fire near the camp', down: 'someone is down', bleed: 'someone is bleeding', flood: 'the river is in flood', cold: 'someone is dangerously cold', crisis: 'someone is in danger' };
 // what makes it an emergency right now, or ''
 export function emergency(sim) {
   const S = sim.S, H = S.hz;
   if (S.mode !== 'landfall') return '';
+  if (raidOn(S)) return 'raid';
   if (H && (H.alarm || S.projects.some(p => !p.gone && p.fire))) return 'fire';
   let bleed = false, cold = false, crisis = false;
   for (const c of S.cols) {

@@ -6,11 +6,11 @@
 import { remember } from './life.js';
 
 export const TR_NAME = {
-  grief: 'Grief', death: 'Saw someone die', hurt: 'Badly hurt', fire: 'The fire', water: 'The flood', quake: 'The tremor', cold: 'Nearly froze',
+  grief: 'Grief', death: 'Saw someone die', hurt: 'Badly hurt', fire: 'The fire', water: 'The flood', quake: 'The tremor', cold: 'Nearly froze', raid: 'The raid', kill: 'Killed someone',
 };
 const FADE = {
   grief: 'Learned to live with the loss.', death: 'Stopped seeing it every time they closed their eyes.', hurt: 'Stopped flinching at the memory of the injury.',
-  fire: 'Stopped dreaming about the fire.', water: 'Stopped dreaming about the flood.', quake: 'Stopped starting at every shiver of the ground.', cold: 'Stopped dreaming about the cold.',
+  fire: 'Stopped dreaming about the fire.', water: 'Stopped dreaming about the flood.', quake: 'Stopped starting at every shiver of the ground.', cold: 'Stopped dreaming about the cold.', raid: 'Stopped listening for footsteps at night.', kill: 'Made some kind of peace with what they did in the raid.',
 };
 const KEEP = 5;
 export const weightOf = c => { let w = 0; for (const t of c.tr || []) w += t.w; return Math.min(150, w); };

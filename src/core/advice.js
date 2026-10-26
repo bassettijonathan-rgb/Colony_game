@@ -46,7 +46,7 @@ export function buildAdvice(sim) {
   const kids = S.cols.filter(c => !c.dead && c.life >= 1 && c.life <= 2).length;
   if (none('school') && kids >= 3) add('school', `${n(kids, 'child', 'children')} learn only from their parents, and only half of what they know.`);
   if (none('library') && soon >= 25) add('library', 'When someone dies, whatever they knew and never wrote down dies with them.');
-  if (none('watch') && (soon >= 30 || S.stats.fights)) add('watch', S.stats.fights ? 'There have been fights, and nobody to step in.' : 'A fire that starts at night burns until it wakes someone.');
+  if (none('watch') && (soon >= 30 || S.stats.fights || S.stats.raids)) add('watch', S.stats.raids ? 'Raiders have come, and the colony has no watch crew trained to meet them.' : S.stats.fights ? 'There have been fights, and nobody to step in.' : 'A fire that starts at night burns until it wakes someone.');
   if (S.gen && S.gen.asks.length >= 3 && count('nursery') < 2) add('nursery', `${n(S.gen.asks.length, 'couple is', 'couples are')} waiting for one of the Seed’s two growth tanks.`);
   if (none('shaft') && soon >= 30) add('shaft', 'The middle and the deep levels hold heat, rare earths, and shelter from anything on the surface. A lift shaft reaches them.');
   if (shaft && sum(['vault'], 'places') < soon) add('vault', 'On a flare day, the rooms near the surface still let some of it through. A deep vault keeps out everything.', 2);

@@ -78,6 +78,10 @@ export const EXPLAIN = {
   flarewarn: 'This sun throws off big flares now and then, and the planet’s magnetic field is too weak to turn the particles away. While a storm is overhead everyone shelters and work outside stops. Dose adds up over a lifetime (each person’s Health tab shows it after a check-up): it raises the risk of growths years later, and a parent’s dose shows in their children. A timber roof halves it, the lander’s hull keeps out more, rooms below ground nearly all of it, and a deep vault reached by a lift shaft all of it.',
   flare: 'People shelter in the best cover there is room in: a deep vault first, then rooms below ground, then the shelter, then any building. Children in the Seed’s nursery are inside the hull already.',
   rare: 'Rare earths are a handful of metals, scattered thin through some of the ore deep down. The miners bring them up apart from the rest, and the yard keeps them. A scanner (Build window) needs them for its imaging magnets: with it, the Seed can keep a scan of everyone who agrees, and wake them again if they die.',
+  raid: 'Raiders come for a reason: food after a hard winter, something they can’t bear, or a grudge. Who meets them is your call in the Neighbours window (V): the guard, everyone who can fight, or nobody. Raiders fight whoever stands in their way and run when the fight turns. Feeding a hungry neighbour, or winning back their trust, takes the reason away.',
+  raidheld: 'Raiders left behind, hurt, are yours to decide about: treat them and send them home, or send them away as they are. Their settlement will hear what you did.',
+  raidkill: 'Someone died in the raid. Their settlement will not forget it, and neither will whoever struck the blow.',
+  nbscan: 'Not everyone on this world thinks the scanner is a good thing. How a settlement feels about the colony changes what it will do.',
   nbsight: 'Strangers are walking in from the edge of the map. Nobody can tell yet who they are or what they want. The Seed will say more when they reach the camp.',
   nbmeet: 'Other people live on this world, in settlements beyond the map. They will come back to trade, now and then. The Neighbours window (V) keeps what is known of each settlement: where they live, how far they trust the colony, what they want and what they bring.',
   told: 'The neighbours have lived here far longer than the colony, so they know things about this land it doesn’t. What they tell is as good as a test in the lab. They teach more in trade, so look for it in the Neighbours window (V) when traders come.',
@@ -126,6 +130,8 @@ const ALERTS = {
   food: ['warn', '', 'Foragers bring in wild food the Life window (G) shows is safe; fields feed more once they are made and sown.'],
   cold: ['bad', '', 'They need to get indoors or to the fire. The very cold work slower and have accidents, and can die if it lasts.'],
   crisis: ['bad', '', 'A clinic bed and a medic sitting with them give them the best chance.'],
+  raid: ['bad', '', 'Choose who meets them in the Neighbours window (V): the guard, everyone who can fight, or nobody.'],
+  captives: ['warn', '', 'Treat them and send them home, or send them away now: the Neighbours window (V).'],
   fire: ['bad', '', 'Everyone who can is beating it out. Rain puts it out; a fire left alone spreads downwind.'],
   bfire: ['bad', '', 'It is out of use while it burns, and every minute of it means more repairs.'],
   flooded: ['warn', '', 'Out of use until the water goes down, then the build crews repair them.'],
@@ -274,6 +280,9 @@ export class News {
     const named = (ids, one, many) => ids.length === 1 ? `${A.names[ids[0]]} ${one}` : `${ids.length} ${many}`;
     const add = (key, title, aims, detail) => list.push({ key, title, aims, detail });
     const eaters = U.alive + U.seed.queue.length + (U.seed.printing ? 1 : 0), days = eaters ? U.food / eaters : 99;
+    const R = U.nb && U.nb.party, rq = R && U.nb.list.find(q => q.i === R.i);
+    if (R && R.kind === 'raid' && (R.st === 'come' || R.st === 'loot')) add('raid', `Raiders from ${rq ? rq.place : 'outside'} ${R.st === 'come' ? 'are coming' : 'are at ' + R.tname}`, [{ tab: 'nb' }]);
+    if (R && R.kind === 'raid' && R.st === 'held') add('captives', 'Hurt raiders left behind', [{ tab: 'nb' }]);
     if (U.seed.feed > 0 && !U.seed.queue.length && !U.seed.printing && U.seed.stored > 0) add('print', ALERTS.print[1], [{ tab: 'archive' }]);
     const F = U.F, Y = U.year, usable = F ? F.usable : U.food, fdays = eaters ? usable / eaters : 99;
     if (eaters && fdays < 10) add('food', usable < 1 ? 'Nothing left to eat' : `Food for ${Math.max(1, Math.floor(fdays))} day${Math.floor(fdays) === 1 ? '' : 's'}`, [{ tab: 'life' }], usable < 1 ? 'Nobody has had a meal since the food ran out.' : U.food >= 1 ? `${Math.floor(U.food)} meals of it are the lander’s rations.` : '');

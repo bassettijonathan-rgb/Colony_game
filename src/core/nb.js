@@ -36,6 +36,13 @@ export const KNOW_V = { life: 14, unseen: 18, ill: 12 };
 export const DIRS = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'];
 const TRUST_VISIT = 6, FIRST = [16, 30], GAP = [14, 24], STAY = { meet: 10, trade: 18 };
 const pick = (r, a) => a[Math.floor(r() * a.length)];
+// some years a settlement goes hungry: its traders say so, it wants food above all, and if nobody helps, it may come for it
+export const yearOf = sim => Math.floor((sim.cal - 1) / YEAR_DAYS);
+export const hungry = (sim, q) => q.lean === yearOf(sim) && (q.fed || 0) < q.pop * .25;
+export function wantsOf(sim, i) {
+  const q = sim.S.nb.list[i], K = KINDS[q.k];
+  return hungry(sim, q) ? { ...K.wants, meals: Math.max(1.4, (K.wants.meals ?? 1) * 1.6) } : K.wants;
+}
 
 // ---------- the world's neighbours, drawn once ----------
 export function newNb(sim) {
@@ -66,7 +73,7 @@ export function haveOf(sim, k) {
   if (PRECISE.includes(k)) return stockOf(S, k);
   return 0;
 }
-function take(sim, k, n) {
+export function takeGood(sim, k, n) {
   const S = sim.S;
   if (k === 'meals') {
     const M = S.F.larder.meals;
@@ -133,12 +140,13 @@ export function trade(sim, m) {
     const n = Math.floor(m.get[k]); if (n <= 0) continue;
     if (GOODS[k]) { if (n > (P.goods[k] || 0)) return { ok: false, why: 'They don’t have that much.' }; get[k] = n; } else { const l = L.find(q => q.id === k); if (!l) return { ok: false, why: 'They can’t teach that.' }; get[k] = 1; know[k] = l.v; }
   }
-  const v = valueOf(K, N.trust, give, get, know);
+  const v = valueOf({ wants: wantsOf(sim, i), fair: K.fair }, N.trust, give, get, know);
   if (!v.ok) return { ok: false, why: `${N.folk[0].toUpperCase() + N.folk.slice(1)} want more for that.`, ...v };
-  for (const k in give) take(sim, k, give[k]);
+  for (const k in give) takeGood(sim, k, give[k]);
   for (const k in get) if (GOODS[k]) { put(sim, k, get[k], i); P.goods[k] -= get[k]; }
   const lead = S.nb.g.find(g => g.lead), who = S.cols.find(c => !c.dead && c.life >= 4 && Math.hypot(c.x - S.nb.g[0].x, c.y - S.nb.g[0].y) < 20);
   for (const k in know) teach(sim, i, k, who && who.name);
+  if (give.meals && N.lean === yearOf(sim)) { const was = hungry(sim, N); N.fed = (N.fed || 0) + give.meals; if (was && !hungry(sim, N)) sim.log(`That will see the people of ${N.place} through to their harvest.`, 'good'); }
   const before = N.trust, ask = v.need || 1;
   // trust grows with what the deal is worth to them, and only so far in one visit: twenty small swaps buy no more than one good one
   const up = v.gift ? Math.min(6, v.have / 4) : Math.min(1, v.have / 20) * (1 + Math.min(4, (v.have - v.need) / ask * 4)), room = Math.max(0, TRUST_VISIT - (P.tg || 0));
@@ -166,7 +174,7 @@ export function nbMorning(sim) {
   N.next = sim.day + Math.max(8, Math.round((GAP[0] + rnd() * (GAP[1] - GAP[0])) / (1 + Math.max(0, q.trust) / 100) / (alive > 60 ? 1.3 : 1)));
 }
 // where a party comes in: the map's edge in their direction, on ground that leads to the camp
-function entry(sim, dir) {
+export function entry(sim, dir) {
   const W = sim.W, L = W.land, a = dir / 8 * Math.PI * 2 - Math.PI / 2, dx = Math.cos(a), dy = Math.sin(a);
   let t = 0; while (true) { const x = L.x + dx * (t + 1), y = L.y + dy * (t + 1); if (x < 6 || y < 6 || x > MAP - 7 || y > MAP - 7) break; t++; }
   const X = Math.round(L.x + dx * t), Y = Math.round(L.y + dy * t);
@@ -176,7 +184,7 @@ function entry(sim, dir) {
   }
   return sim.yardTile;
 }
-function nameFor(sim, K, r, used) {
+export function nameFor(sim, K, r, used) {
   const A = sim.S.archive;
   if (r() < (K.namesake || 0) && A.length) { const f = pick(r, A); if (!used.has(f.name)) return f.name; }
   for (let n = 0; n < 30; n++) {
@@ -186,16 +194,20 @@ function nameFor(sim, K, r, used) {
   }
   return pick(r, K.given);
 }
+// one guest: someone from settlement i, the k-th of their party, standing at tile t
+export function newGuest(r, K, i, k, t, name, age) {
+  const tint = c => c.map(v => clamp(Math.round(v * (.85 + r() * .3)), 0, 255));
+  return { id: k, guest: true, nb: i, name, look: Math.floor(r() * 1e6), coat: tint(K.coat), coat2: tint(K.coat2), lead: k === 0, age,
+    x: t % MAP + .5, y: (t / MAP | 0) + .5, ang: 0, spd: .12 + r() * .02, tile: t, act: ACT.WALK, moving: 0, mv: 0, wps: [], wi: 0, leg: [], li: 0, goal: -1, then: ACT.IDLE, wait: k * 40, stuck: 0, timer: 0,
+    fat: 0, cap: null, fresh: 0, dead: false, fx: 0, fy: 0, out: 0, spot: -1 };
+}
 function startParty(sim, i, kind) {
   const S = sim.S, N = S.nb, q = N.list[i], K = KINDS[q.k], r = lcg(sim.W.seed * 7 + S.tick % 100003);
   const n = kind === 'meet' ? 3 + Math.floor(r() * 2) : 3 + Math.floor(r() * 4), at = entry(sim, q.dir), used = new Set([...S.cols.map(c => c.name)]);
-  const tint = c => c.map(v => clamp(Math.round(v * (.85 + r() * .3)), 0, 255));
   N.g = [];
   for (let k = 0; k < n; k++) {
     const t = k ? nearFree(sim, at, 3) : at, name = nameFor(sim, K, r, used); used.add(name);
-    N.g.push({ id: k, guest: true, nb: i, name, look: Math.floor(r() * 1e6), coat: tint(K.coat), coat2: tint(K.coat2), lead: k === 0, age: 20 + Math.floor(r() * 30),
-      x: t % MAP + .5, y: (t / MAP | 0) + .5, ang: 0, spd: .12 + r() * .02, tile: t, act: ACT.WALK, moving: 0, mv: 0, wps: [], wi: 0, leg: [], li: 0, goal: -1, then: ACT.IDLE, wait: k * 40, stuck: 0, timer: 0,
-      fat: 0, cap: null, fresh: 0, dead: false, fx: 0, fy: 0, out: 0, spot: -1 });
+    N.g.push(newGuest(r, K, i, k, t, name, 20 + Math.floor(r() * 30)));
   }
   const goods = {};
   if (kind === 'trade') for (const k in K.offers) { const [a, b] = K.offers[k], v = Math.round(a + r() * (b - a)); if (v > 0) goods[k] = v; }
@@ -207,7 +219,7 @@ function startParty(sim, i, kind) {
   for (const g of N.g) { g.spot = campSpot(sim, g.id); sim.goTo(g, g.spot, ACT.IDLE); }
   S.rv++;
 }
-function nearFree(sim, t, r0) {
+export function nearFree(sim, t, r0) {
   const W = sim.W, x0 = t % MAP, y0 = t / MAP | 0;
   for (let r = 1; r < 12; r++) for (let k = 0; k < r * 6; k++) { const b = rnd() * 6.283, x = Math.round(x0 + Math.cos(b) * r * r0 / 3), y = Math.round(y0 + Math.sin(b) * r * r0 / 3), i = y * MAP + x; if (x > 1 && y > 1 && x < MAP - 2 && y < MAP - 2 && W.reach[i] && W.cost[i]) return i; }
   return t;
@@ -237,7 +249,7 @@ function arrive(sim) {
   const names = N.g.map(g => g.name), lead = N.g[0], first = !q.met, known = N.list.some(o => o.met), o = { place: q.place, pop: q.pop, km: q.km, dir: DIRS[q.dir], lead: lead.name };
   q.visits++; q.last = sim.day;
   const has = Object.entries(P.goods).map(([k, n]) => `${n} ${GOODS[k].name.toLowerCase()}`), L = lessons(sim, P.nb);
-  const wants = Object.entries(K.wants).filter(([, v]) => v >= 1.3).sort((a, b) => b[1] - a[1]).map(([k]) => GOODS[k].name.toLowerCase());
+  const wants = Object.entries(wantsOf(sim, P.nb)).filter(([, v]) => v >= 1.3).sort((a, b) => b[1] - a[1]).map(([k]) => GOODS[k].name.toLowerCase());
   if (first) {
     q.met = sim.day;
     for (const c of S.cols) if (!c.dead && c.life >= 3) remember(sim, c, `Met the first people from ${q.place}.`);
@@ -245,12 +257,17 @@ function arrive(sim) {
     // a first gift, to show what they know: one thing about the land, if they can tell it and trust the colony enough
     if (L.length && q.trust >= 0) teach(sim, P.nb, L[0].id, '');
   } else {
-    sim.log(`${fill(pick(rnd, K.greet), o)} They brought ${has.length ? list(has) : 'little to trade'}${L.length ? `, and know ${L.length === 1 ? 'one thing' : L.length + ' things'} about this land the colony doesn’t` : ''}.${wants.length ? ` They want ${list(wants.slice(0, 4))} most.` : ''} Trade with them in the Neighbours window (V) before they leave tomorrow.`, 'good', { e: 'caravan', lvl: 2, x: lead.x, y: lead.y, title: `Traders from ${q.place}`, act: 'nb' });
+    sim.log(`${fill(pick(rnd, K.greet), o)}${hungry(sim, q) ? ` They say the last winter was hard on ${q.place}, and their stores are low.` : ''} They brought ${has.length ? list(has) : 'little to trade'}${L.length ? `, and know ${L.length === 1 ? 'one thing' : L.length + ' things'} about this land the colony doesn’t` : ''}.${wants.length ? ` They want ${list(wants.slice(0, 4))} most.` : ''} Trade with them in the Neighbours window (V) before they leave tomorrow.`, 'good', { e: 'caravan', lvl: 2, x: lead.x, y: lead.y, title: `Traders from ${q.place}`, act: 'nb' });
+  }
+  // some can't bear what the scanner does, and see it the first time they come after it is built
+  if (K.noScan && !q.sawScan && S.projects.some(p => !p.gone && p.done && p.type === 'scanner')) {
+    q.sawScan = sim.day; q.trust = clamp(q.trust - 15, -100, 100);
+    sim.log(`The people from ${q.place} saw the scanner and asked what it was for. When they were told, they went quiet, and ${lead.name} said they would not go near it.`, 'bad', { e: 'nbscan', lvl: 1, x: lead.x, y: lead.y, title: `${q.place} and the scanner` });
   }
   S.stats.visits = (S.stats.visits || 0) + 1;
   S.rv++;
 }
-const list = a => a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1];
+export const list = a => a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1];
 // every few seconds: guests by the fire potter about, sleep at night, and leave when their time is up
 export function guestsThink(sim) {
   const S = sim.S, N = S.nb, P = N && N.party; if (!P) return;
@@ -277,7 +294,7 @@ function leave(sim) {
   sim.log(`The people from ${q.place} are walking home${P.kind === 'trade' && !P.traded ? ', without trading' : ''}.`);
   S.rv++;
 }
-function endParty(sim) { const N = sim.S.nb; N.party = null; N.g = []; sim.S.rv++; }
+export function endParty(sim) { const N = sim.S.nb; N.party = null; N.g = []; sim.S.rv++; }
 
 // ---------- someone asks to stay ----------
 export function answerJoin(sim, yes) {
@@ -304,11 +321,12 @@ export function nbUI(sim) {
   const S = sim.S, N = S.nb; if (!N) return null;
   const P = N.party;
   return {
-    list: N.list.filter(q => q.met).map(q => { const K = KINDS[q.k], i = N.list.indexOf(q); return { i, place: q.place, folk: q.folk, dir: DIRS[q.dir], km: q.km, pop: q.pop, trust: Math.round(q.trust), word: trustWord(q.trust), visits: q.visits, trades: q.trades, joined: q.joined, last: q.last, met: q.met, wants: Object.entries(K.wants).filter(([, v]) => v >= 1.3).sort((a, b) => b[1] - a[1]).map(([k]) => k), offers: Object.keys(K.offers), fair: K.fair, taught: q.taught.length, left: lessons(sim, i).length }; }),
+    list: N.list.filter(q => q.met).map(q => { const K = KINDS[q.k], i = N.list.indexOf(q); return { i, place: q.place, folk: q.folk, dir: DIRS[q.dir], km: q.km, pop: q.pop, trust: Math.round(q.trust), word: trustWord(q.trust), visits: q.visits, trades: q.trades, joined: q.joined, last: q.last, met: q.met, wants: Object.entries(wantsOf(sim, i)).filter(([, v]) => v >= 1.3).sort((a, b) => b[1] - a[1]).map(([k]) => k), hungry: hungry(sim, q), raids: q.raids || 0, offers: Object.keys(K.offers), fair: K.fair, taught: q.taught.length, left: lessons(sim, i).length }; }),
     party: P && { i: P.nb, kind: P.kind, st: P.st, seq: P.seq, goods: P.goods, lessons: P.kind === 'trade' ? lessons(sim, P.nb) : [], until: P.until, at: P.at, traded: P.traded,
       ask: P.ask >= 0 ? (N.g.find(g => g.id === P.ask) || {}).name || '' : '',
-      people: N.g.map(g => ({ name: g.name, look: g.look, coat: g.coat, lead: g.lead, age: g.age })), wants: KINDS[N.list[P.nb].k].wants, fair: KINDS[N.list[P.nb].k].fair, trust: N.list[P.nb].trust },
+      people: N.g.map(g => ({ name: g.name, look: g.look, coat: g.coat, lead: g.lead, age: g.age, down: !!g.down, dead: !!g.dead, load: Math.round(g.load || 0) })), why: P.why || '', mode: P.mode || '', tname: P.tname || '', took: P.took || {}, how: P.how || '', home: P.home || 0, wants: wantsOf(sim, P.nb), fair: KINDS[N.list[P.nb].k].fair, trust: N.list[P.nb].trust },
     have: Object.fromEntries(GOOD_KEYS.map(k => [k, haveOf(sim, k)])),
+    guard: S.cols.filter(c => !c.dead && c.grd).map(c => c.id), watch: S.cols.filter(c => !c.dead && c.crew >= 0 && S.crews[c.crew] && !S.crews[c.crew].gone && S.crews[c.crew].work === 'watch').map(c => c.id),
   };
 }
 // guests' positions for the page, four numbers each, like the colonists'
