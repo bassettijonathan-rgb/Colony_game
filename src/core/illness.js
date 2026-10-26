@@ -10,6 +10,8 @@ import { rnd, clamp } from './rng.js';
 import { SEALED } from '../sealed/texts.js';
 import { doyOf, seasonOf, dayWeather } from './year.js';
 import { spend } from './director.js';
+import { YEAR_DAYS, DAY_TICKS } from './consts.js';
+const bodyYears = (sim, c) => c.born == null ? 30 : (sim.S.tick / DAY_TICKS - c.born) / YEAR_DAYS;   // the body's age, not the mind's
 
 // Each kind: what it is called, the symptoms anyone can see, how new cases start (src) and how it spreads from
 // the sick (spread, chances per hour of company or per shared meal), hours of incubation, sickness and crisis,
@@ -80,7 +82,7 @@ function sus(sim, c, K) {
 const tryCatch = (sim, c, K, p, from) => { if (!c.bd.ill.some(q => q.k === K.id) && rnd() < p * sus(sim, c, K) * (from < 0 && sim.S.dir ? sim.S.dir.damp : 1)) catchIt(sim, c, K, from); };
 export function catchIt(sim, c, K, from) {
   const b = c.bd, imm = b.imm[K.id] || 0;
-  const sev = clamp(K.sev * (.2 + .8 * Math.pow(rnd(), 1.3)) * (newBody(sim, c) ? 1.25 : 1) * (c.hungry ? 1.2 : 1) * (c.age > 55 ? 1.15 : 1) * (imm < 0 ? 1 - imm : 1), .05, 1);
+  const sev = clamp(K.sev * (.2 + .8 * Math.pow(rnd(), 1.3)) * (newBody(sim, c) ? 1.25 : 1) * (c.hungry ? 1.2 : 1) * (bodyYears(sim, c) > 55 ? 1.15 + (bodyYears(sim, c) - 55) * .01 : 1) * (imm < 0 ? 1 - imm : 1), .05, 1);
   const t = span(K.incub) * (imm < 0 ? .5 : 1);   // a sensitised body reacts faster
   b.ill.push({ k: K.id, st: 0, t, T: t, sev, kn: false, dx: 0, tried: false, d: sim.day, d1: 0, from });
   const S = sim.S; know(S, K.id).cases++; S.stats.ill = (S.stats.ill || 0) + 1;

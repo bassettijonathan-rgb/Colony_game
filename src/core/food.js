@@ -6,6 +6,7 @@ import { MAP, CH, NCH, T, HOUR, DAY_TICKS } from './consts.js';
 import { hash, vnoise, clamp } from './rng.js';
 import { SEALED } from '../sealed/texts.js';
 import { normalTemp, dayWeather, doyOf, seasonOf, DEEP } from './year.js';
+import { dietLoad } from './aging.js';
 
 export const POOL = SEALED.life || [];
 const TERR = { meadow: T.MEADOW, dirt: T.DIRT, sand: T.SAND, shallow: T.SHALLOW, marsh: T.MARSH, forest: T.FOREST, scree: T.SCREE };
@@ -262,7 +263,7 @@ export function eat(sim, c) {
 // the running share of meals with a slow harm (ds) or that aren't enough on their own (dl), and the harm itself
 function diet(c, f) {
   c.ds = c.ds * .85 + (f && f.slow ? .15 : 0); c.dl = c.dl * .85 + (f && f.lacks ? .15 : 0);
-  if (f && f.slow) c.tox += f.slow;
+  if (f && f.slow) { c.tox += f.slow; dietLoad(c, f.slow); }
 }
 // once a day: the body clears a little of the slow harm, and a diet that has been short for long shows
 export function dietDay(sim, c) {

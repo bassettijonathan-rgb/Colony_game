@@ -3,19 +3,22 @@
 //   page -> sim: init {seed, mode, count, save}, land {site}, speed {v}, save {id}, cmd {op, ...}, watch {id}
 //   sim -> page: survey {world, sites}, ready {world, site, roster, ui, ...}, snap {pos, clock, perf},
 //                state {ui, log, roster?}, wear {chunks}, known {chunks}, marks {gone, quarry, ground}, saved {id, data}, cmd {id, r}
+//   skips: page -> sim skip {kind}, skipStop; sim -> page skip {from, to, at} while it runs, skipEnd {why, chron} or skipNo {why}
 import { generateWorld, findSites, landAt } from '../core/world.js';
 import { Pathfinder } from '../core/path.js';
 import { Sim } from '../core/sim.js';
 import { TPS, SPEEDS } from '../core/consts.js';
+import { STOP, skipBlock, skipTarget, skipMark, chronicle } from '../core/chronicle.js';
 
 const now = () => performance.now();
 
 export function createSimCore(post) {
-  let W = null, P = null, sim = null, sites = null, speed = 1, last = 0, acc = 0, timer = null, lastWear = 0, lastState = 0, watch = -1, sentLog = 0, sentRv = -1, sentHist = 0;
+  let W = null, P = null, sim = null, sites = null, speed = 1, last = 0, acc = 0, timer = null, lastWear = 0, lastState = 0, watch = -1, recs = false, recsAt = 0, soc = false, socAt = 0, skip = null, sentChron = 0, sentLog = 0, sentRv = -1, sentHist = 0;
   const perf = { ticks: 0, tickMs: 0, tps: 0, window: now(), worst: 0 };
 
   function step() {
     const t = now(), dt = Math.min(250, t - last); last = t;
+    if (skip) { skipStep(t); timer = setTimeout(step, 0); return; }
     acc += dt / 1000 * TPS * SPEEDS[speed];
     let n = Math.min(60, Math.floor(acc)); acc -= n; if (acc > 60) acc = 0;   // never fall into a spiral
     if (n > 0) {
@@ -28,6 +31,29 @@ export function createSimCore(post) {
     if (t - lastWear > 500) { lastWear = t; chunks('wear', sim.dirty, k => sim.wearChunk(k)); chunks('known', sim.kdirty, k => sim.knownChunk(k)); marks(); }
     if (t - lastState > 400) { lastState = t; state(); }
     timer = setTimeout(step, 8);
+  }
+  // a skip: as many ticks as fit in a slice of time, then a look at the map and the clock for the page
+  function skipStep(t) {
+    const S = sim.S, K = skip, end = t + 40;
+    let n = 0;
+    while (S.tick < K.until && !K.stop && now() < end) { for (let i = 0; i < 30 && S.tick < K.until; i++) sim.tick(); n += 30; }
+    perf.ticks += n;
+    if (t - K.shown > 120) {
+      K.shown = t;
+      const pos = sim.snapshot(new Float32Array(S.cols.length * 4));
+      post({ t: 'snap', tick: S.tick, pos, clock: sim.clock(), perf: perfOut() }, [pos.buffer]);
+      post({ t: 'skip', from: K.from, to: K.until, at: S.tick });
+    }
+    if (t - lastWear > 1000) { lastWear = t; chunks('wear', sim.dirty, k => sim.wearChunk(k)); chunks('known', sim.kdirty, k => sim.knownChunk(k)); marks(); }
+    if (t - lastState > 1000) { lastState = t; state(); }
+    if (S.tick >= K.until || K.stop) endSkip(K.stop ? K.stop.title || 'something that happened' : '');
+  }
+  function endSkip(why) {
+    const K = skip; skip = null; sim.tap = null; speed = 0;
+    const C = chronicle(sim, K.mark, why);
+    lastState = 0; state();
+    post({ t: 'skipEnd', why, chron: C, stop: K.stop ? K.stop.n : 0 });
+    last = now(); acc = 0;
   }
   function chunks(kind, set, get) {
     if (!set.size) return;
@@ -44,6 +70,9 @@ export function createSimCore(post) {
     sentLog = S.logN;
     if (S.hist.rows.length !== sentHist) { m.hist = S.hist.rows.slice(sentHist); sentHist = S.hist.rows.length; }
     if (S.rv !== sentRv) { sentRv = S.rv; m.roster = sim.roster(); }
+    if (recs && now() - recsAt > 2000) { recsAt = now(); m.recs = sim.recordsUI(); }   // only while the records are open
+    if (soc && now() - socAt > 1000 && sim.S.soc) { socAt = now(); m.soc = sim.socUI(); }   // and the Society window
+    if (S.chron && S.chron.length !== sentChron) { sentChron = S.chron.length; m.chron = S.chron; }
     post(m);
   }
   function perfOut() {
@@ -56,7 +85,7 @@ export function createSimCore(post) {
     const patch = landAt(W, site); W.siteId = site.id;
     const t2 = now(); P = new Pathfinder(W); const t3 = now(); sim = new Sim(W, P); const t4 = now();
     if (save) sim.load(save); else sim.newGame(mode, count, season);
-    const S = sim.S; sentLog = 0; sentRv = S.rv; sentHist = S.hist.rows.length;
+    const S = sim.S; sentLog = 0; sentRv = S.rv; sentHist = S.hist.rows.length; sentChron = 0; skip = null;
     post({
       t: 'ready', seed: W.seed, land: W.land, site: W.site, siteId: site.id, tag: sites && sites[site.id] ? sites[site.id].tag : '', patch, rock: W.rock, mode: S.mode,
       world: { type: W.type, elev: W.elev, moist: W.moist },
@@ -81,7 +110,18 @@ export function createSimCore(post) {
     else if (m.t === 'speed') { speed = m.v; }
     else if (m.t === 'save') { post({ t: 'saved', rq: m.rq, data: sim ? sim.serialize() : null }); }
     else if (m.t === 'watch') { watch = m.id; if (sim) { lastState = 0; } }
-    else if (m.t === 'cmd') { if (!sim) return; const r = sim.command(m); if (m.rq) post({ t: 'cmd', rq: m.rq, r }); lastState = 0; }
+    else if (m.t === 'recs') { recs = !!m.on; recsAt = 0; }
+    else if (m.t === 'soc') { soc = !!m.on; socAt = 0; }
+    else if (m.t === 'cmd') { if (!sim) return; const r = sim.command(m); if (m.rq) post({ t: 'cmd', rq: m.rq, r }); lastState = 0; socAt = 0; }
+    else if (m.t === 'skip') {
+      if (!sim || skip) return;
+      const why = skipBlock(sim); if (why) { post({ t: 'skipNo', why }); return; }
+      const mark = skipMark(sim);
+      skip = { from: sim.S.tick, until: skipTarget(sim, m.kind), mark, stop: null, shown: 0 };
+      sim.tap = e => { mark.ev.push(e); if (!skip.stop && STOP.has(e.e)) skip.stop = e; };
+      post({ t: 'skip', from: skip.from, to: skip.until, at: skip.from });
+    }
+    else if (m.t === 'skipStop') { if (skip) skip.stop = { title: 'Stopped by you', n: 0 }; }
     else if (m.t === 'stop') { clearTimeout(timer); }
   }
   return { handle };

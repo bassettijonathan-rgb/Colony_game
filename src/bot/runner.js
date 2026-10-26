@@ -3,8 +3,8 @@
 // sites, wakes the six founders the Seed suggests, keeps the Seed's crews, and lets the days run. Every morning it
 // looks at the building list: it tests the local stone and timber, then plans a field, a workshop, a solar field,
 // a feedstock plant, a root cellar, a commons, a second field, a clinic, dug quarters, a third field and a
-// dormitory, two at a time, each on the nearest good
-// plot. It feeds the colony too: a forager once the shelter stands, a farmer once a field is made, a cook for every ten
+// dormitory, two at a time, each on the nearest good plot; after that it keeps up with the colony as it grows, at the
+// sizes the Seed suggests: solar when power runs short, then bunks, seats, fields, clinic beds and cool storage. It feeds the colony too: a forager once the shelter stands, a farmer once a field is made, a cook for every ten
 // people once there is food that needs the kitchen (one more while people go hungry with food waiting for it), every sample tested as soon as it is ready, and the surveyors foraging once
 // the stakes are out. Once the plant stands it puts someone on quarrying, and prints the Seed's pick whenever
 // there is feedstock.
@@ -12,7 +12,10 @@ import { generateWorld, findSites, landAt } from '../core/world.js';
 import { Pathfinder } from '../core/path.js';
 import { Sim } from '../core/sim.js';
 import { DAY_TICKS, HOUR, ACT } from '../core/consts.js';
-import { findPlot, built } from '../core/build.js';
+import { findPlot, built, capacity, LANDER_KW } from '../core/build.js';
+import { laidUp } from '../core/body.js';
+import { sizeFor, DEEP_SUN, stoneLeft } from '../core/work.js';
+import { ruleOk } from '../core/lives.js';
 import { mealsInStore, kitchenOnly } from '../core/food.js';
 import { toIsolate } from '../core/illness.js';
 import { doyOf, seasonOf, dayWeather } from '../core/year.js';
@@ -36,21 +39,54 @@ export function botBuild(sim) {
   botFood(sim);
   if (!S.projects[0].done) return;   // the shelter comes first
   for (const m of ['stone', 'timber']) if (!S.mat[m].tested) sim.command({ op: 'test', mat: m });
-  // new feedstock wakes the Seed's pick from the archive
+  // new feedstock wakes the Seed's pick from the archive, unless a couple is waiting for a tank
   const sd = S.seedc;
-  if (sd.feed > 0 && !sd.queue.length && !sd.printing) sim.command({ op: 'print', ids: sim.command({ op: 'suggest' }).slice(0, sd.feed) });
+  if (sd.feed > 0 && !sd.queue.length && !sd.printing && !(S.gen.asks.length && S.gen.womb.length < 2 && ruleOk(sim))) sim.command({ op: 'print', ids: sim.command({ op: 'suggest' }).slice(0, sd.feed) });
   // a catching illness going round: keep the sick apart, once there is a clinic; lift the rule when it has passed
   const ill = S.cols.filter(c => !c.dead && toIsolate(c)).length, clinic = S.projects.some(p => p.type === 'clinic' && p.done);
   if (clinic && ill >= 2 && !S.care.iso) sim.command({ op: 'iso', v: true }); else if (S.care.iso && !ill) sim.command({ op: 'iso', v: false });
   // short of power while someone is ill or hurt: the clinic goes up the list, ahead of everything else
-  const patients = S.cols.some(c => !c.dead && (c.cap || c.bd.ill.some(q => q.st === 1 || q.st === 2)));
+  const patients = S.cols.some(c => !c.dead && ((c.cap && laidUp(c)) || c.bd.ill.some(q => q.st === 1 || q.st === 2)));
   if (patients) for (const p of S.projects.filter(q => !q.gone && q.done && q.type === 'clinic' && !q.powered && !q.shut)) {
     for (let k = 0; k < 12 && !p.powered; k++) { const i = S.projects.indexOf(p), up = S.projects.slice(0, i).filter(q => !q.gone); if (up.length <= 1 || ['clinic', 'shelter', 'solar'].includes(up[up.length - 1].type)) break; sim.command({ op: 'projMove', id: p.id, d: -1 }); }
   }
+  // running low on metal with no mine left to work: a mine over the nearest seam goes in before anything else
+  const Y = S.stores.yard, metal = Y.salvage + (Y.ore || 0) * 2 / 3, mines = S.projects.filter(p => !p.gone && p.type === 'mine' && p.seam > 20);
+  if (metal < 40 && !mines.length && S.projects.some(p => p.type === 'workshop' && !p.gone)) {
+    const z = sizeFor(sim, 'mine'), spot = z && findPlot(sim, 'mine', z.w, z.h);
+    if (spot) { sim.command({ op: 'place', type: 'mine', ...spot }); const q = S.projects[S.projects.length - 1]; for (let k = 0; k < 20; k++) { const i = S.projects.indexOf(q), up = S.projects.slice(0, i).filter(r => !r.gone && !r.done); if (!up.length) break; sim.command({ op: 'projMove', id: q.id, d: -1 }); } }
+  }
+  // the loose stone near camp running out: a stone pit, before the builders are left with nothing to cut
+  if (!S.projects.some(p => !p.gone && p.type === 'pit' && !(p.done && !(p.rock > 0))) && stoneLeft(sim) < 120) {
+    const z = sizeFor(sim, 'pit'), spot = z && findPlot(sim, 'pit', z.w, z.h);
+    if (spot) sim.command({ op: 'place', type: 'pit', ...spot });
+  }
   if (S.projects.filter(p => !p.gone && !p.done && p.type !== 'test').length >= 2) return;
-  const n = {}, next = PLAN.find(([t]) => { n[t] = (n[t] || 0) + 1; return S.projects.filter(p => !p.gone && p.type === t).length < n[t]; });
-  const spot = next && findPlot(sim, next[0], next[1], next[2]);
+  const n = {}; let next = PLAN.find(([t]) => { n[t] = (n[t] || 0) + 1; return S.projects.filter(p => !p.gone && p.type === t).length < n[t]; });
+  // once the opening is built, the bot keeps up with a growing colony: power, bunks, seats, fields, clinic beds, cool storage
+  let spot = next && findPlot(sim, next[0], next[1], next[2]);
+  // a growing colony's wants in order; one with no room left on the map doesn't hold up the rest
+  if (!next) for (const t of grow(sim)) { const z = sizeFor(sim, t); spot = z && findPlot(sim, t, z.w, z.h); if (spot) { next = [t, z.w, z.h]; break; } }
   if (spot) sim.command({ op: 'place', type: next[0], ...spot });
+}
+function grow(sim) {
+  const out = [];
+  const S = sim.S, mine = S.projects.filter(p => !p.gone && p.type !== 'test'), sum = (types, k) => mine.filter(p => types.includes(p.type)).reduce((a, p) => a + (capacity(p.type, p.w, p.h)[k] || 0), 0);
+  const soon = S.cols.filter(c => !c.dead).length + (S.gen ? S.gen.womb.length : 0) + S.seedc.feed + S.seedc.queue.length + (S.seedc.printing ? 1 : 0);
+  const draw = mine.filter(p => p.type !== 'solar').reduce((a, p) => a + (capacity(p.type, p.w, p.h).kw || 0), 0), supply = LANDER_KW + sum(['solar'], 'supply') * DEEP_SUN;
+  if (draw > supply - 1) out.push('solar');
+  if (sum(['shelter', 'dorm', 'burrow'], 'beds') < soon + 2) out.push('dorm');
+  if (sum(['commons'], 'seats') < soon) out.push('commons');
+  if (mine.filter(p => p.type === 'field').length < Math.ceil(soon / 3.5)) out.push('field');
+  if (sum(['clinic'], 'beds') < Math.ceil(soon / 6)) out.push('clinic');
+  if (sum(['cellar'], 'store') < soon * 4) out.push('cellar');
+  // the institutions, as the colony grows into them
+  const none = t => !mine.some(p => p.type === t), kids = S.cols.filter(c => !c.dead && c.life >= 1 && c.life <= 2).length;
+  if (none('school') && kids >= 3) out.push('school');
+  if (none('watch') && (soon >= 30 || S.stats.fights)) out.push('watch');
+  if (none('library') && soon >= 25) out.push('library');
+  if (S.gen && S.gen.asks.length >= 3 && mine.filter(p => p.type === 'nursery').length < 2) out.push('nursery');
+  return out;
 }
 // crews for food, and the tests: one person at a time moved out of the build crew, the best suited first
 function botFood(sim) {
@@ -61,7 +97,7 @@ function botFood(sim) {
   if (sim.policy === 'plan') { if (!S.crewPlan && !sim.planAsked) { sim.planAsked = true; sim.command({ op: 'crewPlan' }); } return; }
   const crewOf = w => live.find(c => c.work === w), build = crewOf('build');
   // the Seed stops sorting new people into crews once the player has changed the crews: the bot puts them with the builders
-  if (build && !S.autoCrews) for (const c of S.cols) if (!c.dead && c.crew < 0 && c.act !== ACT.WAKE) sim.command({ op: 'move', person: c.id, crew: build.id });
+  if (build && !S.autoCrews) for (const c of S.cols) if (!c.dead && c.crew < 0 && c.act !== ACT.WAKE && c.life >= 3 && !c.retired) sim.command({ op: 'move', person: c.id, crew: build.id });
   const want = (w, skill, n = 1) => {
     let cr = crewOf(w);
     if (cr && cr.members.length >= n) return;
@@ -76,6 +112,7 @@ function botFood(sim) {
   if (sim.policy === 'lean') return;
   if (built(S).some(p => p.type === 'field')) want('farm', 'botany');
   if (built(S).some(p => p.type === 'plant')) want('quarry', 'building');
+  if (built(S).some(p => p.type === 'mine' && p.powered && p.seam > 0) && S.stores.yard.salvage < 30) want('mine', 'building');
   const tested = F.life.map((L, o) => L.tested && sim.kinds[o].food).filter(Boolean);
   // a cook for every ten or so people, more when food is waiting on the kitchen while people go hungry
   const eaters = S.cols.filter(c => !c.dead).length, behind = S.cols.some(c => !c.dead && c.hungry) && kitchenOnly(sim) > 4;
@@ -96,14 +133,14 @@ export function runColony(seed, days = 1, mode = 'landfall', count = 300, onTick
   while (S.tick < end) {
     const a = now(); sim.tick(); const d = now() - a; total += d; if (d > worst) worst = d;
     const t = S.tick % DAY_TICKS, live = S.cols.filter(c => !c.dead);
-    if (t === Math.round(3 * HOUR)) nights.push(live.filter(c => c.act === ACT.BED || c.act === ACT.INSIDE || c.alone > 0 || S.archive[c.fid].woke > S.tick - 2 * HOUR).length + '/' + live.length);   // someone who broke down may sit out the night, and someone just printed is still finding their bedroll
+    if (t === Math.round(3 * HOUR)) nights.push(live.filter(c => c.act === ACT.BED || c.act === ACT.INSIDE || c.alone > 0 || (c.fid >= 0 && S.archive[c.fid].woke > S.tick - 2 * HOUR) || c.life === 0).length + '/' + live.length);   // someone who broke down may sit out the night, and someone just printed is still finding their bedroll
     if (t % HOUR === 0) { peak = Math.max(peak, ...live.map(c => c.chill)); }
     if (t === Math.round(12 * HOUR)) noons.push(live.filter(c => c.plan === 'work').length);
     if (t === Math.round(23 * HOUR)) {
       const avg = k => live.length ? Math.round(live.reduce((s, c) => s + c[k], 0) / live.length) : 0;
       const st = p => p.done ? (p.type === 'solar' || p.powered ? 'done' : 'dark') : `${p.stage + 1}/5${p.wait ? ' (' + p.wait + ')' : ''}`;
       daysOut.push({
-        day: sim.day, people: live.length, fat: avg('fat'), str: avg('str'), tru: avg('tru'), known: +(S.knownN / 3600).toFixed(1), food: Math.round(S.food),
+        day: sim.day, people: live.length, kids: live.filter(c => c.life < 3).length, couples: live.filter(c => c.partner >= 0).length / 2, natives: live.filter(c => c.native).length, tanks: S.gen ? S.gen.womb.length : 0, fat: avg('fat'), str: avg('str'), tru: avg('tru'), known: +(S.knownN / 3600).toFixed(1), food: Math.round(S.food),
         builds: S.projects.filter(p => !p.gone && p.type !== 'test').map(p => `${p.name} ${st(p)}`).join(', '), yard: { ...S.stores.yard }, power: `${S.power.draw}/${S.power.supply} kW`,
         indoors: live.filter(c => c.home >= 0).length, tested: ['stone', 'timber'].filter(m => S.mat[m].tested).join('+') || 'none',
         season: seasonOf(doyOf(sim.cal)), wx: dayWeather(sim.W.seed, sim.cal).k, temp: S.F.temp.toFixed(0), meals: Math.round(mealsInStore(sim)), rations: Math.round(S.food),

@@ -17,6 +17,10 @@ const STYLE = {
   workshop: { slab: '#8a8680', joint: 'rgba(40,40,40,.3)', post: '#5f554b', beam: '#6c5f50', wall: '#98928a', roof: ['#8d949c', '#646b73'], done: ['#a6adb5', '#7f878f', '#5c636b'], seam: 'rgba(30,34,40,.5)' },
   lab: { slab: '#8f8b84', joint: 'rgba(50,48,44,.3)', post: '#5f554b', beam: '#6c5f50', wall: '#aab4b4', roof: ['#b9c6c8', '#86969a'], done: ['#c9d6d8', '#9eb0b4', '#74878c'], seam: 'rgba(40,56,60,.4)' },
   plant: { slab: '#8a8780', joint: 'rgba(40,42,36,.3)', post: '#5a5a4c', beam: '#66654f', wall: '#9a9c8c', roof: ['#8f9886', '#646d5c'], done: ['#a3ab96', '#7b8570', '#58614e'], seam: 'rgba(30,36,28,.5)' },
+  school: { slab: '#8d877b', joint: 'rgba(50,44,36,.32)', post: '#6f5136', beam: '#7d5d3e', wall: '#a8a090', roof: ['#8e6a4c', '#5f4630'], done: ['#9c7a5a', '#7c5c40', '#5a432e'], seam: 'rgba(40,28,18,.35)' },
+  library: { slab: '#8a8680', joint: 'rgba(40,40,40,.3)', post: '#5f554b', beam: '#6c5f50', wall: '#a49c90', roof: ['#6e6a72', '#4c4850'], done: ['#7c7882', '#5f5b66', '#46424c'], seam: 'rgba(20,18,24,.35)' },
+  watch: { slab: '#8a8680', joint: 'rgba(40,40,40,.3)', post: '#5a4a38', beam: '#6a5640', wall: '#968c7c', roof: ['#6f5a40', '#4f3f2c'], done: ['#7d6646', '#5f4c34', '#463826'], seam: 'rgba(30,22,14,.35)' },
+  nursery: { slab: '#8f8b84', joint: 'rgba(50,48,44,.3)', post: '#5f554b', beam: '#6c5f50', wall: '#aab4b4', roof: ['#b9c6c8', '#86969a'], done: ['#cfd8d6', '#a5b6b2', '#7a8c88'], seam: 'rgba(40,56,60,.3)' },
   clinic: { slab: '#8f8b84', joint: 'rgba(50,48,44,.3)', post: '#6f5a44', beam: '#7a6450', wall: '#b4b0a6', roof: ['#d2d8d8', '#a5b0b2'], done: ['#e4e9ea', '#c3cccd', '#9aa6a8'], seam: 'rgba(50,60,64,.35)' },
 };
 
@@ -24,6 +28,7 @@ export function drawBuilding(g, hRect, p, E, t, inside = false) {
   if (p.type === 'test') return;
   if (p.type === 'solar') return drawSolar(g, hRect, p);
   if (p.type === 'field') return drawField(g, hRect, p, t || 0);
+  if (p.type === 'pit') return drawPit(g, hRect, p);
   const st = STYLE[p.type] || STYLE.dorm, stage = p.done ? 5 : p.stage, f = progress(p);
   const x = p.x, y = p.y, w = p.w, h = p.h, long = w >= h;
   const along = (fr, fn) => { const n = long ? w : h; for (let i = 0; i < n * fr; i++) fn(long ? x + i : x, long ? y : y + i, long ? 1 : w, long ? h : 1); };
@@ -84,6 +89,21 @@ export function drawBuilding(g, hRect, p, E, t, inside = false) {
     for (let i = 0; i < n2; i++) { const k = (i + .5) / n2, a = long ? x + w * k : cx, b = long ? cy : y + h * k, on = p.powered && p.tanks && p.tanks[i] > 0; g.fillStyle = '#4e5a4a'; g.beginPath(); g.arc(a, b, .55, 0, 6.3); g.fill(); g.fillStyle = on ? 'rgba(150,210,110,.75)' : '#34402f'; g.beginPath(); g.arc(a, b, .32, 0, 6.3); g.fill(); hRect(a - .55, b - .55, 1.1, 1.1, 2.2); }
   }
   else if (p.type === 'dorm') { g.fillStyle = '#4c4038'; g.fillRect(x + .6, y + .5, .35, .35); hRect(x + .6, y + .5, .35, .35, 2.1); }
+  else if (p.type === 'school') {   // a wide lit window, and a little bell frame over the door end
+    g.fillStyle = lit ? 'rgba(255,214,140,.85)' : '#2b4258'; g.fillRect(cx - (long ? 1.4 : .5), cy - (long ? .5 : 1.4), long ? 2.8 : 1, long ? 1 : 2.8);
+    g.fillStyle = '#4a3a2a'; g.fillRect(x + .5, y + .5, .6, .6); g.fillStyle = '#b89a50'; g.beginPath(); g.arc(x + .8, y + .8, .18, 0, 6.3); g.fill(); hRect(x + .5, y + .5, .6, .6, 2.4);
+  }
+  else if (p.type === 'library') {   // a long skylight over the shelves
+    g.fillStyle = lit ? 'rgba(255,220,160,.7)' : 'rgba(150,180,210,.45)'; if (long) g.fillRect(x + .5, cy - .2, w - 1, .4); else g.fillRect(cx - .2, y + .5, .4, h - 1);
+  }
+  else if (p.type === 'watch') {   // a raised lookout with its lamp, lit all night
+    const r = Math.min(w, h) * .28; g.fillStyle = '#3e3226'; g.fillRect(cx - r, cy - r, r * 2, r * 2); hRect(cx - r, cy - r, r * 2, r * 2, 3.4);
+    g.fillStyle = E.night > .3 ? 'rgba(255,200,110,.95)' : '#6a5a40'; g.beginPath(); g.arc(cx, cy, r * .45, 0, 6.3); g.fill();
+  }
+  else if (p.type === 'nursery') {   // the tanks, glowing softly while a child grows in them
+    const n2 = p.cap ? p.cap.tanks : 1;
+    for (let i = 0; i < n2; i++) { const k = (i + .5) / n2, a = long ? x + w * k : cx, b = long ? cy : y + h * k; g.fillStyle = '#5a6866'; g.beginPath(); g.arc(a, b, .5, 0, 6.3); g.fill(); g.fillStyle = p.powered ? 'rgba(255,170,150,.55)' : '#3a4442'; g.beginPath(); g.arc(a, b, .3, 0, 6.3); g.fill(); hRect(a - .5, b - .5, 1, 1, 2.2); }
+  }
   if (!p.powered && p.type !== 'shelter') { g.fillStyle = 'rgba(8,12,18,.22)'; g.beginPath(); g.roundRect(x, y, w, h, .25); g.fill(); }
   // the door, on the side the plan gave it
   const d = p.door, [nx, ny] = NORMAL[p.side];
@@ -171,6 +191,39 @@ function plot(g, hRect, x, y, w, h, stage, f) {
   for (let i = 0; i < np; i++) { const [a, b] = pegs[i], [c, d] = pegs[(i + 1) % 4]; if (i + 1 < np || np === 4) { g.moveTo(a, b); g.lineTo(c, d); } }
   g.stroke();
   for (let i = 0; i < np; i++) { g.fillStyle = '#c98a3e'; g.beginPath(); g.arc(pegs[i][0], pegs[i][1], .1, 0, 6.3); g.fill(); hRect(pegs[i][0] - .06, pegs[i][1] - .06, .12, .12, .5); }
+}
+// a stone pit: the soil stripped back to bare rock, benches stepping down into it, a timber hoist at the edge;
+// it reads deeper as the stone is cut out
+function drawPit(g, hRect, p) {
+  const stage = p.done ? 5 : p.stage, f = progress(p), x = p.x, y = p.y, w = p.w, h = p.h;
+  if (stage < 5) plot(g, hRect, x, y, w, h, stage, f);
+  if (stage >= 1) {   // stripped: bare grey stone showing through, spreading from one side
+    const fr = stage === 1 ? f : 1;
+    g.fillStyle = 'rgba(128,122,112,.8)'; g.fillRect(x + .1, y + .1, (w - .2) * fr, h - .2);
+    for (let i = 0; i < w * h * 2 * fr; i++) { g.fillStyle = i % 2 ? 'rgba(90,84,76,.5)' : 'rgba(160,154,142,.45)'; g.fillRect(x + .1 + hash(i, 3, p.id) * (w - .3) * fr, y + .1 + hash(i, 4, p.id) * (h - .3), .1, .08); }
+  }
+  const full = p.rock0 || 40 * w * h, dug = stage >= 5 ? 1 - (p.rock || 0) / full : 0;
+  const steps = stage >= 2 ? Math.min(3, Math.floor((stage === 2 ? f : 1) * 3) + (stage >= 5 ? Math.min(2, Math.floor(dug * 3)) : 0)) : 0;
+  for (let k = 1; k <= steps; k++) {   // each bench a step further in and darker, with its lit lip
+    const m = k * Math.min(w, h) / 9;
+    g.fillStyle = `rgba(${96 - k * 14},${90 - k * 13},${82 - k * 12},.9)`; g.fillRect(x + m, y + m, w - m * 2, h - m * 2);
+    g.strokeStyle = 'rgba(200,192,176,.35)'; g.lineWidth = .05; g.strokeRect(x + m, y + m, w - m * 2, h - m * 2);
+  }
+  if (stage >= 2) {   // the ramp down one side
+    g.fillStyle = 'rgba(150,140,124,.75)'; g.fillRect(x + w * .1, y + h - .6, w * .45, .45);
+    g.strokeStyle = 'rgba(70,64,56,.5)'; g.lineWidth = .03; for (let i = 1; i < 5; i++) { g.beginPath(); g.moveTo(x + w * .1 + i * w * .09, y + h - .6); g.lineTo(x + w * .1 + i * w * .09, y + h - .15); g.stroke(); }
+  }
+  if (stage >= 3) {   // the hoist: a timber A-frame over the rim
+    const fr = stage === 3 ? f : 1, hx = x + w - .9, hy = y + .5;
+    g.strokeStyle = '#7d5d3e'; g.lineWidth = .14; g.lineCap = 'round';
+    g.beginPath(); g.moveTo(hx - .4, hy + .6); g.lineTo(hx, hy - .1 + (1 - fr) * .7); g.lineTo(hx + .4, hy + .6); g.stroke();
+    if (fr >= 1) { g.lineWidth = .1; g.beginPath(); g.moveTo(hx, hy - .1); g.lineTo(hx - .9, hy + .9); g.stroke(); g.strokeStyle = 'rgba(40,36,30,.7)'; g.lineWidth = .03; g.beginPath(); g.moveTo(hx - .9, hy + .9); g.lineTo(hx - .9, hy + 1.6); g.stroke(); }
+    hRect(hx - .4, hy - .1, .8, .7, 1.6);
+  }
+  if (stage >= 4) {   // cut blocks stacked by the rim, waiting for the carriers
+    const n = stage === 4 ? Math.floor(f * 4) : 4;
+    for (let i = 0; i < n; i++) { const a = x + .3 + i * .45, b = y + .25; g.fillStyle = i % 2 ? '#b0a999' : '#9d968a'; g.fillRect(a, b, .38, .3); hRect(a, b, .38, .3, .3); }
+  }
 }
 // a solar field: stone footings, timber racks, cable runs, then the panels, one every two tiles by two
 function drawSolar(g, hRect, p) {
@@ -349,12 +402,14 @@ export function layoutOf(p) {
   if (p.type === 'shelter' || p.type === 'dorm' || p.type === 'clinic') {
     const want = cap.beds || 0, gap = p.type === 'clinic' ? 2 : 1;
     for (let v = 0; v < V && beds.length < want; v++) { if (V > 2 && v % 3 === 1 && p.type !== 'shelter') continue; for (let u = 0; u < U && beds.length < want; u += gap) beds.push(at(u, v)); }
-  } else if (p.type === 'commons') {
+  } else if (p.type === 'commons' || p.type === 'school') {
     for (let v = 1; v < V; v += 3) tables.push([at(0, v), at(U, v + 1)]);
     if (!tables.length) tables.push([at(0, 0), at(U, Math.min(1, V))]);
-    for (let v = 0; v < V && seats.length < (cap.seats || 0); v++) { if (v % 3 === 1) continue; for (let u = 0; u < U && seats.length < (cap.seats || 0); u++) seats.push(at(u + .5, v + .5)); }
-  } else if (p.type === 'workshop' || p.type === 'lab') {
-    const n = cap.benches || 1, span = Math.max(1, Math.floor(U / n));
+    const ns = cap.seats || cap.desks || 0;
+    for (let v = 0; v < V && seats.length < ns; v++) { if (v % 3 === 1) continue; for (let u = 0; u < U && seats.length < ns; u++) seats.push(at(u + .5, v + .5)); }
+    if (p.type === 'school') work.push(at(U / 2, 0));   // the teacher, at the front
+  } else if (p.type === 'workshop' || p.type === 'lab' || p.type === 'library') {
+    const n = cap.benches || (cap.shelves ? Math.min(cap.shelves, Math.max(1, Math.floor(U / 2))) : 1), span = Math.max(1, Math.floor(U / n));
     for (let i = 0; i < n; i++) { const u = i * span; benches.push([at(u + .1, 0), at(u + Math.min(span, 2) - .1, .8)]); work.push(at(u + Math.min(span, 2) / 2, Math.min(V - .3, 1.4))); }
   }
   L = { long, beds, seats, tables, benches, work }; LAYOUT.set(key, L); return L;
@@ -381,11 +436,17 @@ export function drawInterior(g, hRect, p, E) {
   for (const [a, b] of L.seats) { g.fillStyle = '#5a4430'; g.fillRect(a - .16, b - .16, .32, .32); }
   for (const [[a, b], [c, d]] of L.benches) {
     g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(a + .05, b + .08, c - a, d - b);
+    if (p.type === 'library') {   // shelves of bound records, in a row of colours
+      g.fillStyle = '#5a4430'; g.fillRect(a, b, c - a, d - b); hRect(a, b, c - a, d - b, 1.2);
+      const BK = ['#8a3a30', '#3a5a7a', '#6a7a3a', '#8a6a30', '#5a3a6a'];
+      for (let q = 0, u = a + .08; u < c - .12; q++, u += .14) { g.fillStyle = BK[q % 5]; g.fillRect(u, b + .08, .1, d - b - .16); }
+      continue;
+    }
     g.fillStyle = p.type === 'lab' ? '#56636a' : '#5c636b'; g.fillRect(a, b, c - a, d - b); hRect(a, b, c - a, d - b, 1);
     g.fillStyle = p.type === 'lab' ? 'rgba(120,230,200,.6)' : 'rgba(160,170,180,.7)'; g.fillRect(a + .15, b + .15, Math.min(.4, c - a - .3), .2);
     if (p.type === 'workshop') { g.fillStyle = '#3d434a'; g.beginPath(); g.arc(c - .3, (b + d) / 2, .18, 0, 6.3); g.fill(); }
   }
-  if (p.type === 'plant') {
+  if (p.type === 'plant' || p.type === 'nursery') {
     const n2 = p.cap ? p.cap.tanks : 1, long = L.long, cx = x + w / 2, cy = y + h / 2;
     for (let i = 0; i < n2; i++) { const k = (i + .5) / n2, a = long ? x + w * k : cx, b = long ? cy : y + h * k, on = p.powered && p.tanks && p.tanks[i] > 0; g.fillStyle = '#4e5a4a'; g.beginPath(); g.arc(a, b, .7, 0, 6.3); g.fill(); g.fillStyle = on ? 'rgba(150,210,110,.75)' : '#34402f'; g.beginPath(); g.arc(a, b, .45, 0, 6.3); g.fill(); hRect(a - .6, b - .6, 1.2, 1.2, 1.4); }
   }
@@ -406,7 +467,7 @@ export function drawInterior(g, hRect, p, E) {
 export function spotInside(p, act, i) {
   const L = layoutOf(p), pick = a => a.length ? a[i % a.length] : null, ctr = [p.x + p.w / 2, p.y + p.h / 2];
   if (act === 5) { const b = pick(L.beds); return b ? [b[0] + .5, b[1] + .55, 'sleep'] : [...ctr, 'sleep']; }   // asleep indoors
-  if (act === 20) { const s = pick(L.work); return s ? [s[0], s[1], 'work'] : [...ctr, 'work']; }               // at a bench
+  if (act === 20 || act === 34 || act === 35) { const s = pick(L.work); return s ? [s[0], s[1], 'work'] : [...ctr, 'work']; }   // at a bench, teaching, at the shelves
   const s = pick(L.seats); if (s) return [s[0], s[1], 'sit'];
   const b = pick(L.beds); if (b) return [b[0] + .5, b[1] + .55, p.type === 'clinic' ? 'sleep' : 'sit'];
   const k = hash(i, p.id, 5); return [p.x + 1 + k * Math.max(.5, p.w - 2), p.y + 1 + hash(i, p.id, 6) * Math.max(.5, p.h - 2), 'sit'];

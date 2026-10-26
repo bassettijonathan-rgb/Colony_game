@@ -71,9 +71,39 @@ export const EXPLAIN = {
   cache: 'Pieces of the Seed broke away on the way down and are scattered around the landing site. Surveyors find them now and then.',
   glut: 'Local life has good years and bad. In a good one, every patch the foragers know fills up again at once.',
   repaired: 'Repairs are build projects like any other: they show on the project list, and a build crew sees to them in order.',
-  ore: 'Ore waits in the yard until the fabricator has nothing else to make; then it smelts three loads into two of salvage. Press U to see the ground below: the glinting seams are ore.',
+  ore: 'Ore waits in the yard until a workshop bench or the fabricator is free; then three loads smelt into two of salvage. Press U to see the ground below: the glinting seams are ore. A mine dug along a seam brings up far more than digging other rooms does.',
+  nosalvage: 'Salvage is the metal from the lander and its descent stage, and every seal, pipe run, power unit and solar panel is made from it. Once it is gone, the only metal is the ore in the ground. A mine (Build window, below ground) dug over a seam lets a mine crew bring ore up, and workshop benches smelt it, three loads into two of salvage. Each mine holds only so much: when one is worked out, dig another.',
+  smelted: 'From now on a workshop smelts ore whenever it has nothing else to make and the yard is low on salvage. Keep a mine crew working while there is ore in the seam.',
+  mineLow: 'A new mine takes days to dig, so plan it before the old one is empty. Press U to see the seams of ore below ground.',
+  chronic: 'Years of work, the diet and the sun leave their mark slowly, and some of it turns into lasting trouble: worn joints, scarred lungs, a weak heart, failing kidneys, a growth. Each person’s Health tab shows what they feel; a check-up names it.',
+  council: 'With fifty adults the colony chooses a council for itself, five people it trusts, and again every Thaw. Before changing a rule in the Society window (P) you can ask it first: it answers the next morning. It cannot stop the Seed, but going against it costs trust.',
+  verdict: 'The council has answered a question the Seed put to it. Open the Society window (P) to see who was for and against, and why, then change the rule or leave it.',
+  councilask: 'The council speaks up on its own when most of the colony would rather live under another rule. The Society window (P) shows each rule, how many are content with it, and why the rest are not.',
+  rule: 'Every rule has people for it and against it. Those who would rather have another carry it as a small weight of strain, and enough of them, strained enough, may stop work for a day.',
+  protest: 'When most of the colony is against a rule and strained, they stop work together for a day. The Society window (P) shows which rule and why: change it, or ease what is weighing on them.',
+  lost: 'Skills pass from person to person, and fade with whoever held them. A library with keepers writes down what the best people know, so that when they die, apprentices and the school can still learn it.',
+  firstfight: 'At the far end of strain, a breakdown can turn on a rival. A watch house with a watch crew means someone is there to step in. What the watch may do is a rule in the Society window (P).',
+  unseen: 'At night the camp sleeps, and a fire is only noticed once it is close. A watch house with a watch crew keeps one person up each night, by turns, to raise the alarm as soon as it starts.',
+  custom: 'The colony grows its own customs from what happens to it. They are kept in the Society window (P). On a custom’s day people gather at the fire in the evening, which eases strain and grief.',
+  checkup: 'With a working clinic and someone in a clinic crew, the clinic calls everyone in every forty days. A skilled medic finds more, and a lab helps. A growth found while it is small can be cut out.',
+  heartattack: 'A weak heart can fail without warning. A printed heart, once the colony has a clinic, a lab and a body’s worth of feedstock, replaces it: see their Health tab.',
+  operated: 'A growth found early, at a check-up, can be cut out. The more skilled the medic and the smaller the growth, the better the odds.',
+  printpart: 'A printed part takes a body’s worth of feedstock and about twelve days to feel like their own. Lost eyes and hands, failing kidneys and worn-out hearts can all be replaced, from the Health tab.',
+  pitout: 'A pit holds only the stone near the surface. The view below ground (U) shows where stone lies under shallow soil: plan the next pit there.',
+  nostone: 'Boulders and rock faces do not come back once cut. A stone pit, planned in the Build window on stony ground, gives stone for years.',
+  workedout: 'A mine only holds the ore of the seam it was dug along. Press U to find another seam, and plan a new mine over it before the salvage runs low.',
   trauma: 'The worst things leave a mark: a death, a bad injury, a fire, the flood, a tremor, a night that nearly froze them. What someone carries makes strain build faster and sleep restore less, and they break sooner; the same thing happening again brings it back. It fades over weeks, faster with friends, a bunk indoors and a steady nature. The person card shows what they carry.',
   ctl: 'In an emergency the Seed can direct one person: right-click open ground to send them there, flames to beat them out, or someone hurt to give first aid. People who barely trust the Seed refuse, the wary hesitate, and every order costs a little trust. Esc or Release hands them back; an hour after the emergency they go back to their crew anyway.',
+  firstcouple: 'Close friends who are both free can become a couple: it takes a strong friendship on both sides, and some time. A partner nearby eases strain more than any friend, and losing one is the hardest loss there is. Couples who settle down may ask the Seed for a child.',
+  ask: 'The Seed grows a child in one of its two growth tanks: sixty days, from a body’s worth of feedstock and the genes of both parents. Founders you choose to print get the feedstock first; a body nobody chose goes to the couple who asked first. The Archive (Q) shows the tanks, who is waiting, and the colony’s rule on children.',
+  firstborn: 'Children spend their first two years in the Seed’s nursery. Then they play by the fire, eat smaller meals, go to bed early, and pick up what their parents know. Small children need someone with them: a childcare crew looks after four each, or a parent stays at camp instead of working. At thirteen they join the crews as apprentices, and at sixteen they are adults.',
+  nocare: 'Children under six need an adult with them. Make a childcare crew in Crews (C): each carer looks after four. Without one, a parent of each small child stays at camp.',
+  apprentice: 'An apprentice works in a crew at a little more than half pace and learns fast from the most skilled person in it, faster if that person is a good teacher.',
+  firstadult: 'The first person born here has come of age. Natives never knew another world: they don’t remember Earth, and they never had a body that felt strange.',
+  retired: 'At seventy-two people stop working in the crews on their own. They still eat, sleep and keep their friends. Put them back in a crew if the colony needs their hands.',
+  oldage: 'Bodies age a year with every planetary year. Past sixty the chance of dying of age grows each year, doubling about every seven.',
+  split: 'A couple whose tie turns sour splits up. It hurts both of them for a while, and they can find someone else later.',
+  lastfounder: 'Nobody who remembers Earth is left alive. What the founders knew survives only in what they taught.',
   unwell: 'A narrow diet shows over time. Food with a slow harm builds up in the body, and food that isn’t enough on its own leaves people short of what they need. More kinds of food, and fewer meals of the troublesome ones, put it right over some days.',
 };
 
@@ -96,7 +126,7 @@ const ALERTS = {
   samples: ['info', '', 'Queue the test in the Life window (G).'],
   locked: ['warn', 'Food only a kitchen can prepare', 'Some of the larder needs leaching or fermenting before it is safe, and nobody is on kitchen work. Set up a kitchen crew in the Crews window (C).'],
   behind: ['bad', 'The kitchen can’t keep up', 'People are going hungry while food waits to be leached, fermented or cooked. One cook feeds about ten people: put more on kitchen work in the Crews window (C).'],
-  deep: ['bad', '', 'Nothing grows in Deep cold. Fill the larder before it comes: foragers, harvests, and food that keeps.'],
+  deep: ['bad', '', 'Nothing grows in Deep cold, and the first crops ripen weeks into Thaw. Fill the larder before it comes: foragers, harvests, more fields in Long light, and food that keeps.'],
   hungry: ['bad', '', 'They lose health every day without a meal, and die when it runs out.'],
   down: ['bad', '', 'They can’t get up. Someone nearby comes to give first aid and carry them to a bed.'],
   bleed: ['bad', '', 'First aid slows the bleeding; closing the wound stops it. Lost blood comes back slowly over days.'],
@@ -158,6 +188,8 @@ export class News {
     el.animate([{ transform: `translateY(${-drop}px)`, easing: 'cubic-bezier(.5,0,1,1)' }, { transform: 'translateY(0)', offset: .82, easing: 'ease-out' }, { transform: 'translateY(-5px)', offset: .92, easing: 'ease-in' }, { transform: 'none' }], { duration: 420 + drop * .45 });
     if (big && this.pause && this.A.speed > 0) { this.resume = this.A.speed; this.api.setSpeed(0); }
   }
+  // a letter that opens at once: the chronicle after a skip
+  show(e) { this.push(e); const k = this.stack.find(q => q.e === e); if (k) this.openLetter(k); }
   // take a letter off the stack; the ones above it slide down into the gap
   remove(k, fade = false) {
     const i = this.stack.indexOf(k); if (i < 0) return;
@@ -183,7 +215,7 @@ export class News {
     const t = $('lTip'); this.tipFor = k;
     if (!k) { t.hidden = true; return; }
     const r = k.el.getBoundingClientRect(), e = k.e;
-    t.innerHTML = `<div class="nh"><b>${esc(e.title || 'News')}</b><em>${this.api.when(e.t)}</em></div><p>${esc(e.m)}</p>${k.why ? `<div class="why"><i>New</i>${esc(k.why)}</div>` : ''}<small>Click to read${target(e) ? ' and look' : ''} · right-click to dismiss</small>`;
+    t.innerHTML = `<div class="nh"><b>${esc(e.title || 'News')}</b><em>${this.api.when(e.t)}</em></div><p>${esc(e.m.length > 320 ? e.m.slice(0, 300).replace(/\s+\S*$/, '') + '…' : e.m)}</p>${k.why ? `<div class="why"><i>New</i>${esc(k.why)}</div>` : ''}<small>Click to read${target(e) ? ' and look' : ''} · right-click to dismiss</small>`;
     t.hidden = false;
     t.style.right = Math.round(innerWidth - r.left + 10) + 'px';
     t.style.top = Math.round(Math.max(8, Math.min(r.top - 6, innerHeight - t.offsetHeight - 8))) + 'px';
@@ -198,7 +230,7 @@ export class News {
     $('lWhy').hidden = !k.why; $('lWhyT').textContent = k.why || '';
     $('lGo').hidden = !target(e);
     const more = this.stack.length - 1; $('lMore').textContent = more > 0 ? `${more} more on the right` : '';
-    $('letter').className = 'glass ' + tone(e); $('letter').hidden = false;
+    $('letter').className = 'glass ' + tone(e) + (e.e === 'chronicle' ? ' chron' : ''); $('letter').hidden = false;
     $('lPaused').hidden = !this.resume;
   }
   closeLetter() { if (this.cur) this.remove(this.cur); }
@@ -227,10 +259,11 @@ export class News {
     const named = (ids, one, many) => ids.length === 1 ? `${A.names[ids[0]]} ${one}` : `${ids.length} ${many}`;
     const add = (key, title, aims, detail) => list.push({ key, title, aims, detail });
     const eaters = U.alive + U.seed.queue.length + (U.seed.printing ? 1 : 0), days = eaters ? U.food / eaters : 99;
-    if (U.seed.feed > 0 && !U.seed.queue.length && !U.seed.printing) add('print', ALERTS.print[1], [{ tab: 'archive' }]);
+    if (U.seed.feed > 0 && !U.seed.queue.length && !U.seed.printing && U.seed.stored > 0) add('print', ALERTS.print[1], [{ tab: 'archive' }]);
     const F = U.F, Y = U.year, usable = F ? F.usable : U.food, fdays = eaters ? usable / eaters : 99;
     if (eaters && fdays < 10) add('food', usable < 1 ? 'Nothing left to eat' : `Food for ${Math.max(1, Math.floor(fdays))} day${Math.floor(fdays) === 1 ? '' : 's'}`, [{ tab: 'life' }], usable < 1 ? 'Nobody has had a meal since the food ran out.' : U.food >= 1 ? `${Math.floor(U.food)} meals of it are the lander’s rations.` : '');
-    if (Y && eaters && Y.deepIn > 0 && Y.deepIn <= 15 && fdays < Y.deepIn + 20) add('deep', `Deep cold in ${Y.deepIn} day${Y.deepIn === 1 ? '' : 's'}, food for ${Math.floor(fdays)}`, [{ tab: 'life' }], `It lasts twenty days, so the colony needs about ${(Y.deepIn + 20) * eaters} meals and has ${Math.floor(usable)}.`);
+    // Deep cold, and the weeks of thaw after it before the first crops ripen
+    if (Y && eaters && Y.deepIn > 0 && Y.deepIn <= 25 && fdays < Y.deepIn + 40) add('deep', `Deep cold in ${Y.deepIn} day${Y.deepIn === 1 ? '' : 's'}, food for ${Math.floor(fdays)}`, [{ tab: 'life' }], `It lasts twenty days, and little can be found in the twenty days of Thaw after it, so the colony needs about ${(Y.deepIn + 40) * eaters} meals and has ${Math.floor(usable)}.`);
     if (F && F.locked > 0 && !U.crews.some(c => !c.gone && c.work === 'kitchen' && c.members.length)) add('locked', ALERTS.locked[1], [{ tab: 'crews' }], `${Math.floor(F.locked)} meals’ worth is waiting.`);
     const fields = U.projects.filter(p => p.type === 'field' && p.done);
     if (fields.length && !U.crews.some(c => !c.gone && c.work === 'farm' && c.members.length)) add('nofarm', ALERTS.nofarm[1], [{ tab: 'crews' }]);
@@ -267,7 +300,7 @@ export class News {
     if ((ids = people(p => p[3] >= 70 && !(p[6] & 4))).length) add('strain', named(ids, 'is near breaking point', 'people are near breaking point'), ids.map(i => ({ who: i })));
     if ((ids = people(p => p[2] >= 90)).length) add('tired', named(ids, 'is exhausted', 'people are exhausted'), ids.map(i => ({ who: i })));
     if ((ids = people(p => p[4] < 35)).length) add('trust', named(ids, 'is losing trust in the Seed', 'people are losing trust in the Seed'), ids.map(i => ({ who: i })));
-    if ((ids = people(p => p[1] < 0 && p[0] !== ACT.WAKE)).length) add('nocrew', named(ids, 'has no crew', 'people have no crew'), ids.map(i => ({ who: i })));
+    if ((ids = people(p => p[1] < 0 && p[0] !== ACT.WAKE && !(p[6] & (65536 | 131072)))).length) add('nocrew', named(ids, 'has no crew', 'people have no crew'), ids.map(i => ({ who: i })));
     const stalled = U.projects.filter(p => p.stall && !p.done);
     if (stalled.length) add('stalled', stalled.length === 1 ? `${stalled[0].name} stalled` : `${stalled.length} projects stalled`, stalled.map(p => ({ pid: p.id })), stalled.map(p => `${p.name}: ${p.wait}.`).join(' '));
     const starved = U.projects.filter(p => p.type === 'plant' && p.done && p.powered && p.why && p.why.startsWith('Waiting'));

@@ -24,7 +24,8 @@ export const STAGE_NAMES = ['Marking out', 'Foundations', 'Frame', 'Systems', 'F
 export const TEST_STAGES = ['Taking samples', 'Testing'];
 export const FIELD_STAGES = ['Marking out', 'Breaking ground', 'Making soil', 'Drains', 'Raised beds'];
 export const DIG_STAGES = ['Marking out', 'Digging', 'Shoring', 'Venting', 'Fit-out'];
-export const stagesOf = type => type === 'test' ? TEST_STAGES : type === 'field' ? FIELD_STAGES : TYPES[type] && TYPES[type].below ? DIG_STAGES : STAGE_NAMES;
+export const PIT_STAGES = ['Marking out', 'Stripping the soil', 'Cutting benches', 'The hoist', 'Opening the face'];
+export const stagesOf = type => type === 'test' ? TEST_STAGES : type === 'field' ? FIELD_STAGES : type === 'pit' ? PIT_STAGES : TYPES[type] && TYPES[type].below ? DIG_STAGES : STAGE_NAMES;
 const SHELTER_STAGES = [['mark', 4], ['module', 8], ['module', 12], ['module', 12], ['module', 10]];
 export const SHELTER_FITS = SHELTER_STAGES.reduce((t, s) => t + s[1], 0), CARGO = SHELTER_STAGES.reduce((t, s) => t + (s[0] === 'module' ? s[1] : 0), 0);
 
@@ -40,10 +41,16 @@ export const TYPES = {
   lab: { name: 'Lab', min: 5, max: 8, size: [5, 6], use: 'Benches where a lab crew tests samples of local life, far faster than the Seed’s own analyser' },
   plant: { name: 'Feedstock plant', min: 5, max: 9, size: [5, 6], use: 'Tanks that turn biomass and crushed stone into feedstock, which the fabricator prints new people from. They take their loads from the yard and need power' },
   cellar: { name: 'Root cellar', min: 4, max: 10, size: [5, 6], below: true, use: 'A cool room dug under the ground, where the larder keeps far longer. Needs no power' },
+  mine: { name: 'Mine', min: 4, max: 10, size: [5, 6], below: true, use: 'Galleries dug along a seam of metal ore. A mining crew brings the ore up, and the workshop smelts it into metal for parts. It is dug and shored with stone and timber alone, and needs a little power for its lamps, which it takes before any other building' },
+  pit: { name: 'Stone pit', min: 4, max: 10, size: [6, 6], open: true, ground: true, use: 'An open pit cut down into stony ground. Once the boulders and outcrops near camp are used up, the quarry crew cuts stone here, for years' },
   burrow: { name: 'Dug quarters', min: 5, max: 12, size: [6, 8], below: true, use: 'Bunks dug into the ground: the earth keeps them warm in Deep cold, and fire and storms can’t reach them. A little power for light' },
+  school: { name: 'School', min: 5, max: 10, size: [6, 7], use: 'Desks where the children aged six to twelve learn from a school crew, instead of only from their parents. What they learn most of is a rule you set. Needs no power' },
+  library: { name: 'Library', min: 4, max: 9, size: [5, 6], use: 'Shelves and the Seed’s terminals, where a library crew writes down what the best people know, so it outlives them and apprentices can learn it. Needs no power' },
+  watch: { name: 'Watch house', min: 3, max: 5, size: [4, 4], use: 'A post at the edge of camp with a lamp: one of the watch crew stays up here each night, by turns, to raise the alarm and to step in when someone lashes out. Needs no power' },
+  nursery: { name: 'Growth tanks', min: 4, max: 9, size: [5, 6], use: 'More tanks like the Seed’s own two, where it grows children for the couples who ask, each from a body’s worth of feedstock. Needs power' },
   test: { name: 'Load test', fixed: true },
 };
-export const PLANNABLE = ['field', 'workshop', 'plant', 'commons', 'clinic', 'dorm', 'solar', 'lab', 'cellar', 'burrow'];
+export const PLANNABLE = ['field', 'workshop', 'plant', 'commons', 'clinic', 'dorm', 'solar', 'lab', 'cellar', 'burrow', 'mine', 'pit', 'school', 'library', 'watch', 'nursery'];
 const inner = (w, h) => Math.max(0, (w - 2) * (h - 2));
 // what a building of this size holds, and the power it draws (kW) or makes
 export function capacity(type, w, h) {
@@ -60,6 +67,12 @@ export function capacity(type, w, h) {
     case 'plant': { const tanks = clamp(Math.floor(a / 6), 1, 3); return { tanks, kw: 1 + tanks * 1.5 }; }
     case 'cellar': return { store: a * 4, kw: 0 };
     case 'burrow': { const beds = Math.floor(a / 3); return { beds, kw: +(.2 + beds * .03).toFixed(1) }; }
+    case 'mine': return { faces: clamp(Math.floor(a / 6), 1, 4), kw: .5 };
+    case 'pit': return { faces: clamp(Math.floor(w * h / 9), 1, 4), kw: 0 };
+    case 'school': return { desks: Math.floor(a / 1.5), kw: 0 };
+    case 'library': return { shelves: clamp(Math.floor(a / 3), 1, 8), kw: 0 };
+    case 'watch': return { posts: 1, kw: 0 };
+    case 'nursery': { const tanks = clamp(Math.floor(a / 6), 1, 3); return { tanks, kw: 1 + tanks }; }
   }
   return { kw: 0 };
 }
@@ -103,8 +116,18 @@ export function stageLoads(S, type, w, h, st, mat, ground) {
     if (st === 0) add('mark', per / 8);
     if (st === 1) add('dig', a / 1.5 * g.dig);
     if (st === 2) { add('timber', (per / 5 + a / 12) * mt * g.shore); add('stone', a / 14 * ms * g.shore); }
-    if (st === 3) { add('pipe', 1 + a / 30); if (cap.kw) add('power', 1); }
+    // a mine has to be dug without metal, since metal is what it is for: its air shafts are lined with timber and
+    // its lamps run on a cable from the camp
+    if (st === 3) { if (type === 'mine') add('timber', 2 + a / 10); else { add('pipe', 1 + a / 30); if (cap.kw) add('power', 1); } }
     if (st === 4) { add('stone', a / 12); add('timber', fixtures); }
+    return L;
+  }
+  if (type === 'pit') {   // strip the soil, cut ramps and benches down into the stone, and a timber hoist at the edge
+    if (st === 0) add('mark', per / 8);
+    if (st === 1) add('dig', a / 3);
+    if (st === 2) add('dig', a / 4);
+    if (st === 3) add('timber', 2 + a / 12);
+    if (st === 4) add('dig', a / 6);
     return L;
   }
   if (TYPES[type].open) {   // footings, racks, cable runs, then the panels
@@ -115,7 +138,7 @@ export function stageLoads(S, type, w, h, st, mat, ground) {
     if (st === 4) add('panel', cap.panels);
     return L;
   }
-  const posts = loadCheck(S, type, w, h).posts, fixtures = (cap.beds || 0) / 4 + (cap.seats || 0) / 8 + (cap.benches || 0) + (cap.tanks || 0);
+  const posts = loadCheck(S, type, w, h).posts, fixtures = (cap.beds || 0) / 4 + (cap.seats || 0) / 8 + (cap.benches || 0) + (cap.tanks || 0) + (cap.desks || 0) / 8 + (cap.shelves || 0) / 2;
   if (st === 0) add('mark', per / 6);
   if (st === 1) { add('stone', a / 10 * ms); add('stone', posts); }
   if (st === 2) { add('timber', (per / 6 + a / 16) * mt); add('timber', posts); }
@@ -163,6 +186,7 @@ export function checkPlot(sim, type, x, y, w, h, side) {
   }
   const L = W.land;
   if (!bad.length && Math.hypot(x + w / 2 - L.x, y + h / 2 - L.y) > 70) { out.why = 'Too far from camp: keep it within 140 m of the Seed.'; return out; }
+  if (!bad.length && type === 'pit') { const g = groundOf(W, x, y, w, h); if (g.stone < .5) { out.why = 'The ground here is too deep in soil and clay for a pit: the view below ground (U) shows where the stone lies near the surface.'; return out; } out.ground = g; }
   if (!Ty.open) {
     const d = doorOf(x, y, w, h, side), t = d.y * MAP + d.x; out.door = d;
     if (!bad.length && (!W.cost[t] || !W.reach[t] || reservedAt(sim, d.x, d.y, 0))) { bad.push(t); why.set('The door would open onto blocked ground. Turn it to another side.', 1); }
@@ -189,9 +213,13 @@ function checkBelow(sim, type, x, y, w, h, side, out, note, why) {
   if (!bad.length && (!W.cost[t] || !W.reach[t] || reservedAt(sim, d.x, d.y, 0))) { bad.push(t); why.set('The stairs would come up on blocked ground. Turn them to another side.', 1); }
   if (bad.length) { out.why = [...why.keys()][0]; out.bad = bad.slice(0, 400); return out; }
   out.ground = groundOf(W, x, y, w, h);
+  if (type === 'mine' && seamOf(out.ground, w, h) < SEAM * 3) { out.why = 'There is no seam of ore under enough of this ground. Press U to see where the seams run, and draw the mine over them.'; return out; }
   if (floodPlain(W)[t] <= FLOOD_LINE) out.warn = 'The stairs come up on low ground by the water: a flood would pour down them. The Seed would dig higher up.';
   out.ok = true; return out;
 }
+// the ore a mine can bring up: a share of each tile of seam it is dug along
+export const SEAM = 40, PIT_ROCK = 40;   // loads of stone a pit holds, per tile
+export const seamOf = (g, w, h) => Math.round((g ? g.ore : 0) * w * h) * SEAM;
 // what is under a plot: how much harder than soil it is to dig, how much more shoring it needs, and the ore in it
 const DIG = [1, 1.25, 2, 3], SHORE = [1.3, 1, .5, .3];
 export function groundOf(W, x, y, w, h) {
@@ -234,6 +262,8 @@ export function addProject(sim, type, x, y, w, h, side, mat) {
     below: !!Ty.below, ug: Ty.below ? groundOf(sim.W, x, y, w, h) : undefined,
     stage: 0, need: stageLoads(S, type, w, h, 0, mat), got: {}, done: false, powered: false, paused: false, gone: false, blocked: false, wait: '', stall: 0, since: S.tick, out: {}, used: {}, mat,
   };
+  if (type === 'mine') p.seam = seamOf(p.ug, w, h);
+  if (type === 'pit') p.rock = p.rock0 = PIT_ROCK * w * h;
   if (type === 'test') S.projects.unshift(p); else S.projects.push(p);
   S.rv++;
   return p;
@@ -251,8 +281,9 @@ export function powerCheck(sim) {
   const sun = S.F ? S.F.sun : 1;
   // a building on fire or under water is out of use: it makes and takes nothing
   for (const p of built(S)) if (p.type === 'solar') { const on = !p.shut; if (on) supply += capOf(p).supply * sun; if (p.powered !== on) { p.powered = on; changed.push(p); } }
-  for (const p of built(S)) {
-    if (p.type === 'solar') continue;
+  // a mine's lamps come first: without its metal there are no more panels, so it never waits for power behind the rest
+  const order = built(S).filter(p => p.type !== 'solar').sort((a, b) => (b.type === 'mine') - (a.type === 'mine'));
+  for (const p of order) {
     const kw = capOf(p).kw, on = !p.shut && draw + kw <= supply + 1e-9;
     if (on) draw += kw;
     if (on !== p.powered) { p.powered = on; changed.push(p); }
@@ -309,14 +340,15 @@ export function nextOrder(sim) {
 // ---------- feedstock ----------
 // One batch in one tank of a feedstock plant: loads from the yard, hours with power, and the share of a body it
 // makes. The plant stops while the fabricator already holds feedstock for FEED.max bodies, or for everyone left
-// in the archive.
+// in the archive and every couple waiting for a child.
 export const FEED = { biomass: 3, stone: 1, h: 12, per: 8, max: 4 };
 export function plantStop(S) {
   const sd = S.seedc, asleep = S.archive.filter(p => p.woke == null).length - sd.queue.length - (sd.printing ? 1 : 0);
   let run = 0; for (const p of built(S)) if (p.type === 'plant' && p.tanks) for (const t of p.tanks) if (t > 0) run++;
   const have = sd.feed + ((sd.fb || 0) + run) / FEED.per;
-  if (asleep <= 0) return 'Everyone in the archive is awake, so there is nobody to print.';
-  if (have >= Math.min(FEED.max, asleep)) return `The fabricator already holds feedstock for ${have >= asleep ? 'everyone left in the archive' : `${FEED.max} bodies`}. The tanks wait until some is used.`;
+  const asks = S.gen && S.gen.rule !== 'no' ? S.gen.asks.length : 0, want = asleep + asks;   // couples waiting for a child need a body's worth each too
+  if (want <= 0) return 'Everyone in the archive is awake and no couple is waiting for a child, so nobody needs a body.';
+  if (have >= Math.min(FEED.max, want)) return `The fabricator already holds feedstock for ${have >= want ? (asks ? (asleep > 0 ? 'everyone left in the archive and every couple waiting for a child' : 'every couple waiting for a child') : 'everyone left in the archive') : `${FEED.max} bodies`}. The tanks wait until some is used.`;
   return '';
 }
 // raw material the colony wants piled in the yard: everything the project list still needs, plus a little, plus

@@ -3,7 +3,7 @@
 // from then on the player chooses who the fabricator prints, runs the crews and plans what gets built.
 import { startSim } from './ui/simclient.js';
 import { View } from './render/view.js';
-import { PersonArt } from './render/people.js';
+import { PersonArt, artKey } from './render/people.js';
 import { Panels } from './ui/panels.js';
 import { News } from './ui/news.js';
 import { Guide } from './ui/guide.js';
@@ -43,6 +43,9 @@ function onSim(m) {
     case 'wear': if (A.view && A.phase === 'colony') for (const [k, d] of m.chunks) A.view.terrain.setWear(k, d); else A.pendingWear.push(...m.chunks); return;
     case 'known': if (A.view && A.phase === 'colony') for (const [k, d] of m.chunks) A.view.setKnown(k, d); else A.pendingKnown.push(...m.chunks); return;
     case 'marks': return onMarks(m);
+    case 'skip': return onSkip(m);
+    case 'skipEnd': return skipEnd(m);
+    case 'skipNo': toast(m.why); return;
     case 'saved': case 'cmd': { const r = A.waiting.get(m.rq); if (r) { A.waiting.delete(m.rq); r(m.t === 'saved' ? m.data : m.r); } }
   }
 }
@@ -62,7 +65,7 @@ function ensureView(W) {
   if (!A.view) {
     A.view = new View(app, W);
     if (!A.view.G || !A.view.ok) { loader('This needs a browser with WebGL 2. ' + (A.view.G ? 'A shader did not compile.' : ''), 1); $('ldmsg').id = 'nogl'; return false; }
-    A.panels = new Panels(A, { cmd, select, toast, pickArea, land, siteSelect, startPlace, showProject, useSug });
+    A.panels = new Panels(A, { cmd, select, toast, pickArea, land, siteSelect, startPlace, showProject, useSug, wantRecs: on => { if (A.sim) A.sim.send({ t: 'recs', on }); if (!on) A.recs = null; }, wantSoc: on => { if (A.sim) A.sim.send({ t: 'soc', on }); if (!on) A.soc = null; } });
     A.stats = new Stats(A);
     A.news = new News(A, { select, showProject, setSpeed, toast, when, flyTo: (x, y) => { A.view.flyTo(x, y, Math.max(A.view.cam.z, 18)); A.follow = false; }, tab: t => A.panels.setTab(t) });
     A.guide = new Guide(A, { tab: t => A.panels.setTab(t) });
@@ -71,7 +74,7 @@ function ensureView(W) {
   if (!A.raf) A.raf = requestAnimationFrame(frame);
   return true;
 }
-function resetPeople() { if (A.news) A.news.reset(); A.n = 0; A.arts = []; A.names = []; A.people = []; A.archive = []; A.ui = null; A.log = []; A.leads = new Set(); A.cur = A.prev = null; A.pos = new Float32Array(0); select(-1); }
+function resetPeople() { if (A.news) A.news.reset(); A.skipping = false; A.held = []; A.chron = []; $('skipping').hidden = true; $('skipMenu').hidden = true; A.n = 0; A.arts = []; A.names = []; A.people = []; A.archive = []; A.ui = null; A.log = []; A.leads = new Set(); A.cur = A.prev = null; A.pos = new Float32Array(0); select(-1); }
 
 // from orbit: the planet, and three places to land
 function onSurvey(m) {
@@ -120,18 +123,19 @@ function onReady(m) {
 }
 function setRoster(r) {
   A.people = r.people; A.archive = r.archive; A.names = r.people.map(p => p.name);
-  for (let i = 0; i < r.people.length; i++) if (!A.arts[i]) A.arts[i] = new PersonArt(r.people[i], A.ui && A.ui.p[i] ? A.ui.p[i][1] : -1);
+  for (let i = 0; i < r.people.length; i++) if (!A.arts[i]) A.arts[i] = new PersonArt(r.people[i], A.ui && A.ui.p[i] ? A.ui.p[i][1] : -1, A.ui && A.ui.p[i] ? A.ui.p[i][8] : 30);
 }
 // people wear their crew's colour, so a move to another crew changes their clothes
 function recolour() {
   const U = A.ui; if (!U) return;
-  for (let i = 0; i < A.arts.length; i++) { const k = U.p[i] ? U.p[i][1] : -1; if (A.arts[i].crew !== k) { const w = A.arts[i].walk; A.arts[i] = new PersonArt(A.people[i], k); A.arts[i].walk = w; } }
+  // and children grow, and hair greys
+  for (let i = 0; i < A.arts.length; i++) { const k = U.p[i] ? U.p[i][1] : -1, y = U.p[i] ? U.p[i][8] : 30; if (A.arts[i].crew !== k || A.arts[i].key !== artKey(y)) { const w = A.arts[i].walk; A.arts[i] = new PersonArt(A.people[i], k, y); A.arts[i].walk = w; } }
   A.leads = new Set(U.crews.filter(c => !c.gone && c.lead >= 0).map(c => c.lead));
 }
 function onMarks(m) {
   const W = A.W; if (!W || !W.gone) return;
   const tiles = [];
-  for (let i = 0; i < m.gone.length; i += 2) { const t = m.gone[i]; if (!W.gone.has(t)) tiles.push(t); W.gone.set(t, m.gone[i + 1]); }
+  for (let i = 0; i < m.gone.length; i += 2) { const t = m.gone[i], n = m.gone[i + 1]; if (n < 0) { if (W.gone.delete(t)) tiles.push(t); continue; } if (!W.gone.has(t)) tiles.push(t); W.gone.set(t, n); }
   for (let i = 0; i < m.quarry.length; i += 2) W.quarry.set(m.quarry[i], m.quarry[i + 1]);
   if (tiles.length && A.view) A.view.terrain.propsGone(tiles);
   // burnt ground, and ground grown back: repainted in batches, not tile by tile
@@ -141,10 +145,14 @@ function onMarks(m) {
 function flushRetype() { if (A.retype.length && A.view && A.W && performance.now() - (A.retypeAt || 0) > 1500) { A.retypeAt = performance.now(); A.view.terrain.retype(A.W, A.retype); A.view.mmBase = A.view.minimapBase(); A.retype = []; } }
 function onState(m) {
   if (A.phase !== 'colony') return;
+  if (m.recs) A.recs = m.recs;
+  if (m.soc) A.soc = m.soc;
   if (m.roster) setRoster(m.roster);
   A.ui = m.ui;
   if (m.hist) A.hist.push(...m.hist);
-  if (m.log.length) { A.log.push(...m.log); if (A.log.length > 300) A.log.splice(0, A.log.length - 300); A.news.add(m.log); }
+  if (m.chron) A.chron = m.chron;
+  // while a skip runs, its news waits: the chronicle tells it afterwards
+  if (m.log.length) { A.log.push(...m.log); if (A.log.length > 300) A.log.splice(0, A.log.length - 300); if (A.skipping) A.held.push(...m.log.filter(e => e.lvl)); else A.news.add(m.log); }
   flushRetype(); recolour(); A.panels.update(); A.news.alerts(A.ui); A.guide.update(A.ui); A.stats.update();
   if (A.projSel >= 0 && !A.ui.projects.some(p => p.id === A.projSel)) A.projSel = -1;
 }
@@ -249,12 +257,33 @@ function select(i, fly) {
   if (A.panels) A.panels.card();
   if (fly && i >= 0 && i < A.n && A.view) { const act = A.pos[i * 4 + 3] >> 1; if (!hidden(act)) A.view.flyTo(A.pos[i * 4], A.pos[i * 4 + 1], Math.max(A.view.cam.z, 22)); else toast(act === ACT.DEAD ? `${A.names[i]} is dead.` : `${A.names[i]} is indoors.`); }
 }
+// ---------- skipping ahead ----------
+function skipMenu(on = $('skipMenu').hidden) {
+  if (on && (A.phase !== 'colony' || A.skipping)) return;
+  $('skipMenu').hidden = !on; $('bSkip').classList.toggle('on', on);
+}
+function startSkip(kind) { skipMenu(false); if (A.sim && A.phase === 'colony' && !A.skipping) A.sim.send({ t: 'skip', kind }); }
+function stopSkip() { if (A.skipping && A.sim) { A.sim.send({ t: 'skipStop' }); $('skNote').textContent = 'Stopping…'; } }
+function onSkip(m) {
+  if (!A.skipping) { A.skipping = true; A.held = []; $('skipping').hidden = false; $('skNote').textContent = 'The colony lives on at full speed. It stops for anything that needs you.'; if (A.news && A.news.open) A.news.closeLetter(); }
+  $('skBar').style.width = Math.round((m.at - m.from) / Math.max(1, m.to - m.from) * 100) + '%';
+  const c = A.clock; if (c) $('skDate').textContent = `Day ${((c.day - 1) % 20) + 1} of ${SEASONS[c.season]}, year ${c.year}`;
+}
+function skipEnd(m) {
+  A.skipping = false; $('skipping').hidden = true; A.speed = 0; speedButtons();
+  // what stopped it first, then the chronicle on top, open
+  const held = A.held; A.held = [];
+  const stop = m.stop && held.find(e => e.n === m.stop), ch = held.filter(e => e.e === 'chronicle').pop();
+  if (stop) A.news.push(stop);
+  if (ch) A.news.show(ch);
+}
 function setSpeed(s) {
+  if (A.skipping) { stopSkip(); return; }
   if (s > 0) A.lastSpeed = s; A.speed = s;
   if (A.sim && A.phase === 'colony' && !A.hold) A.sim.send({ t: 'speed', v: s });
   speedButtons();
 }
-function speedButtons() { const on = A.phase === 'colony'; document.querySelectorAll('.speeds button').forEach(b => { b.classList.toggle('on', on && +b.dataset.s === A.speed); b.disabled = !on; }); }
+function speedButtons() { const on = A.phase === 'colony'; document.querySelectorAll('.speeds button').forEach(b => { b.classList.toggle('on', on && +b.dataset.s === A.speed); b.disabled = !on; }); $('bSkip').disabled = !on || A.mode === 'stress'; }
 function pickArea(crew) {
   A.pickCrew = crew; const cr = A.ui.crews[crew];
   $('pickTxt').textContent = `Click the map where the ${cr.name} crew should survey`; $('pickHint').hidden = false;
@@ -268,7 +297,7 @@ function startPlace(type, w, h, name) {
   if (A.phase !== 'colony' || !TYPES[type]) return;
   endPick(); select(-1);
   A.place = { type, w: w || 0, h: h || 0, fixed: !!w, name: name || '', x: null, y: null, side: 0, turned: false, check: null, locked: false, seq: 0, wasBelow: !!(A.view && A.view.below) };
-  if (TYPES[type].below) belowView(true);
+  if (TYPES[type].below || TYPES[type].ground) belowView(true);   // the Seed's soundings show where to dig
   $('placeTxt').textContent = w ? `Move the ${name || TYPES[type].name} where it should go and click to put it down` : `Drag on the map to draw the ${TYPES[type].name.toLowerCase()}: at least ${TYPES[type].min} by ${TYPES[type].min} tiles, at most ${TYPES[type].max} long`;
   // the Seed suggests a size for what the colony needs: it follows the pointer and a click puts it down; a drag still draws any size
   if (!w) cmd('sizeFor', { type }).then(r => {
@@ -282,7 +311,7 @@ function startPlace(type, w, h, name) {
   $('plKeep').checked = false; $('plName2').value = name || ''; delete $('plName2').dataset.auto;
   A.panels.planCard(null);
 }
-function endPlace() { if (A.place && TYPES[A.place.type].below && !A.place.wasBelow) belowView(false); A.place = null; $('placeHint').hidden = true; app.classList.remove('placing'); A.panels.planCard(null); }
+function endPlace() { if (A.place && (TYPES[A.place.type].below || TYPES[A.place.type].ground) && !A.place.wasBelow) belowView(false); A.place = null; $('placeHint').hidden = true; app.classList.remove('placing'); A.panels.planCard(null); }
 function placeRect(x, y, w, h) {
   const P = A.place; if (!P) return;
   if (P.x === x && P.y === y && P.w === w && P.h === h) return;
@@ -425,15 +454,19 @@ function hookInput() {
     else if (e.code === 'KeyC' && colony) A.panels.toggleTab('crews');
     else if (e.code === 'KeyL' && colony) A.panels.toggleTab('log');
     else if (e.code === 'KeyG' && colony) A.panels.toggleTab('life');
+    else if (e.code === 'KeyK' && colony) A.panels.toggleTab('records');
+    else if (e.code === 'KeyP' && colony) A.panels.toggleTab('society');
     else if (e.code === 'KeyT' && colony) A.stats.show();
     else if (e.code === 'KeyB' && colony) A.panels.toggleTab('build');
     else if (e.code === 'KeyR' && A.place) turnDoor();
     else if (e.code === 'KeyM') musicToggle();
+    else if (e.code === 'KeyN' && colony) skipMenu();
     else if (e.code === 'KeyU' && colony) belowView();
     else if (e.code === 'KeyI' && colony) roofView();
     else if (e.code === 'F11') { e.preventDefault(); fullscreen(); }
     else if ((e.code === 'Escape' || e.code === 'Enter') && A.news && A.news.open) { e.preventDefault(); A.news.closeLetter(); }
     else if (e.code === 'Escape' && A.ui && A.ui.ctl >= 0 && !A.place) toggleCtl(A.ui.ctl);
+    else if (e.code === 'Escape' && !$('skipMenu').hidden) skipMenu(false);
     else if (e.code === 'Escape') { if (A.stats && A.stats.open) A.stats.show(false); else if (A.place) endPlace(); else if (A.pickCrew >= 0) endPick(); else if (!$('newdlg').hidden) $('newdlg').hidden = true; else if (!$('menu').hidden) menu(false); else if (A.projSel >= 0) closeProject(); else if (A.thing) closeThing(); else if (A.sel >= 0) select(-1); else if (A.panels && !A.panels.min) A.panels.fold(true); }
     else if (e.code === 'Equal' || e.code === 'NumpadAdd') V.zoomAt(1.25, V.VW / 2, V.VH / 2);
     else if (e.code === 'Minus' || e.code === 'NumpadSubtract') V.zoomAt(.8, V.VW / 2, V.VH / 2);
@@ -442,6 +475,8 @@ function hookInput() {
   window.addEventListener('blur', () => keys.clear());
   document.querySelectorAll('.speeds button').forEach(b => b.addEventListener('click', () => setSpeed(+b.dataset.s)));
   $('bHome').onclick = goHome;
+  $('bSkip').onclick = () => skipMenu(); $('skStop').onclick = stopSkip;
+  document.querySelectorAll('[data-skip]').forEach(b => b.onclick = () => startSkip(b.dataset.skip));
   $('bBelow').onclick = () => belowView(); $('bRoof').onclick = () => roofView(); $('belowUp').onclick = () => belowView(false);
   $('bFull').onclick = () => fullscreen();
   const fsIcon = () => { const on = !!(document.fullscreenElement || document.webkitFullscreenElement); $('bFull').querySelector('use').setAttribute('href', on ? '#i-unfull' : '#i-full'); $('bFull').title = on ? 'Leave fullscreen (F11)' : 'Fullscreen (F11)'; };
@@ -561,6 +596,7 @@ window.__colony = {
   },
   setSpeed, select, goHome, requestSave, startColony, siteSelect, land, cmd, toast, startPlace, placeRect, confirmPlace, endPlace, showProject, get music() { return A.music.state; }, musicToggle,
   tab: t => A.panels.setTab(t), panels: () => A.panels, news: () => A.news,
+  who: i => ({ name: A.people[i] && A.people[i].name, row: A.ui && A.ui.p[i], x: A.pos[i * 4], y: A.pos[i * 4 + 1] }),
   look(x, y, z) { const V = A.view; V.fly = null; V.cam.x = x; V.cam.y = y; if (z) V.cam.z = z; V.clampCam(); },
 };
 boot();

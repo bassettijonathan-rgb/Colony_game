@@ -8,13 +8,14 @@
 import { MAP, T, HOUR, ACT, hidden } from './consts.js';
 import { rnd, clamp, hash } from './rng.js';
 import { dayWeather, fireOn, seasonOf, doyOf } from './year.js';
-import { floodPlain, propsIn } from './world.js';
+import { floodPlain, propsIn, propAt } from './world.js';
 import { stageLoads, loadsOf, powerCheck, byId } from './build.js';
 import { injure, laidUp, woundText } from './body.js';
 import { assignHomes, dropCarry } from './work.js';
 import { remember } from './life.js';
 import { spend } from './director.js';
 import { scar, relive } from './trauma.js';
+import { watcher, libraryBurned, noteEvent } from './society.js';
 
 export const FIRE_STEP = HOUR / 6;                          // the fire moves on every ten game minutes
 // how readily each ground burns, and for how many steps; water, sand, rock and scorched ground don't
@@ -79,6 +80,20 @@ export function hzMorning(sim) {
     const keep = [];
     for (const s of H.scorch) { if (s[2] <= sim.day - REGROW) { const t = s[0]; if (sim.W.type[t] === T.SCORCH) { sim.W.type[t] = T.MEADOW; sim.tnew.push(t, T.MEADOW); } } else keep.push(s); }
     H.scorch = keep;
+  }
+  regrowth(sim);
+}
+// felled woodland comes back: a stump puts up a new tree in a few years, cut scrub in a season or two. Not under a
+// building or a field, and not where the ground burned and has not greened over yet
+const TREE_BACK = 1 / 240, BUSH_BACK = 1 / 60;
+function regrowth(sim) {
+  const S = sim.S, W = sim.W, plots = S.projects.filter(p => !p.gone);
+  for (const [list, ch, k] of [[sim.trees, TREE_BACK, 'tree'], [sim.scrub, BUSH_BACK, 'bush']]) for (const e of list) {
+    const t = e.src; if (S.gone[t] !== 0 || rnd() >= ch) continue;
+    const x = t % MAP, y = t / MAP | 0;
+    if (W.type[t] === T.SCORCH || plots.some(p => x >= p.x && x < p.x + p.w && y >= p.y && y < p.y + p.h)) continue;
+    const q = propAt(W, x, y); if (!q || q.k !== k || S.cols.some(c => !c.dead && c.src === t)) continue;
+    sim.propBack(t);
   }
 }
 
@@ -148,7 +163,7 @@ export function fireStep(sim) {
   }
 }
 function catchFire(sim, p) {
-  const S = sim.S; p.fire = true; p.burn = p.burn || 0; S.rv++; spend(sim, 2, 'bfire');
+  const S = sim.S; p.fire = true; noteEvent(sim, 'fire'); p.burn = p.burn || 0; S.rv++; spend(sim, 2, 'bfire');
   sim.log(`${p.name} is on fire!`, 'bad', { e: 'bfire', lvl: 2, pid: p.id, title: `${p.name} is burning` });
   // everyone inside gets out, some of them hurt on the way
   for (const c of S.cols) if (!c.dead && c.where === p.id && hidden(c.act)) {
@@ -174,6 +189,7 @@ export function damage(sim, p, frac, why) {
   if (p.type === 'field' && p.crop && frac > .05) { if (p.crop.st === 'grow' || p.crop.st === 'ripe') sim.log(`The crop in ${p.name} is lost${why === 'flood' ? ': it drowned' : ' to the fire'}.`, 'bad', { pid: p.id }); p.crop.st = 'bare'; p.crop.g = 0; p.crop.k = ''; }
   if (frac < .15 || (p.type === 'field' && why === 'fire')) { if (p.shut === why) p.shut = ''; powerCheck(sim); return; }
   if (!p.done) { lose(p, p.got); p.got = {}; p.shut = ''; return; }
+  if (p.type === 'library' && why === 'fire') libraryBurned(sim, frac);
   const st = frac >= .9 ? 2 : frac >= .5 ? 3 : 4;
   p.done = false; p.shut = ''; p.dmg = why; p.rep = Math.min(1, frac); p.stage = p.type === 'field' ? Math.min(st, 2) : st; p.got = {};
   for (let k = p.stage; k < 5; k++) lose(p, loadsOf(S, p, k));   // what the repairs put back is what was lost
@@ -190,11 +206,18 @@ function fireCrews(sim) {
   const homeish = S.projects.filter(p => !p.gone && p.type !== 'test');
   const near = t => { const x = t % MAP, y = t / MAP | 0; return Math.hypot(x - L.x, y - L.y) < NEAR || homeish.some(p => inRect(p, x, y, 12)); };
   const targets = keys.filter(near), bs = S.projects.filter(p => !p.gone && p.fire);
-  if (!targets.length && !bs.length) { if (H.alarm) endAlarm(sim); return; }
-  if (!H.alarm) { H.alarm = S.tick; spend(sim, 2, 'fire'); relive(sim, ['fire']); sim.log('Fire near the camp: everyone who can is going to beat it out.', 'bad', { e: 'alarm', lvl: 1, title: 'All hands to the fire' }); }
+  if (!targets.length && !bs.length) { H.unseen = 0; if (H.alarm) endAlarm(sim); return; }
+  if (!H.alarm) {
+    // at night, with the camp asleep, a fire is only noticed once it is close, unless someone keeps watch
+    if (!noticed(sim, targets, bs)) { if (!H.unseen) H.unseen = S.tick; return; }
+    const late = H.unseen ? Math.round((S.tick - H.unseen) / HOUR * 10) / 10 : 0; H.unseen = 0;
+    H.alarm = S.tick; spend(sim, 2, 'fire'); relive(sim, ['fire']); noteEvent(sim, 'fire');
+    const w = watcher(sim), night = sim.hour < sim.dawn || sim.hour >= sim.dusk;
+    sim.log(late >= .5 ? `Fire near the camp! It burned unseen for ${late < 1.5 ? 'an hour' : `${Math.round(late)} hours`} while everyone slept, until it came close enough to wake them.${S.projects.some(p => !p.gone && p.type === 'watch') ? '' : ' Nobody keeps watch at night.'}` : night && w ? `${w.name}, on watch, saw the fire and raised the alarm: everyone who can is going to beat it out.` : 'Fire near the camp: everyone who can is going to beat it out.', 'bad', { e: late >= .5 ? 'unseen' : 'alarm', lvl: late >= .5 ? 2 : 1, title: 'All hands to the fire' });
+  }
   const want = Math.min(12, 2 + Math.ceil((targets.length + bs.length * 6) / 4));
   // the burned and the hurting stay back: a second burn on top of the first is how firefighters die
-  const able = c => !c.dead && !(c.bd && c.bd.pain > .25) && !c.down && !c.care && !c.ctl && c.carried < 0 && !(c.cap && laidUp(c)) && c.act !== ACT.WAKE && !(c.alone > 0) && !c.iso;
+  const able = c => !c.dead && !(c.life < 3) && !(c.bd && c.bd.pain > .25) && !c.down && !c.care && !c.ctl && c.carried < 0 && !(c.cap && laidUp(c)) && c.act !== ACT.WAKE && !(c.alone > 0) && !c.iso;
   const spots = [...bs.map(p => sim.doorOf(p)), ...targets];
   const dist = (c, t) => Math.hypot(c.x - (t % MAP), c.y - (t / MAP | 0));
   let on = S.cols.filter(c => c.fight >= 0 && able(c));
@@ -212,6 +235,21 @@ function fireCrews(sim) {
     if (!best) best = spots[0];
     c.fight = best; taken.add(best); if (c.plan === 'fire') c.plan = '';
   }
+}
+// whether anyone has seen it yet: by day everyone does; at night the one on watch, someone still up nearby, or the
+// smoke and the glow once it is close to where people sleep
+const SMELL = 8;
+function noticed(sim, targets, bs) {
+  const S = sim.S, h = sim.hour;
+  if (h >= sim.dawn && h < sim.dusk) return true;
+  if (bs.length || watcher(sim)) return true;
+  const L = sim.W.land, homes = S.projects.filter(p => !p.gone && p.done && (p.type === 'shelter' || p.type === 'dorm' || p.type === 'burrow'));
+  for (const t of targets) {
+    const x = t % MAP, y = t / MAP | 0;
+    if (Math.hypot(x - L.x, y - L.y) < SMELL + 6 || homes.some(p => inRect(p, x, y, SMELL))) return true;
+    if (S.cols.some(c => !c.dead && !hidden(c.act) && c.act !== ACT.BED && c.act !== ACT.TOBED && Math.abs(c.x - x) < 15 && Math.abs(c.y - y) < 15)) return true;
+  }
+  return false;
 }
 function endAlarm(sim) {
   const S = sim.S; S.hz.alarm = 0;
@@ -243,7 +281,7 @@ function floodHour(sim, wx) {
   if (G.to > 0 && Math.round(sim.hour) % 24 === 18) G.to = Math.max(0, G.to - .4);   // the rise passes if no more rain comes
   if (G.lv < .5 && !S.projects.some(p => p.shut === 'flood')) return;
   const thr = floodPlain(W);
-  if (G.lv >= .5 && G.peak < .5) S.stats.floods = (S.stats.floods || 0) + 1;
+  if (G.lv >= .5 && G.peak < .5) { S.stats.floods = (S.stats.floods || 0) + 1; noteEvent(sim, 'flood'); }
   G.peak = Math.max(G.peak, G.lv);
   // buildings and fields under water
   for (const p of S.projects) {

@@ -230,6 +230,9 @@ kbd{font:600 10px var(--f-num);padding:1px 5px;border-radius:3px;border:1px soli
 .seg.sub{margin:0 0 10px;position:sticky;top:-10px;z-index:2;background:rgba(14,19,26,.96)}
 ol.how{margin:0 0 10px;padding:8px 10px 8px 28px;border-left:2px solid var(--acc);background:rgba(255,255,255,.03);font-size:12px;line-height:1.45;color:#c9d1dc}ol.how li{margin:2px 0}ol.how kbd{font-size:10px}
 .seg button.on{background:linear-gradient(180deg,rgba(143,224,255,.24),rgba(143,224,255,.1));color:var(--txt);box-shadow:inset 0 0 0 1px rgba(143,224,255,.4)}
+.seg button.pk{color:var(--txt);box-shadow:inset 0 0 0 1px rgba(255,200,120,.55);background:rgba(255,200,120,.1)}
+.box.rule>b{display:block;margin-bottom:6px;color:#e9edf3}.box.rule.off{opacity:.6}.box.rule .seg button{height:auto;min-height:28px;padding:4px 3px;line-height:1.2}
+.sup{font-size:11px;color:var(--mut);margin-top:6px;line-height:1.4}.sup .bar{margin:0 0 4px}.sup b{color:#d7dde6;font-weight:600}.box.rule .row2{margin-top:6px;gap:6px;flex-wrap:wrap}
 .seg.sm button{height:26px;font-size:11.5px}
 .seg.wrap{display:grid;grid-template-columns:repeat(3,1fr)}
 select{font:600 12px var(--f-ui);color:var(--txt);background:rgba(0,0,0,.35);border:1px solid var(--line2);border-radius:3px;height:28px;padding:0 6px;max-width:100%}
@@ -313,6 +316,9 @@ select{font:600 12px var(--f-ui);color:var(--txt);background:rgba(0,0,0,.35);bor
 .hrow{display:flex;gap:10px;align-items:center}.hrow .fig{width:74px;flex:none;margin-top:8px}.hrow .fig *{transition:fill .3s}.hrow .meters{flex:1;grid-template-columns:62px 1fr 40px}
 .skills.caps div.low{color:var(--acc2)}
 .wd{padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px}.wd b{color:#e9edf3;font-weight:600}.wd .sub{color:var(--mut);font-size:11px;margin:2px 0 4px}.wd .chips{margin-top:3px}
+.rec{padding:7px 4px;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px;cursor:pointer;border-radius:6px}.rec:hover{background:rgba(255,255,255,.05)}.rec b{color:#e9edf3;font-weight:600}.rec small{color:var(--mut);font-size:11px}.rec .sub{color:var(--mut);font-size:11px;margin:2px 0 3px}.rec.dead b{color:#aab2bf}.rec.dead b::after{content:' †';color:var(--dim)}
+.srch{width:100%;box-sizing:border-box;margin:8px 0 6px;padding:7px 9px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(0,0,0,.25);color:#e9edf3;font:12px var(--f-ui, inherit)}
+table.rt{width:100%;border-collapse:collapse;font-size:11px;margin:4px 0 8px}table.rt th{font-weight:600;color:var(--mut);text-align:right;padding:3px 4px}table.rt th:first-child,table.rt td:first-child{text-align:left}table.rt td{padding:3px 4px;text-align:right;border-top:1px solid rgba(255,255,255,.06);color:#d7dde6;font-family:var(--f-num)}table.rt td small{color:var(--dim)}
 .mm2{font-size:11.5px;color:#c9d0db;line-height:1.45;margin:3px 0}
 .mm2 em{font:500 10px var(--f-num);font-style:normal;color:var(--dim);margin-right:6px}
 .stg{display:grid;gap:4px;margin-top:8px}
@@ -430,6 +436,15 @@ select{font:600 12px var(--f-ui);color:var(--txt);background:rgba(0,0,0,.35);bor
 #letter h2{margin:0 0 8px;font:700 21px/1.2 var(--f-hd);letter-spacing:.02em}
 #letter.bad h2{color:#ffb8ae}#letter.good h2{color:#c4f2cc}
 #letter p{margin:0;font-size:13.5px;line-height:1.55}
+#letter.chron{width:580px}#letter.chron p{white-space:pre-line;max-height:56vh;overflow-y:auto;padding-right:6px}
+.skipb{width:30px;height:32px;margin-left:4px;border-radius:3px;display:grid;place-items:center;color:var(--mut);background:rgba(0,0,0,.35);border:1px solid var(--line)}
+.skipb:hover{color:var(--txt)}.skipb.on{color:var(--acc);border-color:var(--acc)}.skipb:disabled{opacity:.35;cursor:default}
+#skipMenu{top:calc(var(--tb) + var(--top) + 8px);left:50%;transform:translateX(-50%);width:320px;z-index:7}
+#skipMenu .in{padding:10px 12px 12px;display:flex;flex-direction:column;gap:6px}#skipMenu .pill{width:100%;justify-content:flex-start;height:34px}
+#skipping{left:50%;top:34%;transform:translate(-50%,-50%);width:360px;max-width:calc(100% - 32px);z-index:7;border-top:2px solid var(--seed)}
+#skDate{font:600 14px var(--f-hd);letter-spacing:.02em}#skipping .in{padding:12px 14px 14px}
+#skipping .bar{height:6px}#skipping .acts{display:flex;justify-content:flex-end;margin-top:10px}
+.chron h4{margin:12px 0 4px;font:700 13px var(--f-hd);letter-spacing:.02em;color:var(--txt)}.chron p{margin:0 0 6px;font-size:12.5px;line-height:1.5}
 #letter .why{font-size:12.5px;margin-top:12px}
 #letter .acts{display:flex;align-items:center;gap:8px;margin-top:16px}
 #letter .acts span{flex:1;font-size:11.5px;color:var(--mut);font-weight:600}
@@ -520,7 +535,12 @@ select{font:600 12px var(--f-ui);color:var(--txt);background:rgba(0,0,0,.35);bor
   <symbol id="i-solar" viewBox="0 0 16 16"><path d="M2.5 11.5L4.5 4h7l2 7.5z"/><path d="M3.5 7.75h9M8 4v7.5M8 11.5v2.5M5.5 14h5"/></symbol>
   <symbol id="i-roof" viewBox="0 0 24 24"><path d="M3 11l9-7 9 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-dasharray="3 2.2"/><path d="M5.5 10.5V20h13v-9.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><rect x="8.5" y="14" width="3.2" height="3" rx=".5" fill="currentColor"/><rect x="13" y="13" width="3" height="4" rx=".5" fill="none" stroke="currentColor" stroke-width="1.4"/></symbol><symbol id="i-below" viewBox="0 0 16 16"><path d="M1.5 5.5h13"/><path d="M3 5.5v8h10v-8"/><path d="M5.5 5.5v2h2v2h2v2h2"/></symbol>
   <symbol id="i-cellar" viewBox="0 0 16 16"><path d="M1.5 4.5h13M3 4.5v9h10v-9"/><path d="M4.75 8h6.5M4.75 11h6.5"/><circle cx="6" cy="6.75" r=".9"/><circle cx="9.5" cy="9.75" r=".9"/></symbol>
+  <symbol id="i-mine" viewBox="0 0 16 16"><path d="M1.5 4.5h13M3 4.5v9h10v-9"/><path d="M5.5 12l4.5-4.5"/><path d="M7.5 6.25q2.75-1.25 4.5 1.75"/></symbol>
   <symbol id="i-test" viewBox="0 0 16 16"><path d="M2.5 11a5.5 5.5 0 0 1 11 0"/><path d="M8 11l3-3.5"/><path d="M2 13.5h12"/></symbol>
+  <symbol id="i-school" viewBox="0 0 16 16"><path d="M1.5 6L8 3l6.5 3L8 9z"/><path d="M4 7.3v3.2c1.2 1.3 2.5 1.8 4 1.8s2.8-.5 4-1.8V7.3"/><path d="M14.5 6v4"/></symbol>
+  <symbol id="i-library" viewBox="0 0 16 16"><path d="M2.5 2.5h2.5v11H2.5zM6 2.5h2.5v11H6z"/><path d="M9.6 3.2l2.4-.6 2.4 10.4-2.4.6z"/></symbol>
+  <symbol id="i-watch" viewBox="0 0 16 16"><path d="M5 14.5L6 6h4l1 8.5"/><path d="M4.5 6h7L8 2.5z"/><circle cx="8" cy="9.5" r="1.1"/></symbol>
+  <symbol id="i-society" viewBox="0 0 16 16"><circle cx="8" cy="3.6" r="1.6"/><circle cx="3.4" cy="10.4" r="1.6"/><circle cx="12.6" cy="10.4" r="1.6"/><path d="M6.6 5L4.4 8.8M9.4 5l2.2 3.8M5.2 11h5.6"/></symbol>
 </svg>
 <div id="app">
   <canvas id="gl"></canvas><canvas id="ui"></canvas>
@@ -548,6 +568,7 @@ select{font:600 12px var(--f-ui);color:var(--txt);background:rgba(0,0,0,.35);bor
           <button data-s="2" title="Fast (2)" aria-label="Fast"><svg width="18" height="14" viewBox="0 0 18 14"><path d="M2 2l7 5-7 5zM9 2l7 5-7 5z" fill="currentColor"/></svg></button>
           <button data-s="3" title="Fastest (3)" aria-label="Fastest"><svg width="22" height="14" viewBox="0 0 22 14"><path d="M1 2l6 5-6 5zM8 2l6 5-6 5zM15 2l6 5-6 5z" fill="currentColor"/></svg></button>
         </div>
+        <button class="skipb" id="bSkip" title="Skip ahead (N)" aria-label="Skip ahead"><svg width="18" height="14" viewBox="0 0 18 14"><path d="M2 2l6 5-6 5zM8 2l6 5-6 5z" fill="currentColor"/><rect x="14" y="2" width="2.4" height="10" rx="1" fill="currentColor"/></svg></button>
       </div>
       <div class="tb sys">
         <button class="sq" id="bHome" title="Back to the Seed (H)" aria-label="Back to the Seed"><svg class="ic" style="width:19px;height:19px"><use href="#i-seed"/></svg></button>
@@ -584,7 +605,10 @@ select{font:600 12px var(--f-ui);color:var(--txt);background:rgba(0,0,0,.35);bor
           <span><kbd>click</kbd></span><span>pick a person or a building</span>
           <span><kbd>Space</kbd></span><span>pause</span>
           <span><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></span><span>speed</span>
-          <span><kbd>Q</kbd> <kbd>C</kbd> <kbd>B</kbd> <kbd>L</kbd></span><span>archive, crews, build, log</span>
+          <span><kbd>N</kbd></span><span>skip ahead: to the next season, or a year</span>
+          <span><kbd>Q</kbd> <kbd>C</kbd> <kbd>B</kbd> <kbd>G</kbd></span><span>archive, crews, build, life</span>
+          <span><kbd>K</kbd> <kbd>P</kbd> <kbd>T</kbd> <kbd>L</kbd></span><span>records, society, stats, log</span>
+          <span><kbd>I</kbd> <kbd>U</kbd></span><span>roofs off, below ground</span>
           <span><kbd>Tab</kbd></span><span>names on the map</span>
           <span><kbd>F</kbd> <kbd>H</kbd></span><span>follow the picked person, back to the Seed</span>
           <span><kbd>R</kbd> <kbd>Esc</kbd></span><span>turn the door, cancel</span>
@@ -650,6 +674,8 @@ select{font:600 12px var(--f-ui);color:var(--txt);background:rgba(0,0,0,.35);bor
       <button data-tab="crews" title="Crews (C)"><kbd>C</kbd><svg class="ic"><use href="#i-crews"/></svg>Crews</button>
       <button data-tab="build" title="Build (B)"><kbd>B</kbd><svg class="ic"><use href="#i-build"/></svg>Build</button>
       <button data-tab="life" title="Food and local life (G)"><kbd>G</kbd><svg class="ic"><use href="#i-life"/></svg>Life</button>
+      <button data-tab="records" title="Clinic records (K)"><kbd>K</kbd><svg class="ic"><use href="#i-clinic"/></svg>Records</button>
+      <button data-tab="society" title="Society: rules, council, school, library, watch and customs (P)"><kbd>P</kbd><svg class="ic"><use href="#i-society"/></svg>Society</button>
       <button id="bStats" title="Colony record and charts (T)"><kbd>T</kbd><svg class="ic"><use href="#i-chart"/></svg>Stats</button>
       <button data-tab="log" title="Log (L)"><kbd>L</kbd><svg class="ic"><use href="#i-log"/></svg>Log<span class="badge" id="logNew" hidden></span></button>
     </nav>
@@ -662,6 +688,18 @@ select{font:600 12px var(--f-ui);color:var(--txt);background:rgba(0,0,0,.35);bor
         <div class="field"><label for="nSeed">Seed</label><input id="nSeed" inputmode="numeric" autocomplete="off"></div>
         <div class="acts"><button class="pill" id="nCancel">Cancel</button><button class="go" id="nGo">Land</button></div>
       </div>
+    </div>
+    <div class="glass" id="skipMenu" hidden>
+      <div class="wt"><svg class="ic"><use href="#i-seed"/></svg><b>Skip ahead</b></div>
+      <div class="in">
+        <button class="pill" data-skip="season">To the next season</button>
+        <button class="pill" data-skip="year">A whole year</button>
+        <div class="note">The colony lives on at full speed with its crews as they are. The skip stops early for anything that needs you: a death, a fire, a flood, a fight, hunger, a council answer. Afterwards the chronicle says what happened.</div>
+      </div>
+    </div>
+    <div class="glass" id="skipping" role="status" hidden>
+      <div class="wt"><svg class="ic"><use href="#i-seed"/></svg><b>Skipping ahead</b></div>
+      <div class="in"><div id="skDate"></div><div class="bar"><u id="skBar"></u></div><div class="note" id="skNote">The colony lives on at full speed. It stops for anything that needs you.</div><div class="acts"><button class="pill" id="skStop">Stop here</button></div></div>
     </div>
     <div id="news"><div id="letters"></div><div id="alerts"></div></div><div id="lTip" hidden></div>
     <div class="glass info" id="letter" role="dialog" aria-labelledby="lTitle" hidden>

@@ -78,19 +78,21 @@ export class Guide {
     const el = $('guide'), A = this.A;
     if (this.off || !U || U.mode !== 'landfall' || A.phase !== 'colony' || !A.panels || !A.panels.on) { el.hidden = true; this.sig = ''; return; }
     const done = STEPS.map(s => s.done(U)), i = done.indexOf(false), n = STEPS.length;
-    const v = this.view >= 0 && this.view !== i ? this.view : -1, at = v >= 0 ? v : i, sig = [done.join(''), at, this.min].join('|');
+    // a person's or a building's card opens in the same corner: the guide folds out of its way while it is open
+    const card = !$('card').hidden || !$('bcard').hidden || !$('plan').hidden, min = this.min || card;
+    const v = this.view >= 0 && this.view !== i ? this.view : -1, at = v >= 0 ? v : i, sig = [done.join(''), at, min].join('|');
     el.hidden = false;
     if (sig === this.sig) return; this.sig = sig;
     const s = at < 0 ? END : STEPS[at], last = at < 0 ? n : at;
     $('gN').textContent = at < 0 ? 'Done' : `${at + 1} of ${n}`;
-    $('gMin').textContent = this.min ? 'Show' : 'Hide';
+    $('gMin').textContent = min ? 'Show' : 'Hide';
     // markers: green for done, blue for the current step, a ring round the one on screen; each one opens its step
     const to = k => k === i || k >= n ? 'data-g="now"' : `data-g="k" data-k="${k}"`;   // the current step is "now"
     let h = `<div class="gnav"><button class="garr" ${to(last - 1)} aria-label="Previous step"${last <= 0 ? ' disabled' : ''}>‹</button>`;
     h += `<div class="gdots">${STEPS.map((q, k) => `<button ${to(k)} title="${k + 1}. ${q.title}${done[k] ? ' (done)' : ''}" class="${done[k] ? 'd' : k === i ? 'c' : ''}${k === at ? ' on' : ''}"></button>`).join('')}</div>`;
     h += `<button class="garr" ${to(at + 1)} aria-label="Next step"${at < 0 || (at === n - 1 && i >= 0) ? ' disabled' : ''}>›</button></div>`;
     h += `<b>${s.title}${at >= 0 && done[at] ? ' <span class="gok">Done</span>' : ''}</b>`;
-    if (!this.min) {
+    if (!min) {
       h += `<p>${s.text}</p><div class="gact">`;
       if (at < 0) h += '<button class="go" data-g="end">Close the guide</button>';
       else { h += `<button class="pill" data-g="go" data-tab="${s.tab}">${s.btn}</button>`; if (v >= 0) h += `<button class="pill" data-g="now">${i < 0 ? 'Last page' : 'Current step'}</button>`; }
