@@ -156,6 +156,7 @@ export function mindTick(sim, c) {
   }
   // fatigue: work and walking tire, sleep restores, a bed restores more than the ground
   let f = asleep ? (a === ACT.INSIDE ? -9.5 : -6.5) : a === ACT.QUARRY ? 4 : a === ACT.FELL || a === ACT.BUILD ? 3.6 : a === ACT.CARRY || a === ACT.STONE || a === ACT.LOG ? 3.3 : a === ACT.BENCH ? 2.2 : working ? 2.8 : c.moving ? 2.4 : a === ACT.EAT || a === ACT.INDOORS ? (ward ? -2 : .3) : .8;
+  if (c.life === 0) f = -4;   // an infant in the nursery sleeps most of the day
   const tt = traumaTick(c);
   if (f < 0 && asleep) f *= tt.sleep;   // nightmares: what they carry follows them into sleep
   if (f > 0) { if (c.fresh > 0) f *= 1.6; if (has('patient')) f *= .9; if (c.bd.pain > .2) f *= 1 + c.bd.pain * .4; if (c.hungry) f += 1; if (c.chill > 35) f += 1; if (c.unwell) f += .7; }
@@ -190,7 +191,7 @@ export function mindTick(sim, c) {
   bonds(sim, c, dt, working);
   // breaking down: at the far end of strain, people stop and walk off to be alone for a while
   if (c.alone > 0) { c.alone -= 30; if (c.alone <= 0) { c.alone = 0; c.str = Math.max(0, c.str - 30); c.calm = DAY_TICKS; sim.log(`${c.name} came back to camp.`, '', { e: 'back', lvl: 1, who: c.id, title: 'Back from a breakdown' }); } }
-  else if (c.str >= 85 - tt.brk && !asleep && !(c.calm > 0) && rnd() < .15 * dt) {
+  else if (c.str >= 85 - tt.brk && !(c.life <= 1) && !asleep && !(c.calm > 0) && rnd() < .15 * dt) {
     c.alone = ri(4, 7) * HOUR; c.tru = Math.max(0, c.tru - 3); S.stats.breakdowns++;
     sim.log(`${c.name} broke down and walked off to be alone.`, 'bad', { e: 'breakdown', lvl: 2, who: c.id, title: `${c.name} broke down` }); remember(sim, c, 'Broke down and walked away from everyone for a few hours.');
   }
@@ -218,6 +219,8 @@ export function mindTick(sim, c) {
   if (a === ACT.FARM) grow(c, 'botany', .02 * dt);
   if (a === ACT.GATHER || a === ACT.SAMPLE) { grow(c, 'fieldcraft', .012 * dt); grow(c, 'botany', .01 * dt); }
   if (a === ACT.COOK) grow(c, 'cooking', .02 * dt);
+  if (a === ACT.DIG) { grow(c, 'building', .015 * dt); grow(c, 'engineering', .006 * dt); }   // digging rooms and mining
+  if (a === ACT.MIND) { grow(c, 'teaching', .015 * dt); grow(c, 'medicine', .004 * dt); }
   if (a === ACT.BENCH && at && at.type === 'lab') { grow(c, 'botany', .015 * dt); grow(c, 'medicine', .008 * dt); }
   if (working && cr && cr.lead === c.id) grow(c, 'leadership', .006 * dt);
   // accidents: exhausted, careless or clumsy hands at work

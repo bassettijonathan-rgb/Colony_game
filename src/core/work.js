@@ -4,7 +4,7 @@
 // kept in build.js, and for food in food.js.
 import { MAP, HOUR, DAY_TICKS, ACT, SHIFTS, T, WORKS, WORK_NAME } from './consts.js';
 import { rnd, ri, clamp } from './rng.js';
-import { remember, trustAll } from './life.js';
+import { remember, trustAll, playAt } from './life.js';
 import { suggestFirst } from './founders.js';
 import {
   TYPES, RAW, PRECISE, RECIPE, FIT_H, FAB_SLOW, STAGE_NAMES, matName, stageLoads, loadsOf, billOf, loadCheck, capacity, checkPlot, addProject,
@@ -236,7 +236,7 @@ export function workNext(sim, c) {
     case 'kitchen': return kitchenNext(sim, c);
     case 'lab': return labNext(sim, c);
     case 'clinic': return clinicNext(sim, c);
-    case 'care': { const t = playSpot(sim); if (t < 0) return false; c.job = 'mind'; sim.goTo(c, t, ACT.MIND); return true; }
+    case 'care': if (playSpot(sim) < 0) return false; playAt(sim, c, 'mind'); return true;   // indoors with the children in hard cold
   }
   return false;
 }
@@ -719,7 +719,8 @@ export function onTimer(sim, c) {
       const ws = byId(S, c.ws);
       if (c.make === 'smelt') {
         S.stores.yard.salvage += SMELT.out; S.stats.refined = (S.stats.refined || 0) + SMELT.out;
-        if (!S.stats.smelted++) sim.log(`${c.name} smelted the colony's first metal from local ore at a workshop bench. Parts no longer have to come from what the Seed brought down.`, 'good', { e: 'smelted', lvl: 1, who: c.id, title: 'Metal from local ore' });
+        S.stats.smelted = (S.stats.smelted || 0) + 1;
+        if (S.stats.smelted === 1) sim.log(`${c.name} smelted the colony's first metal from local ore at a workshop bench. Parts no longer have to come from what the Seed brought down.`, 'good', { e: 'smelted', lvl: 1, who: c.id, title: 'Metal from local ore' });
         c.carry = ''; c.cn = 0; c.make = ''; c.job = ''; c.where = -1; c.act = ACT.IDLE;
         break;
       }

@@ -324,7 +324,7 @@ export function plantStop(S) {
   const sd = S.seedc, asleep = S.archive.filter(p => p.woke == null).length - sd.queue.length - (sd.printing ? 1 : 0);
   let run = 0; for (const p of built(S)) if (p.type === 'plant' && p.tanks) for (const t of p.tanks) if (t > 0) run++;
   const have = sd.feed + ((sd.fb || 0) + run) / FEED.per;
-  const asks = S.gen ? S.gen.asks.length : 0, want = asleep + asks;   // couples waiting for a child need a body's worth each too
+  const asks = S.gen && S.gen.rule !== 'no' ? S.gen.asks.length : 0, want = asleep + asks;   // couples waiting for a child need a body's worth each too
   if (want <= 0) return 'Everyone in the archive is awake and no couple is waiting for a child, so nobody needs a body.';
   if (have >= Math.min(FEED.max, want)) return `The fabricator already holds feedstock for ${have >= want ? (asks ? (asleep > 0 ? 'everyone left in the archive and every couple waiting for a child' : 'every couple waiting for a child') : 'everyone left in the archive') : `${FEED.max} bodies`}. The tanks wait until some is used.`;
   return '';

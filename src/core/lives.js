@@ -23,7 +23,9 @@ export const worker = c => !c.dead && c.life >= 3 && !c.retired;
 export const FAMILY = new Set(['partner', 'parent', 'child', 'sibling']);
 // a tie that holds someone up: a friend, or family
 export const close = t => t && (t.k === 'friend' || FAMILY.has(t.k));
-const kin = (a, b) => a.par.includes(b.id) || b.par.includes(a.id) || a.par.some(p => b.par.includes(p));
+// close family, who never pair up: anyone sharing a parent or grandparent, or descended from the other within two generations
+const anc = (S, c) => { const out = new Set(c.par); for (const p of c.par) for (const g of (S.cols[p] || {}).par || []) out.add(g); return out; };
+const kin = (S, a, b) => { const x = anc(S, a), y = anc(S, b); return x.has(b.id) || y.has(a.id) || [...x].some(i => y.has(i)); };
 const first = n => n.split(' ')[0], family = n => n.split(' ').slice(1).join(' ');
 
 export const newGen = () => ({ rule: 'fed', womb: [], asks: [], firsts: {}, born: 0 });
@@ -48,20 +50,20 @@ export function livesDay(sim) {
     if (st !== was) { c.life = st; grewUp(sim, c, was, st, y); }
     if (c.dead) continue;
     if (!c.retired && c.life >= 4 && y >= RETIRE) retire(sim, c);
-    // the old: a chance of dying of age that doubles about every seven years past sixty
+    // the old: a chance of dying of age that doubles about every seven years, from fifty on
     if (y >= 50 && rnd() < .00004 * Math.exp(.095 * y) / YEAR_DAYS) { die(sim, c, 'old'); continue; }
     skillsDay(sim, c);
     if (c.life === 0) feedInfant(sim, c);
   }
   couples(sim, live.filter(c => !c.dead));
   tanks(sim);
-  minders(sim);
   milestones(sim);
 }
 function grewUp(sim, c, was, st, y) {
   const S = sim.S;
   if (st === 1) sim.log(`${c.name} is two: out of the nursery, and running about the camp.`, 'good', { e: 'toddler', lvl: 0, who: c.id });
   if (st === 3) {
+    c.bed = 21.3 + rnd() * .9;   // a grown-up's bedtime from now on
     remember(sim, c, 'Joined the crews as an apprentice.');
     sim.log(`${c.name} is thirteen and joins the crews as an apprentice, learning from whoever is best at the work.`, 'good', { e: 'apprentice', lvl: 1, who: c.id, title: 'An apprentice' });
     if (S.crewPlan) planCrews(sim, 'grew'); else if (S.autoCrews) autoCrew(sim, c); else sim.log(`${c.name} is waiting to be put in a crew.`, '', { e: 'nocrew', lvl: 1, who: c.id, title: 'Waiting for a crew' });
@@ -137,7 +139,7 @@ function couples(sim, live) {
     for (const id in a.ties) {
       const t = a.ties[id], b = S.cols[id];
       if (!b || b.dead || b === a || b.partner >= 0 || b.life < 4 || yearsOf(sim, b) < COUPLE || t.k !== 'friend' || t.a < 65 || t.f < 70 || Math.abs(yearsOf(sim, a) - yearsOf(sim, b)) > 15) continue;
-      const u = tieOf(b, a); if (!u || u.k !== 'friend' || u.a < 65 || kin(a, b)) continue;
+      const u = tieOf(b, a); if (!u || u.k !== 'friend' || u.a < 65 || kin(S, a, b)) continue;
       // not everyone wants a partner, and it takes a while
       const shy = (a.traits.includes('solitary') ? .5 : 1) * (b.traits.includes('solitary') ? .5 : 1);
       if (rnd() >= .012 * shy) continue;
@@ -164,7 +166,7 @@ function couples(sim, live) {
 }
 // what the colony's rule on children means for a couple asking, right now
 const FED_DAYS = 6;
-function ruleOk(sim) {
+export function ruleOk(sim) {
   const S = sim.S, r = S.gen.rule;
   if (r === 'no') return false;
   if (r === 'yes') return true;
@@ -174,7 +176,7 @@ function ruleOk(sim) {
 function ruleNote(sim) {
   const r = sim.S.gen.rule;
   if (r === 'no') return 'The colony’s rule is no children for now: change it in the Archive.';
-  if (!ruleOk(sim)) return `The colony’s rule is children only while food is plentiful, and there is less than ${FED_DAYS} days of food each, or someone is going hungry: they wait.`;
+  if (!ruleOk(sim)) return `The colony’s rule is children only while food is plentiful, and the larder holds less than ${FED_DAYS} days of food a person, or someone is going hungry: they wait.`;
   return 'The Seed grows the child in one of its tanks as soon as one is free and there is feedstock for a body.';
 }
 // ---------- the growth tanks ----------
@@ -239,7 +241,8 @@ export function birth(sim, e) {
 
 // ---------- the small ones need someone with them ----------
 // a childcare crew looks after four small children each; without enough of them, a parent stays at camp instead of working
-function minders(sim) {
+// (run each morning after the Seed plans the crews, so a new childcare crew counts the same day)
+export function minders(sim) {
   const S = sim.S, small = S.cols.filter(c => !c.dead && c.life <= 1);
   for (const c of S.cols) c.minding = false;
   if (!small.length) return;
@@ -255,7 +258,7 @@ function minders(sim) {
     if (!p.minding) { p.minding = true; named.push(p.name); }
     left--;
   }
-  if (named.length && S.gen.alone !== sim.day - 1) sim.log(`Nobody is looking after the small children, so ${named.join(' and ')} ${named.length === 1 ? 'stays' : 'stay'} at camp with them instead of working. ${S.crewPlan ? 'The Seed adds a childcare crew when it plans the crews.' : 'Make a childcare crew in Crews, or let the Seed plan the crews.'}`, 'bad', { e: 'nocare', lvl: 1, title: 'Nobody looking after the children' });
+  if (named.length && S.gen.alone !== sim.day - 1) sim.log(`Nobody is looking after the small children, so ${named.length > 1 ? named.slice(0, -1).join(', ') + ' and ' + named[named.length - 1] : named[0]} ${named.length === 1 ? 'stays' : 'stay'} at camp with them instead of working. ${S.crewPlan ? 'The Seed adds a childcare crew when it plans the crews.' : 'Make a childcare crew in Crews, or let the Seed plan the crews.'}`, 'bad', { e: 'nocare', lvl: 1, title: 'Nobody looking after the children' });
   S.gen.alone = sim.day;
 }
 // where the children play, and where their carers keep an eye on them: the open ground on the far side of the fire

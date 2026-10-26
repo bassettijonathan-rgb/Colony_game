@@ -27,7 +27,7 @@ export function emergency(sim) {
   }
   return bleed ? 'bleed' : H && H.fl.lv >= .5 ? 'flood' : cold ? 'cold' : crisis ? 'crisis' : '';
 }
-const able = c => !c.dead && !c.down && c.carried < 0 && !(c.cap && laidUp(c)) && c.act !== ACT.WAKE && !(c.alone > 0);
+const able = c => !c.dead && !(c.life < 3) && !c.down && c.carried < 0 && !(c.cap && laidUp(c)) && c.act !== ACT.WAKE && !(c.alone > 0);
 const say = (sim, c, m, k = '', e) => sim.log(m, k, e ? { who: c.id, e } : { who: c.id });
 
 export function take(sim, id) {

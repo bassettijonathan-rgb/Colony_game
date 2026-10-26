@@ -191,7 +191,7 @@ function fireCrews(sim) {
   if (!targets.length && !bs.length) { if (H.alarm) endAlarm(sim); return; }
   if (!H.alarm) { H.alarm = S.tick; spend(sim, 2, 'fire'); relive(sim, ['fire']); sim.log('Fire near the camp: everyone who can is going to beat it out.', 'bad', { e: 'alarm', lvl: 1, title: 'All hands to the fire' }); }
   const want = Math.min(12, 2 + Math.ceil((targets.length + bs.length * 6) / 4));
-  const able = c => !c.dead && !c.down && !c.care && !c.ctl && c.carried < 0 && !(c.cap && laidUp(c)) && c.act !== ACT.WAKE && !(c.alone > 0) && !c.iso;
+  const able = c => !c.dead && !(c.life < 3) && !c.down && !c.care && !c.ctl && c.carried < 0 && !(c.cap && laidUp(c)) && c.act !== ACT.WAKE && !(c.alone > 0) && !c.iso;
   const spots = [...bs.map(p => sim.doorOf(p)), ...targets];
   const dist = (c, t) => Math.hypot(c.x - (t % MAP), c.y - (t / MAP | 0));
   let on = S.cols.filter(c => c.fight >= 0 && able(c));

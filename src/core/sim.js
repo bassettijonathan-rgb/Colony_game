@@ -20,7 +20,7 @@ import { newHz, hzHour, hzMorning, fireStep, hzUI, FIRE_STEP } from './hazards.j
 import { newDir, dirMorning } from './director.js';
 import { traumaUI } from './trauma.js';
 import { ctlHour, emergency } from './control.js';
-import { printedBody, migrateLives, livesDay, newGen, genUI, yearsOf, mindAge } from './lives.js';
+import { printedBody, migrateLives, livesDay, minders, newGen, genUI, yearsOf, mindAge } from './lives.js';
 
 export const CREW_NAMES = ['Basalt', 'Kestrel', 'Cedar', 'Drift', 'Ember', 'Fern', 'Gale', 'Heron', 'Iris', 'Juniper', 'Lichen', 'Moss', 'Nettle', 'Onyx', 'Pike', 'Quartz', 'Rowan', 'Sedge', 'Thistle', 'Umber', 'Vetch', 'Willow', 'Yarrow', 'Zinc', 'Alder', 'Bramble', 'Cobalt', 'Dune', 'Flint', 'Garnet', 'Hazel', 'Ivy', 'Jasper', 'Kelp', 'Larch', 'Marl'];
 export const STAKES = 10, FOOD_DAYS = 40, FIRST_BODIES = 6;
@@ -259,7 +259,7 @@ export class Sim {
     this.separate();
     this.groundTick();
     if (S.tick % HOUR === 0) this.hourly();
-    if (S.tick % DAY_TICKS === Math.round(4 * HOUR)) { for (const c of cols) daily(this, c); if (S.mode === 'landfall') { livesDay(this); spoil(this); if (S.crewPlan) planCrews(this, 'morning'); } }
+    if (S.tick % DAY_TICKS === Math.round(4 * HOUR)) { for (const c of cols) daily(this, c); if (S.mode === 'landfall') { livesDay(this); spoil(this); if (S.crewPlan) planCrews(this, 'morning'); minders(this); } }
   }
   // ---------- the hour: light, temperature, snow and ice, crops, the Seed's analyser, the seasons ----------
   hourly() {

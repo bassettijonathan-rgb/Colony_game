@@ -224,7 +224,7 @@ export class Panels {
   // ---------- crews ----------
   crews(U) {
     const A = this.A, P = U.p, names = A.names;
-    const live = U.crews.filter(c => !c.gone), free = P.map((r, i) => i).filter(i => P[i][1] < 0 && !(P[i][6] & 16));
+    const live = U.crews.filter(c => !c.gone), free = P.map((r, i) => i).filter(i => P[i][1] < 0 && !(P[i][6] & (16 | 65536 | 131072)));
     const statusOf = cr => {
       const n = {}; for (const i of cr.members) { const w = DOING[P[i][0]] || 'busy'; n[w] = (n[w] || 0) + 1; }
       return Object.entries(n).map(([w, k]) => `${k} ${w}`).join(' · ') || 'nobody yet';
