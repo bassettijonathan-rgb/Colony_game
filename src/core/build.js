@@ -40,7 +40,7 @@ export const TYPES = {
   lab: { name: 'Lab', min: 5, max: 8, size: [5, 6], use: 'Benches where a lab crew tests samples of local life, far faster than the Seed’s own analyser' },
   plant: { name: 'Feedstock plant', min: 5, max: 9, size: [5, 6], use: 'Tanks that turn biomass and crushed stone into feedstock, which the fabricator prints new people from. They take their loads from the yard and need power' },
   cellar: { name: 'Root cellar', min: 4, max: 10, size: [5, 6], below: true, use: 'A cool room dug under the ground, where the larder keeps far longer. Needs no power' },
-  mine: { name: 'Mine', min: 4, max: 10, size: [5, 6], below: true, use: 'Galleries dug along a seam of metal ore. A mining crew brings the ore up, and the workshop smelts it into metal for parts. It is dug and shored with stone and timber alone, and needs a little power for its lamps' },
+  mine: { name: 'Mine', min: 4, max: 10, size: [5, 6], below: true, use: 'Galleries dug along a seam of metal ore. A mining crew brings the ore up, and the workshop smelts it into metal for parts. It is dug and shored with stone and timber alone, and needs a little power for its lamps, which it takes before any other building' },
   burrow: { name: 'Dug quarters', min: 5, max: 12, size: [6, 8], below: true, use: 'Bunks dug into the ground: the earth keeps them warm in Deep cold, and fire and storms can’t reach them. A little power for light' },
   test: { name: 'Load test', fixed: true },
 };
@@ -260,8 +260,9 @@ export function powerCheck(sim) {
   const sun = S.F ? S.F.sun : 1;
   // a building on fire or under water is out of use: it makes and takes nothing
   for (const p of built(S)) if (p.type === 'solar') { const on = !p.shut; if (on) supply += capOf(p).supply * sun; if (p.powered !== on) { p.powered = on; changed.push(p); } }
-  for (const p of built(S)) {
-    if (p.type === 'solar') continue;
+  // a mine's lamps come first: without its metal there are no more panels, so it never waits for power behind the rest
+  const order = built(S).filter(p => p.type !== 'solar').sort((a, b) => (b.type === 'mine') - (a.type === 'mine'));
+  for (const p of order) {
     const kw = capOf(p).kw, on = !p.shut && draw + kw <= supply + 1e-9;
     if (on) draw += kw;
     if (on !== p.powered) { p.powered = on; changed.push(p); }

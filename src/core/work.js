@@ -145,19 +145,24 @@ export function crewNeeds(sim) {
   const small = people.filter(c => c.life <= 1).length; add('care', Math.ceil(small / 4));
   const days = mealsInStore(sim) / Math.max(1, people.length), tested = F.life.some((L, o) => L.tested && sim.kinds[o].food);
   add('forage', days < 3 ? Math.ceil(people.length / 4) : days < 8 ? Math.max(1, Math.ceil(people.length / 8)) : 1);
+  // the last weeks before Deep cold: enough put by to see the cold through, when nothing grows and little can be found
+  const ahead = untilDeep(sim.cal); if (ahead > 0 && ahead <= 25 && days < 22) add('forage', Math.ceil(people.length / 5));
   if (tested || F.firstHarvest || F.vats.length) add('kitchen', Math.max(1, Math.ceil(people.length / 10)) + (people.some(c => c.hungry) && kitchenOnly(sim) > 4 ? 1 : 0));
-  const fields = has('field').length; add('farm', Math.ceil(fields / 2));
-  // a working feedstock plant eats biomass and stone every half day: a quarry crew for as long as it runs, and another forager while biomass is short
+  // a working feedstock plant eats biomass and stone every half day: a quarry crew for as long as it runs, and another
+  // forager while biomass is short. New people come from it, so it comes before the rest
   const plant = has('plant').length > 0 && !plantStop(S);
-  if (plant) { if (Y.biomass < rawWanted(S, 'biomass')) need[0][1]++; add('quarry', 1); }
+  if (plant) { const fo = need.find(q => q[0] === 'forage'); if (fo && Y.biomass < rawWanted(S, 'biomass')) fo[1]++; add('quarry', 1); }
+  // out of metal: the mine comes next, since nothing else can be built without it
+  const mines = has('mine').filter(p => p.seam > 0), metal = Y.salvage + (Y.ore || 0) * SMELT.out / SMELT.ore;
+  if (mines.length && metal < METAL_WANT / 3) add('mine', Math.min(mines.reduce((a, p) => a + capOf(p).faces, 0), n >= 10 ? 2 : 1));
+  const fields = has('field').length; add('farm', Math.ceil(fields / 2));
   if (S.stakes.length < STAKES_ALL) add('survey', n >= 8 ? 2 : n >= 4 ? 1 : 0);
   // stone and timber for the projects: the builders cut their own only when the yard runs dry
   for (const k of ['stone', 'timber']) { const short = rawWanted(S, k) - (Y[k] || 0); if (short > 8 && active(S).length) add(k === 'stone' ? 'quarry' : 'timber', short > 25 && n >= 10 ? 2 : 1); }
   if (has('lab').length && (F.lab.cur >= 0 || F.lab.queue.length)) add('lab', Math.min(2, has('lab').reduce((a, p) => a + capOf(p).benches, 0)));
-  if (has('workshop').length) add('workshop', n >= 15 ? 2 : 1);
-  // miners while the colony is short of metal: salvage in the yard, and the ore waiting to be smelted
-  const mines = has('mine').filter(p => p.seam > 0), metal = Y.salvage + (Y.ore || 0) * SMELT.out / SMELT.ore;
-  if (mines.length && metal < METAL_WANT) add('mine', Math.min(mines.reduce((a, p) => a + capOf(p).faces, 0), metal < METAL_WANT / 3 && n >= 10 ? 2 : 1));
+  // the workshop, while it has salvage or ore to work; then miners while the colony is short of metal
+  if (has('workshop').length && (Y.salvage >= 1 || (Y.ore || 0) >= SMELT.ore)) add('workshop', n >= 15 ? 2 : 1);
+  if (mines.length && metal < METAL_WANT) add('mine', 1);
   if (has('clinic').length && n >= 12 && people.some(c => c.skills.medicine >= MEDIC)) add('clinic', 1);
   return { need, n };
 }
