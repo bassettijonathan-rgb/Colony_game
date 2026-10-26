@@ -18,6 +18,7 @@ import { catchIt, BROUGHT } from './illness.js';
 import { mealsInStore } from './food.js';
 import { remember } from './life.js';
 import { scar, relive } from './trauma.js';
+import { startFlare } from './sky.js';
 
 const GRACE = 12;                       // days after landing with nothing planned and half the budget
 const BASE = [3, 5, 6, 4];              // by season: thaw, long light, storms, deep cold
@@ -52,6 +53,7 @@ const EVENTS = {
   tremor: { cost: 4, seasons: [0, 1, 2, 3], w: 1 },
   blight: { cost: 2, seasons: [0, 1, 2], w: 2 },
   bug: { cost: 2, seasons: [0, 1, 2, 3], w: 2 },
+  flare: { cost: 1, seasons: [0, 1, 2, 3], w: 1.5 },
 };
 function newSeason(sim, s) {
   const S = sim.S, D = S.dir, year = Math.floor((sim.cal - 1) / YEAR_DAYS);
@@ -127,7 +129,7 @@ function fire(sim, k) {
       relive(sim, ['quake']);
       let hit = 0;
       for (const p of c) {
-        if (rnd() > (p.below ? (p.ug && p.ug.kind < 2 ? .55 : .2) : .4)) continue; hit++;   // dug rooms in soft ground take it worst, in rock least
+        if (rnd() > (p.below ? ((p.lvl || 1) > 1 ? .08 : p.ug && p.ug.kind < 2 ? .55 : .2) : p.type === 'shaft' ? .25 : .4)) continue; hit++;   // dug rooms in soft ground take it worst, in rock least, and the deep levels hardly at all
         for (const o of S.cols) if (!o.dead && o.where === p.id && hidden(o.act)) {
           if (rnd() < .3) { const ws = injure(sim, o, 'build', .2 + rnd() * .4, `when ${p.name} shook`); if (ws.length) sim.log(`${o.name} was hurt inside ${p.name} when it shook: ${ws.map(w => woundText(w).toLowerCase()).join(', and ')}.`, 'bad', { who: o.id }); scar(sim, o, 'quake', 30, `Was hurt inside ${p.name} when the ground shook.`); }
           else scar(sim, o, 'quake', 12, `Was inside ${p.name} when the ground shook.`);
@@ -146,6 +148,7 @@ function fire(sim, k) {
       sim.log(`A grey mould spread through the ${name} in ${p.name} overnight. The farmers cut out what they could; about ${Math.round(lost * 100)}% of the growth is lost.`, 'bad', { e: 'blight', lvl: 1, pid: p.id, title: 'Blight' });
       return true;
     }
+    case 'flare': return sim.day >= 30 && startFlare(sim);   // a flare on the sun, and the particle storm after it
     case 'bug': {      // one of the Seed's starter cultures gets loose: in the water, or someone's chest after a cold night
       const live = S.cols.filter(c => !c.dead && !c.bd.ill.length && c.act !== ACT.WAKE); if (live.length < 4) return false;
       const K = pick(BROUGHT), c = pick(live); catchIt(sim, c, K, -1); return true;
@@ -165,6 +168,9 @@ const WEAR = {
   cellar: 'a shoring prop bowed under the weight of the earth and the cellar had to be cleared. It needs repairs.',
   mine: 'a run of shoring gave way in a gallery, and the miners had to come up until it is propped again. It needs repairs.',
   pit: 'a bench slumped into the pit and took the hoist footing with it. It needs repairs.',
+  shaft: 'the hoist’s winding motor burned out, and the cage is stuck at the foot of the shaft until it is rewound. It needs repairs.',
+  geo: 'a bore pipe scaled up with minerals from the hot rock and the heat engine stalled. It needs repairs.',
+  vault: 'the vault’s air fan seized and the air down there went stale. It needs repairs.',
 };
 function cache(sim) {
   const S = sim.S, W = sim.W, L = W.land, n = 10 + Math.floor(rnd() * 14), a = rnd() * 6.283, r = 30 + rnd() * 40;

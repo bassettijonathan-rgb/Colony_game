@@ -58,13 +58,13 @@ const flaw = (b, k) => b.fl.some(f => f.k === k) ? 1 : 0;
 // ---------- every few game minutes (from the mind tick): what the day's work does to the body ----------
 const HEAVY = new Set([ACT.QUARRY, ACT.FELL, ACT.CARRY, ACT.STONE, ACT.LOG, ACT.DIG, ACT.BUILD, ACT.DRAG]);
 const DUST = new Set([ACT.QUARRY, ACT.DIG]);
-export function exposeTick(sim, c, a, dt, storm) {
+export function exposeTick(sim, c, a, dt) {
   const s = c.bd.sl; if (!s) return;
   if (HEAVY.has(a)) s.joint += dt / 8000 * (1 + flaw(c.bd, 'joints') * .5);    // a lifetime of hauling and cutting, most of each day
   if (DUST.has(a)) s.lung += dt / 6000;                                        // rock dust, with nothing over the mouth
   else if (a === ACT.COOK) s.lung += dt / 40000;                                // smoke from the cooking fire
   else if (a === ACT.FIGHT) s.lung += dt / 500;                                 // a fire's smoke, up close
-  if (!hidden(a)) s.rad += dt / 60000 * (storm ? 4 : 1);                        // this sun is harder than Earth's, and storms bring flares
+  if (!hidden(a)) s.rad += dt / 60000;   // in sieverts: this sun is harder than Earth's, about 12 mSv a year outdoors (flares in sky.js)
   if (a === ACT.BED) c.bd.slept += dt * .75; else if (a === ACT.INSIDE) c.bd.slept += dt;   // a bedroll on the ground rests less than a bunk
 }
 // what a diet the colony hasn't fully worked out leaves in the liver and kidneys, per meal

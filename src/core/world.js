@@ -209,12 +209,18 @@ export function floodPlain(W) {
   return thr;
 }
 
-// ---------- the ground below: one level down, a couple of storeys under the surface ----------
+// ---------- the ground below: three levels ----------
 // What a dug room would cut through, tile by tile: soil, clay, stone or hard rock, ground too wet to dig by water,
 // and seams of ore in the stone. Only the ground around the landing is worked out; further out it is solid.
-export const UG = { SOIL: 0, CLAY: 1, STONE: 2, HARD: 3, WET: 4, SOLID: 5 }, ORE = 8;
-export const U_NAME = ['soil', 'clay', 'stone', 'hard rock', 'wet ground', 'solid rock'];
-export function underOf(W) {
+// Level 1 is a couple of storeys down, reached by stairs. Level 2, the middle, is about thirty metres down in the
+// bedrock: stone and hard rock, richer seams, and water where the rock is broken. Level 3, the deep, is more than a
+// hundred metres down: hard rock, pockets of hot rock the colony can draw heat from, and thin veins of rare earths
+// in the seams. The middle and the deep are reached by a lift shaft.
+export const UG = { SOIL: 0, CLAY: 1, STONE: 2, HARD: 3, WET: 4, SOLID: 5, HOT: 6 }, ORE = 8, RARE = 16, LEVELS = 3;
+export const U_NAME = ['soil', 'clay', 'stone', 'hard rock', 'wet ground', 'solid rock', 'hot rock'];
+export const LEVEL_NAME = ['the surface', 'level 1, a few metres down', 'level 2, the middle, thirty metres down', 'level 3, the deep, over a hundred metres down'];
+export function underOf(W, lvl = 1) {
+  if (lvl > 1) return deepOf(W, lvl);
   if (W.under) return W.under;
   const L = W.land, s = W.seed, out = new Uint8Array(MAP * MAP).fill(UG.SOLID), thr = floodPlain(W);
   const x0 = Math.max(1, L.x - FLOOD_R), x1 = Math.min(MAP - 2, L.x + FLOOD_R), y0 = Math.max(1, L.y - FLOOD_R), y1 = Math.min(MAP - 2, L.y + FLOOD_R);
@@ -230,5 +236,26 @@ export function underOf(W) {
     out[i] = u;
   }
   W.under = out;
+  return out;
+}
+function deepOf(W, lvl) {
+  W.deep = W.deep || [];
+  if (W.deep[lvl]) return W.deep[lvl];
+  const L = W.land, s = W.seed + lvl * 101, out = new Uint8Array(MAP * MAP).fill(UG.SOLID), R = FLOOD_R * (lvl === 2 ? .8 : .6);
+  const x0 = Math.max(1, L.x - R | 0), x1 = Math.min(MAP - 2, L.x + R | 0), y0 = Math.max(1, L.y - R | 0), y1 = Math.min(MAP - 2, L.y + R | 0);
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+    const i = y * MAP + x, up = W.rock - W.elev[i] / 255, n = vnoise(x / 16, y / 16, s + 41);
+    let u;
+    if (lvl === 2) {
+      if (vnoise(x / 22, y / 22, s + 47) > .7) u = UG.WET;                       // broken rock full of water
+      else u = up < .08 || n > .62 ? UG.HARD : UG.STONE;
+      if (vnoise(x / 7, y / 7, s + 43) > .66 && hash(x, y, s + 44) < .9) u |= ORE;
+    } else {
+      u = vnoise(x / 18, y / 18, s + 49) > .64 ? UG.HOT : UG.HARD;
+      if (u === UG.HARD && vnoise(x / 6, y / 6, s + 43) > .72 && hash(x, y, s + 44) < .9) { u |= ORE; if (vnoise(x / 4, y / 4, s + 53) > .66) u |= RARE; }
+    }
+    out[i] = u;
+  }
+  W.deep[lvl] = out;
   return out;
 }

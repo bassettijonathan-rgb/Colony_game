@@ -85,9 +85,9 @@ export function chronicle(sim, M, why) {
   if (bd) p += `${cap(num(bd, 'person', 'people'))} broke down under the strain. `;
   if (p) P.push(p.trim());
   // dangers and bodies
-  const fires = of('bfire', 'wildfire').length, floods = of('flood').length, ill = of('unwell').length, crisis = of('crisis').length, hurt = of('hurt').length;
-  const bits = [fires ? num(fires, 'fire', 'fires') : '', floods ? num(floods, 'flood', 'floods') : '', hurt ? num(hurt, 'injury', 'injuries') : ''].filter(Boolean);
-  p = bits.length ? `There ${(fires || floods || hurt) === 1 && bits.length === 1 ? 'was' : 'were'} ${list(bits)}. ` : '';
+  const fires = of('bfire', 'wildfire').length, floods = of('flood').length, flares = of('flarewarn').length, ill = of('unwell').length, crisis = of('crisis').length, hurt = of('hurt').length;
+  const bits = [fires ? num(fires, 'fire', 'fires') : '', floods ? num(floods, 'flood', 'floods') : '', flares ? num(flares, 'particle storm', 'particle storms') : '', hurt ? num(hurt, 'injury', 'injuries') : ''].filter(Boolean);
+  p = bits.length ? `There ${(fires || floods || flares || hurt) === 1 && bits.length === 1 ? 'was' : 'were'} ${list(bits)}. ` : '';
   if (ill) p += `${cap(num(ill, 'person', 'people'))} fell ill${crisis ? `, ${crisis === 1 ? 'one' : word(crisis)} of them gravely` : ''}. `;
   for (const e of of('illfound', 'heartattack')) p += e.m + ' ';
   if (p) P.push(p.trim());

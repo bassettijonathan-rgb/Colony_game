@@ -7,13 +7,14 @@ import { rnd, ri, clamp } from './rng.js';
 import { remember, trustAll, playAt } from './life.js';
 import { suggestFirst } from './founders.js';
 import {
-  TYPES, RAW, PRECISE, RECIPE, FIT_H, FAB_SLOW, STAGE_NAMES, matName, stageLoads, loadsOf, billOf, loadCheck, capacity, checkPlot, addProject,
+  TYPES, RAW, PRECISE, RECIPE, FIT_H, SHAFT_CREW, FAB_SLOW, STAGE_NAMES, matName, stageLoads, loadsOf, billOf, loadCheck, capacity, checkPlot, addProject,
   active, built, byId, capOf, powerCheck, shortOf, stockOf, sources, takeFrom, putBack, nextOrder, rawWanted, clearPlot, LANDER_KW, PANEL_KW, LABOUR, stagesOf, FEED, plantStop, PIT_ROCK,
 } from './build.js';
 import { replacePart } from './aging.js';
 import { illMeal } from './illness.js';
 import { FIRE_STEP, beat } from './hazards.js';
 import { take, order, release } from './control.js';
+import { restoreStart, restoreDone, queueRestore } from './scan.js';
 import { eat, analyse, labHour, kitchenJob, cookMeals, foodOf, add, patchLeft, takePatch, inSeason, cropPlan, sowUnits, harvestLoads, keyOf, isCrop, mealsInStore, kitchenOnly, hasKitchen, SAMPLES, PROC_DAYS, CROPS, CROP_KEYS } from './food.js';
 import { dayWeather, untilDeep, doyOf, seasonOf } from './year.js';
 import { careArrive, careTimer, MED_KIT, MED_MADE, TRIAGE, MEDIC } from './care.js';
@@ -32,11 +33,13 @@ export function seedTick(sim) {
   const S = sim.S, sd = S.seedc;
   if (S.mode !== 'landfall') return;
   if (S.tick % PLANT_STEP === 0) plantTick(sim);
+  restoreStart(sim);   // waking someone from a scan comes before anyone new
   if (!sd.printing && sd.queue.length && sd.feed > 0) {
     const fid = sd.queue.shift(); sd.printing = { fid, left: PRINT_TICKS }; sd.feed--; S.rv++;
     sim.log(`The fabricator began printing a body for ${S.archive[fid].name}.`);
   }
   if (sd.printing && --sd.printing.left <= 0) {
+    if (sd.printing.rid != null) { const id = sd.printing.rid; sd.printing = null; restoreDone(sim, id); return; }
     const p = S.archive[sd.printing.fid]; p.woke = S.tick; sd.printing = null;
     const c = sim.spawn(p, sim.cargoTile, ACT.WAKE); c.timer = HOUR; c.plan = 'wake'; c.job = 'wake';
     remember(sim, c, 'Woke in a new body, on a new world.');
@@ -161,7 +164,9 @@ export function crewNeeds(sim) {
   if (plant) { const fo = need.find(q => q[0] === 'forage'); if (fo && Y.biomass < rawWanted(S, 'biomass')) fo[1]++; add('quarry', 1); }
   // out of metal: the mine comes next, since nothing else can be built without it
   const mines = has('mine').filter(p => p.seam > 0), metal = Y.salvage + (Y.ore || 0) * SMELT.out / SMELT.ore;
-  if (mines.length && metal < METAL_WANT / 3) add('mine', Math.min(mines.reduce((a, p) => a + capOf(p).faces, 0), n >= 10 ? 2 : 1));
+  // or rare earths, when a project waits on them and a deep seam carries them
+  const rareWant = (Y.rare || 0) < 10 && active(S).some(p => (p.need.rare || 0) > (p.got.rare || 0)) && mines.some(p => p.rare > 0);
+  if (mines.length && (metal < METAL_WANT / 3 || rareWant)) add('mine', Math.min(mines.reduce((a, p) => a + capOf(p).faces, 0), n >= 10 ? 2 : 1));
   const fields = has('field').length; add('farm', Math.ceil(fields / 2));
   if (S.stakes.length < STAKES_ALL) add('survey', n >= 8 ? 2 : n >= 4 ? 1 : 0);
   // stone and timber for the projects: the builders cut their own only when the yard runs dry
@@ -272,6 +277,7 @@ function buildNext(sim, c, cr) {
   if (!p || p.done || p.paused) return false;
   for (const k in p.need) {
     if (p.need[k] - (p.got[k] || 0) - inflight(S, p, k) <= 0) continue;
+    if (k === 'dig' && p.type === 'shaft' && inflight(S, p, k) >= SHAFT_CREW) continue;   // room at the face for only a few
     if (LABOUR.has(k)) { fitJob(sim, c, p, k); return true; }
     for (const s of sources(sim, k)) if (stockAt(S, s.key, k) - reserved(S, s.key, k) > 0) {
       c.job = 'fetch'; c.want = k; c.pj = p.id; c.srcKey = s.key; sim.goTo(c, s.tile, ACT.IDLE); return true;
@@ -284,7 +290,7 @@ function buildNext(sim, c, cr) {
 function fitJob(sim, c, p, k) {
   const spots = sim.spotsOf(p), spot = spots[(c.id * 7 + sim.S.stats.fits * 3) % spots.length];
   c.job = 'fit'; c.want = k; c.pj = p.id; c.spot = spot; c.fx = p.x + p.w / 2; c.fy = p.y + p.h / 2; c.where = -1;
-  sim.goTo(c, spot, p.below && p.stage > 0 ? ACT.DIG : k === 'test' ? ACT.TEST : k === 'dig' || (p.type === 'field' && k === 'biomass') ? ACT.FARM : ACT.BUILD, c.carry ? carryAct(c.carry) : ACT.WALK);
+  sim.goTo(c, spot, (p.below || (p.type === 'shaft' && k === 'dig')) && p.stage > 0 ? ACT.DIG : k === 'test' ? ACT.TEST : k === 'dig' || (p.type === 'field' && k === 'biomass') ? ACT.FARM : ACT.BUILD, c.carry ? carryAct(c.carry) : ACT.WALK);
 }
 // the nearest stone or timber nobody else is already cutting: a felled tree with logs left beats a standing one
 function gatherJob(sim, c, k, pj) {
@@ -486,7 +492,7 @@ function fitted(sim, c) {
   if (!p || p.done || !(p.need[k] > (p.got[k] || 0))) { if (c.carry) putBack(S, c.carry); }
   else {
     p.got[k] = (p.got[k] || 0) + 1; S.stats.fits++;
-    if (k === 'dig' && p.below) spoilOf(sim, p);
+    if (k === 'dig' && (p.below || p.type === 'shaft')) spoilOf(sim, p);
     if (k !== 'mark' && k !== 'test') p.used[k] = (p.used[k] || 0) + 1;
     if (Object.keys(p.need).every(q => (p.got[q] || 0) >= p.need[q])) advance(sim, p);
   }
@@ -538,7 +544,8 @@ function finish(sim, p) {
   } else {
     const what = { cellar: `cool storage for ${cap.store} loads of food`, burrow: `${cap.beds} bunks, warm under the ground`, dorm: `${cap.beds} bunks`, commons: `seats for ${cap.seats}`, workshop: `${cap.benches} bench${cap.benches > 1 ? 'es' : ''}`, clinic: `${cap.beds} beds`, solar: `${cap.panels} panels making ${cap.supply} kW`, lab: `${cap.benches} bench${cap.benches > 1 ? 'es' : ''}`,
       school: `desks for ${cap.desks} children`, library: `${cap.shelves} shel${cap.shelves > 1 ? 'ves' : 'f'} for the colony's records`, watch: 'a post with a lamp, for whoever keeps the night watch',
-      nursery: `${cap.tanks} more growth tank${cap.tanks > 1 ? 's' : ''}` }[p.type] || 'ready for use';
+      nursery: `${cap.tanks} more growth tank${cap.tanks > 1 ? 's' : ''}`, shaft: 'the cage runs down to the middle and the deep. Rooms can be planned down there now: press U to go down a level at a time',
+      vault: `room for ${cap.places} people deep in the rock, where a flare can't reach them`, scanner: `${cap.slots} scanning bed${cap.slots > 1 ? 's' : ''}: from tonight the Seed scans everyone who agrees, a few each night`, geo: `${cap.supply} kW from the hot rock, day and night` }[p.type] || 'ready for use';
     sim.log(`${p.name} is finished: ${what}.${p.type !== 'solar' && !p.powered ? ` It stays dark until the colony has ${shortOf(S, p)} kW more power.` : ''}`, 'good', { e: 'built', lvl: 1, pid: p.id, title: 'Finished' });
     trustAll(sim, 2, `Watched ${p.name} go up.`);
   }
@@ -576,6 +583,7 @@ function waitReason(sim, p) {
   if (!miss) return '';
   const [k, n] = miss;
   if (k === 'module') return 'Out of lander modules';
+  if (k === 'rare') return `Needs ${n} rare earth${n === 1 ? '' : 's'}: miners bring them up from seams on the deep level`;
   if (k === 'stone') return 'Needs stone and there is none left to cut near camp: plan a stone pit on stony ground';
   if (RAW.includes(k)) return `Needs ${matName(k, n)} and there is none left to gather near camp`;
   if ((S.fab.job && S.fab.job.k === k) || S.cols.some(o => !o.dead && o.make === k)) return `Waiting for ${matName(k, n)}, being made`;
@@ -705,7 +713,7 @@ export function onArrive(sim, c) {
   const S = sim.S;
   switch (c.job) {
     case 'fetch': c.job = 'pick'; c.act = ACT.IDLE; c.timer = PICK; break;
-    case 'fit': { const p = byId(S, c.pj); if (p && p.below && c.act === ACT.DIG) c.where = p.id; c.timer = Math.round(FIT_H[c.want] * HOUR / eff(sim, c)); break; }
+    case 'fit': { const p = byId(S, c.pj); if (p && (p.below || p.type === 'shaft') && c.act === ACT.DIG) c.where = p.id; c.timer = Math.round(FIT_H[c.want] * HOUR / eff(sim, c)); break; }
     case 'cut': {
       const felled = c.srcKind === 0 && S.gone[c.src] > 0;
       c.timer = Math.round((felled ? .25 : c.srcKind === 0 ? .8 : c.srcKind === 3 ? .3 : .6) * HOUR / eff(sim, c, 'cut')); break;
@@ -750,6 +758,7 @@ export function onArrive(sim, c) {
       break;
     case 'sleep': case 'ward': if (c.act === ACT.INSIDE || c.act === ACT.INDOORS) c.where = c.ward >= 0 ? c.ward : c.home >= 0 && byId(S, c.home) && !byId(S, c.home).shut ? c.home : c.warmAt ?? -1; break;
     case 'warm': if (c.act === ACT.INDOORS) c.where = c.warmAt; break;
+    case 'shelter': if (c.act === ACT.INDOORS || c.act === ACT.INSIDE) c.where = c.warmAt; break;
     case 'aid': case 'treat': case 'carry': careArrive(sim, c); break;
     case 'tend': c.where = c.ws; c.timer = HOUR; break;
     case 'wake': break;
@@ -810,7 +819,10 @@ export function onTimer(sim, c) {
       p.seam--; S.stats.mined = (S.stats.mined || 0) + 1; S.rv++;
       if (p.seam === 30 && !S.projects.some(q => !q.gone && q.type === 'mine' && q.seam > 30)) sim.log(`${p.name} is nearly worked out: about 30 loads of ore are left in its seam. Plan the next mine over another seam now, so it is dug before this one runs dry.`, 'bad', { e: 'mineLow', lvl: 1, pid: p.id, title: 'A mine is running out' });
       if (!p.seam) sim.log(`${p.name} is worked out: the seam under it is exhausted. To keep the colony in metal, plan a new mine over another seam (press U to see them).`, 'bad', { e: 'workedout', lvl: 1, pid: p.id, title: 'A mine is worked out' });
-      c.carry = 'ore'; c.cn = 1; c.job = 'drop'; sim.goTo(c, sim.yardTile, ACT.IDLE, ACT.STONE);
+      // in the deep, some of what comes up is rare earths
+      const rare = p.rare > 0 && rnd() < p.rare / (p.seam + p.rare);
+      if (rare) { p.rare--; p.seam++; if (!S.rareSeen) { S.rareSeen = 1; sim.log(`The miners in ${p.name} brought up the colony's first load of rare earths, from a thin vein in the deep seam. The yard keeps them: a scanner's imaging magnets need them.`, 'good', { e: 'rare', lvl: 1, pid: p.id, title: 'Rare earths' }); } }
+      c.carry = rare ? 'rare' : 'ore'; c.cn = 1; c.job = 'drop'; sim.goTo(c, sim.yardTile, ACT.IDLE, ACT.STONE);
       break;
     }
     case 'plant': {
@@ -947,10 +959,14 @@ export function sizeFor(sim, type) {
     case 'library': { r = fit(4, 'shelves'); why = `${n(r.v, 'shelf', 'shelves')} and a terminal: room to write down the best of what everyone knows`; break; }
     case 'watch': { r = fit(1, 'posts'); why = 'One post with a lamp, for whoever keeps the watch at night'; break; }
     case 'nursery': { r = fit(2, 'tanks'); why = `${n(r.v, 'tank', 'tanks')} more for children, beside the Seed’s own two`; break; }
+    case 'shaft': { r = fit(3, 'levels'); why = 'A shaft three tiles across is enough for a cage and a ladder beside it'; break; }
+    case 'vault': { r = fit(Math.max(20, soon), 'places'); why = `Room for ${n(r.v, 'person', 'people')} to shelter on a flare day: everyone the colony has now and will soon`; break; }
+    case 'scanner': { r = fit(Math.min(3, Math.max(1, Math.ceil(soon / 40))), 'slots'); why = `${n(r.v, 'bed', 'beds')}: each scans three people a night, so everyone is scanned well within a season`; break; }
+    case 'geo': { r = fit(8, 'supply', 2); why = `About ${r.v} kW, day and night and in every season`; break; }
     case 'plant': { r = fit(2, 'tanks'); why = `${n(r.v, 'tank', 'tanks')}: a new body about every ${Math.round(FEED.per * FEED.h / 24 / r.v)} days, with biomass and stone to feed it`; break; }
     case 'solar': {
       // sized for the short days of Deep cold, when panels make about half what they do in summer
-      const supply = LANDER_KW + sumOf(['solar'], 'supply') * DEEP_SUN, draw = sumOf(mine.map(p => p.type).filter(t => t !== 'solar'), 'kw'), short = draw - supply;
+      const supply = LANDER_KW + sumOf(['solar'], 'supply') * DEEP_SUN + sumOf(['geo'], 'supply'), draw = sumOf(mine.map(p => p.type).filter(t => t !== 'solar'), 'kw'), short = draw - supply;
       r = fit(Math.max(4, Math.ceil((Math.max(0, short) + 1) / (PANEL_KW * DEEP_SUN))), 'panels', 4);
       why = short > 0 ? `in Deep cold the buildings built and planned would draw ${draw.toFixed(1)} kW against ${supply.toFixed(1)} kW: ${r.v} panels make up the ${short.toFixed(1)} kW short even then, with a little to spare` : `${r.v} panels add ${(r.v * PANEL_KW).toFixed(1)} kW to spare in summer, about half that in Deep cold`;
       break;
@@ -968,7 +984,7 @@ export function sizeFor(sim, type) {
 }
 function powerPlan(S) {
   let supply = LANDER_KW, draw = 0;
-  for (const p of S.projects) { if (p.gone || p.type === 'test') continue; const c = capOf(p); if (p.type === 'solar') supply += c.supply * S.F.sun; else draw += c.kw; }
+  for (const p of S.projects) { if (p.gone || p.type === 'test') continue; const c = capOf(p); if (p.type === 'solar') supply += c.supply * S.F.sun; else if (p.type === 'geo') supply += c.supply; else draw += c.kw; }
   return { supply: +supply.toFixed(1), draw: +draw.toFixed(1) };
 }
 export function command(sim, m) {
@@ -1000,15 +1016,15 @@ export function command(sim, m) {
     // ---- building ----
     case 'plan': {
       if (!TYPES[m.type] || TYPES[m.type].fixed) return { ok: false, why: 'That is not something the colony can plan.' };
-      const chk = checkPlot(sim, m.type, m.x, m.y, m.w, m.h, m.side), cap = capacity(m.type, m.w, m.h), pw = powerPlan(S);
+      const chk = checkPlot(sim, m.type, m.x, m.y, m.w, m.h, m.side, m.lvl), cap = capacity(m.type, m.w, m.h), pw = powerPlan(S);
       const after = { supply: +(pw.supply + (cap.supply || 0)).toFixed(1), draw: +(pw.draw + cap.kw).toFixed(1) };
       return { ...chk, bill: billOf(S, m.type, m.w, m.h, chk.ground), load: loadCheck(S, m.type, m.w, m.h), cap, power: after, short: +Math.max(0, after.draw - after.supply).toFixed(1) };
     }
     case 'sizeFor': return sizeFor(sim, m.type);
     case 'place': {
-      const chk = checkPlot(sim, m.type, m.x, m.y, m.w, m.h, m.side);
+      const chk = checkPlot(sim, m.type, m.x, m.y, m.w, m.h, m.side, m.lvl);
       if (!chk.ok) return { ok: false, why: chk.why };
-      const q = addProject(sim, m.type, m.x, m.y, m.w, m.h, m.side);
+      const q = addProject(sim, m.type, m.x, m.y, m.w, m.h, m.side, undefined, m.lvl);
       if (m.save) saveBlueprint(S, m.save, m.type, m.w, m.h);
       sim.log(`Planned ${q.name}. The Seed laid out the inside: ${planNote(q)}.`);
       projectsThink(sim);
@@ -1027,6 +1043,7 @@ export function command(sim, m) {
     case 'projCancel': {
       if (!p || p.type === 'shelter') return false;
       if (p.fire) return { ok: false, why: 'It is burning: put the fire out first.' };
+      if (p.type === 'shaft' && S.projects.some(q => !q.gone && q.via === p.id)) return { ok: false, why: 'Rooms on the middle or the deep level are reached through this shaft: take those down first.' };
       if (p.blocked) sim.unblock(p);
       const back = refundOf(p), was = p.done || p.dmg;
       for (const k in back) for (let n = 0; n < back[k]; n++) putBack(S, k);
@@ -1056,6 +1073,7 @@ export function command(sim, m) {
     case 'analyse': return analyse(sim, m.o);
     case 'unanalyse': { const F = S.F, L = F.life[m.o]; if (L && L.queued && F.lab.cur !== m.o) { F.lab.queue = F.lab.queue.filter(o => o !== m.o); L.queued = false; S.rv++; } break; }
     case 'triage': if (TRIAGE[m.v]) { S.care.triage = m.v; S.rv++; } break;
+    case 'restore': return queueRestore(sim, m.id);
     case 'replacePart': { const c = S.cols[m.id]; return !!c && !c.dead && replacePart(sim, c, m.m); }
     // ---- direct orders in an emergency ----
     case 'ctlTake': return take(sim, m.person);
@@ -1074,5 +1092,5 @@ function saveBlueprint(S, name, type, w, h) {
 }
 function planNote(p) {
   const c = capOf(p);
-  return { dorm: `${c.beds} bunks`, commons: `tables for ${c.seats}`, workshop: `${c.benches} bench${c.benches > 1 ? 'es' : ''}`, clinic: `${c.beds} beds`, solar: `${c.panels} panels`, field: `${c.tiles} tiles of beds`, lab: `${c.benches} bench${c.benches > 1 ? 'es' : ''}`, plant: `${c.tanks} tank${c.tanks > 1 ? 's' : ''}`, cellar: `shelves for ${c.store} loads of food`, burrow: `${c.beds} bunks, dug into ${p.ug ? p.ug.name : 'the ground'}`, mine: `${c.faces} face${c.faces > 1 ? 's' : ''} along a seam of about ${p.seam} loads of ore` }[p.type] || 'done';
+  return { dorm: `${c.beds} bunks`, commons: `tables for ${c.seats}`, workshop: `${c.benches} bench${c.benches > 1 ? 'es' : ''}`, clinic: `${c.beds} beds`, solar: `${c.panels} panels`, field: `${c.tiles} tiles of beds`, lab: `${c.benches} bench${c.benches > 1 ? 'es' : ''}`, plant: `${c.tanks} tank${c.tanks > 1 ? 's' : ''}`, cellar: `shelves for ${c.store} loads of food`, burrow: `${c.beds} bunks, dug into ${p.ug ? p.ug.name : 'the ground'}`, mine: `${c.faces} face${c.faces > 1 ? 's' : ''} along a seam of about ${p.seam} loads of ore${p.rare ? `, with a vein of rare earths in it` : ''}`, shaft: 'a lined shaft down to the middle and the deep, and a cage on a powered hoist', vault: `room for ${c.places} people to shelter`, geo: `bores into the hot rock and a heat engine making ${c.supply} kW` }[p.type] || 'done';
 }

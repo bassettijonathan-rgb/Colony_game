@@ -16,6 +16,7 @@ import { remember } from './life.js';
 import { spend } from './director.js';
 import { scar, relive } from './trauma.js';
 import { watcher, libraryBurned, noteEvent } from './society.js';
+import { flareUI } from './sky.js';
 
 export const FIRE_STEP = HOUR / 6;                          // the fire moves on every ten game minutes
 // how readily each ground burns, and for how many steps; water, sand, rock and scorched ground don't
@@ -272,8 +273,9 @@ export function beat(sim, c) {
 }
 
 // ---------- floods ----------
-// a room below ground floods when the water reaches its stairs, and then all of it does
-const wetShare = (thr, p, lv) => { if (p.below) return p.door && thr[p.door.y * MAP + p.door.x] <= lv ? 1 : 0; let n = 0; for (let y = p.y; y < p.y + p.h; y++) for (let x = p.x; x < p.x + p.w; x++) if (thr[y * MAP + x] <= lv) n++; return n / (p.w * p.h); };
+// a room below ground floods when the water reaches its stairs, and then all of it does; the shaft's collar keeps it
+// out of the middle and the deep
+const wetShare = (thr, p, lv) => { if (p.via != null) return 0; if (p.below) return p.door && thr[p.door.y * MAP + p.door.x] <= lv ? 1 : 0; let n = 0; for (let y = p.y; y < p.y + p.h; y++) for (let x = p.x; x < p.x + p.w; x++) if (thr[y * MAP + x] <= lv) n++; return n / (p.w * p.h); };
 function floodHour(sim, wx) {
   const S = sim.S, G = S.hz.fl, W = sim.W;
   if (G.to <= 0 && G.lv <= .05) return;
@@ -318,5 +320,5 @@ export const flooded = (sim, t) => sim.S.hz.fl.lv > .3 && floodPlain(sim.W)[t] <
 // what the page needs: the flames, the water level and how dry it is
 export function hzUI(S) {
   const H = S.hz;
-  return { fire: Object.keys(H.fire).map(Number), lv: +H.fl.lv.toFixed(2), dry: +H.dry.toFixed(2), wa: +H.wa.toFixed(2), alarm: !!H.alarm, warn: H.fl.to > H.fl.lv + 1 };
+  return { fire: Object.keys(H.fire).map(Number), lv: +H.fl.lv.toFixed(2), dry: +H.dry.toFixed(2), wa: +H.wa.toFixed(2), alarm: !!H.alarm, warn: H.fl.to > H.fl.lv + 1, flare: flareUI(S) };
 }

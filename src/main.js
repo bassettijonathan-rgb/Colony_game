@@ -12,7 +12,7 @@ import { Stats } from './ui/stats.js';
 import { Music, moodFor } from './ui/music.js';
 import { SEASONS, MAP, NCH, ACT, DAY_TICKS, hidden } from './core/consts.js';
 import { WX } from './core/year.js';
-import { TYPES, facing } from './core/build.js';
+import { TYPES, facing, levelsOf } from './core/build.js';
 import { LAYERS } from './render/terrain.js';
 import { Store, initStorage, saveLocal, loadLocal, saveAccount, loadAccount, exportFile, importFile } from './ui/storage.js';
 
@@ -296,8 +296,9 @@ function endPick() { A.pickCrew = -1; A.pickAt = null; $('pickHint').hidden = tr
 function startPlace(type, w, h, name) {
   if (A.phase !== 'colony' || !TYPES[type]) return;
   endPick(); select(-1);
-  A.place = { type, w: w || 0, h: h || 0, fixed: !!w, name: name || '', x: null, y: null, side: 0, turned: false, check: null, locked: false, seq: 0, wasBelow: !!(A.view && A.view.below) };
-  if (TYPES[type].below || TYPES[type].ground) belowView(true);   // the Seed's soundings show where to dig
+  const was = A.view ? A.view.below : 0, lvs = levelsOf(type), lvl = TYPES[type].below ? (lvs.includes(was) ? was : lvs[0]) : 0;
+  A.place = { type, w: w || 0, h: h || 0, fixed: !!w, name: name || '', x: null, y: null, side: 0, turned: false, check: null, locked: false, seq: 0, wasBelow: was, lvl };
+  if (TYPES[type].below || TYPES[type].ground) belowView(lvl || 1);   // the Seed's soundings show where to dig
   $('placeTxt').textContent = w ? `Move the ${name || TYPES[type].name} where it should go and click to put it down` : `Drag on the map to draw the ${TYPES[type].name.toLowerCase()}: at least ${TYPES[type].min} by ${TYPES[type].min} tiles, at most ${TYPES[type].max} long`;
   // the Seed suggests a size for what the colony needs: it follows the pointer and a click puts it down; a drag still draws any size
   if (!w) cmd('sizeFor', { type }).then(r => {
@@ -311,7 +312,7 @@ function startPlace(type, w, h, name) {
   $('plKeep').checked = false; $('plName2').value = name || ''; delete $('plName2').dataset.auto;
   A.panels.planCard(null);
 }
-function endPlace() { if (A.place && (TYPES[A.place.type].below || TYPES[A.place.type].ground) && !A.place.wasBelow) belowView(false); A.place = null; $('placeHint').hidden = true; app.classList.remove('placing'); A.panels.planCard(null); }
+function endPlace() { if (A.place && (TYPES[A.place.type].below || TYPES[A.place.type].ground) && A.place.wasBelow != null) belowView(A.place.wasBelow); A.place = null; $('placeHint').hidden = true; app.classList.remove('placing'); A.panels.planCard(null); }
 function placeRect(x, y, w, h) {
   const P = A.place; if (!P) return;
   if (P.x === x && P.y === y && P.w === w && P.h === h) return;
@@ -322,7 +323,7 @@ function placeRect(x, y, w, h) {
 const doorAt = P => P.side === 0 ? { x: P.x + (P.w >> 1), y: P.y - 1 } : P.side === 1 ? { x: P.x + P.w, y: P.y + (P.h >> 1) } : P.side === 2 ? { x: P.x + (P.w >> 1), y: P.y + P.h } : { x: P.x - 1, y: P.y + (P.h >> 1) };
 async function checkPlace() {
   const P = A.place; if (!P || P.x == null) return;
-  const seq = ++P.seq, r = await cmd('plan', { type: P.type, x: P.x, y: P.y, w: P.w, h: P.h, side: P.side });
+  const seq = ++P.seq, r = await cmd('plan', { type: P.type, x: P.x, y: P.y, w: P.w, h: P.h, side: P.side, lvl: P.lvl });
   if (A.place !== P || seq !== P.seq || !r) return;
   P.check = r; if (r.door) P.door = r.door;
   A.panels.planCard(P);
@@ -337,8 +338,8 @@ function turnDoor() { const P = A.place; if (!P || TYPES[P.type].open) return; P
 async function confirmPlace() {
   const P = A.place; if (!P || !P.check || !P.check.ok) return;
   const keep = $('plKeep').checked, name = $('plName2').value.trim();
-  const r = await cmd('place', { type: P.type, x: P.x, y: P.y, w: P.w, h: P.h, side: P.side, save: keep ? name || TYPES[P.type].name : undefined });
-  if (r && r.ok) { P.wasBelow = true; endPlace(); A.projSel = r.id; A.panels.setTab('build'); toast(`Planned. ${TYPES[P.type].name} is on the project list${keep ? ', and saved as a blueprint' : ''}.`); }
+  const r = await cmd('place', { type: P.type, x: P.x, y: P.y, w: P.w, h: P.h, side: P.side, lvl: P.lvl, save: keep ? name || TYPES[P.type].name : undefined });
+  if (r && r.ok) { P.wasBelow = null; endPlace(); A.projSel = r.id; A.panels.setTab('build'); toast(`Planned. ${TYPES[P.type].name} is on the project list${keep ? ', and saved as a blueprint' : ''}.`); }
   else toast(r && r.why ? r.why : 'That could not be planned just now.');
 }
 // the Build tab and the map agree on which project you are looking at
@@ -353,12 +354,13 @@ function closeThing() { A.thing = null; if (A.panels) A.panels.update(); }
 function closeProject() { A.projSel = -1; if (A.panels) { A.panels.sig = ''; A.panels.update(); } }
 function projectAt(wx, wy) {
   if (!A.ui) return null;
-  const below = A.view && A.view.below, inR = (p, x, y, w, h) => wx >= x - .3 && wx < x + w + .3 && wy >= y - .3 && wy < y + h + .3;
+  const below = A.view ? A.view.below : 0, inR = (p, x, y, w, h) => wx >= x - .3 && wx < x + w + .3 && wy >= y - .3 && wy < y + h + .3;
   for (const p of A.ui.projects) {
     if (p.type === 'test') continue;
-    if (p.below ? (below ? inR(p, p.x, p.y, p.w, p.h) : p.door && inR(p, p.door.x, p.door.y, 1, 1)) : !below && inR(p, p.x, p.y, p.w, p.h)) return p;
+    // below ground, the rooms on the level in view and the shafts through it; on the surface, the buildings and the stairs of the shallow rooms
+    if (p.below ? (below ? p.lvl === below && inR(p, p.x, p.y, p.w, p.h) : p.via == null && p.door && inR(p, p.door.x, p.door.y, 1, 1)) : (!below || p.type === 'shaft') && inR(p, p.x, p.y, p.w, p.h)) return p;
   }
-  if (below) for (const p of A.ui.projects) if (p.below && p.door && inR(p, p.door.x, p.door.y, 1, 1)) return p;
+  if (below) for (const p of A.ui.projects) if (p.below && p.lvl === below && p.via == null && p.door && inR(p, p.door.x, p.door.y, 1, 1)) return p;
   return null;
 }
 // the view below ground, where rooms are dug: on and off by the button or U, and on by itself while one is planned
@@ -368,11 +370,18 @@ function roofView(on) {
   $('bRoof').classList.toggle('on', V.inside); $('bRoof').setAttribute('aria-pressed', V.inside ? 'true' : 'false');
   $('bRoof').title = V.inside ? 'Roofs off: see inside buildings (I)' : 'Roofs on (I)';
 }
+// U goes down a level at a time and back up to the surface; the middle and the deep only once a lift shaft is planned
+const LEVEL_TAG = ['', 'A few metres down', 'The middle, 30 m down, by lift shaft', 'The deep, over 100 m down, by lift shaft'];
 function belowView(on) {
   const V = A.view; if (!V) return;
-  V.below = on === undefined ? !V.below : !!on;
-  $('bBelow').classList.toggle('on', V.below); $('bBelow').setAttribute('aria-pressed', V.below ? 'true' : 'false');
-  app.classList.toggle('below', V.below);
+  const shaft = !!(A.ui && A.ui.projects.some(p => p.type === 'shaft'));
+  V.below = on === undefined ? (V.below + 1) % (shaft ? 4 : 2) : on === true ? V.below || 1 : +on || 0;
+  $('bBelow').classList.toggle('on', !!V.below); $('bBelow').setAttribute('aria-pressed', V.below ? 'true' : 'false');
+  app.classList.toggle('below', !!V.below);
+  $('belowTxt').textContent = LEVEL_TAG[V.below];
+  for (const b of document.querySelectorAll('#belowLv button')) b.classList.toggle('on', +b.dataset.lv === V.below);
+  const P = A.place;   // a room being planned moves with the view to a level it can go on
+  if (P && TYPES[P.type].below && V.below && levelsOf(P.type).includes(V.below) && P.lvl !== V.below) { P.lvl = V.below; checkPlace(); }
 }
 
 // ---------- saving ----------
@@ -477,7 +486,8 @@ function hookInput() {
   $('bHome').onclick = goHome;
   $('bSkip').onclick = () => skipMenu(); $('skStop').onclick = stopSkip;
   document.querySelectorAll('[data-skip]').forEach(b => b.onclick = () => startSkip(b.dataset.skip));
-  $('bBelow').onclick = () => belowView(); $('bRoof').onclick = () => roofView(); $('belowUp').onclick = () => belowView(false);
+  $('bBelow').onclick = () => belowView(); $('bRoof').onclick = () => roofView(); $('belowUp').onclick = () => belowView(0);
+  for (const b of document.querySelectorAll('#belowLv button')) b.onclick = () => belowView(+b.dataset.lv);
   $('bFull').onclick = () => fullscreen();
   const fsIcon = () => { const on = !!(document.fullscreenElement || document.webkitFullscreenElement); $('bFull').querySelector('use').setAttribute('href', on ? '#i-unfull' : '#i-full'); $('bFull').title = on ? 'Leave fullscreen (F11)' : 'Fullscreen (F11)'; };
   document.addEventListener('fullscreenchange', fsIcon); document.addEventListener('webkitfullscreenchange', fsIcon);

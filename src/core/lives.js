@@ -12,6 +12,7 @@ import { mealsInStore, eat } from './food.js';
 import { planCrews, autoCrew } from './work.js';
 import { printBody, childBody, migrateAging, bodyYears, chronicDay, sleepDay, adjustDay, checkups } from './aging.js';
 import { built, capOf } from './build.js';
+import { scanNight } from './scan.js';
 import { lesson, shelf, deadName, namedFor, ofAge, socDay } from './society.js';
 
 // stages of a life: 0 in the nursery, 1 small, 2 a child, 3 an apprentice, 4 an adult, 5 an elder
@@ -65,7 +66,7 @@ export function livesDay(sim) {
     skillsDay(sim, c);
     if (c.life === 0) feedInfant(sim, c);
   }
-  checkups(sim);
+  checkups(sim); scanNight(sim);
   couples(sim, live.filter(c => !c.dead));
   tanks(sim);
   milestones(sim);

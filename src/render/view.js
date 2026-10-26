@@ -13,7 +13,7 @@ import { fireOn, skyAt, doyOf, seasonOf } from '../core/year.js';
 import { drawLife, placeLife } from '../core/food.js';
 import { drawPatch, drawKitchen } from './life.js';
 import { drawPerson, drawDot, makeSeed, crewColour } from './people.js';
-import { floodPlain, underOf, ORE } from '../core/world.js';
+import { floodPlain, underOf, ORE, RARE } from '../core/world.js';
 
 const mul3 = (a, f) => [a[0] * f, a[1] * f, a[2] * f];
 const rgb = (c, a = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
@@ -23,8 +23,8 @@ const ease = t => 1 - Math.pow(1 - t, 3);
 export const ZMIN = 1.2, ZMAX = 72;
 export const LETTERS = 'ABC';
 const LAND_MS = 2600;
-// the ground below, as the Seed's soundings show it: soil, clay, stone, hard rock, waterlogged, solid
-const UGC = [[92, 70, 50], [124, 82, 56], [98, 95, 92], [66, 68, 76], [38, 54, 62], [26, 26, 30]];
+// the ground below, as the Seed's soundings show it: soil, clay, stone, hard rock, waterlogged, solid, hot
+const UGC = [[92, 70, 50], [124, 82, 56], [98, 95, 92], [66, 68, 76], [38, 54, 62], [26, 26, 30], [118, 58, 36]];
 
 export class View {
   constructor(app, W) {
@@ -42,7 +42,7 @@ export class View {
     }
     this.seed = makeSeed();
     this.LP = new Float32Array(96); this.LC = new Float32Array(96);
-    this.labels = false; this.below = false; this.inside = true; this.stats = { lights: 0, lightsInView: 0, people: 0 }; this.order = [];
+    this.labels = false; this.below = 0; this.inside = true; this.stats = { lights: 0, lightsInView: 0, people: 0 }; this.order = [];
     this.fly = null; this.anim = null; this.fog = !!W.land;
     this.mm = app.querySelector('#mm'); this.mmBase = this.minimapBase(); this.mmFog = this.fogBase();
     this.resize();
@@ -158,7 +158,7 @@ export class View {
       drawMarks(dc, hRect, this.W, vis);
       this.drawLife(dc, hDisc, C, L, Tp, R, B, k, E, F.time);
       if (C.hz && C.hz.lv > .3) this.drawFlood(dc, C.hz.lv, F.time);
-      for (const p of C.projects) if (p.below) { if (p.door && vis(p.door.x, p.door.y, 3)) drawHatch(dc, hRect, p, F.time); }
+      for (const p of C.projects) if (p.below && p.via == null) { if (p.door && vis(p.door.x, p.door.y, 3)) drawHatch(dc, hRect, p, F.time); }
       else if (p.type !== 'test' && vis(p.x + p.w / 2, p.y + p.h / 2, Math.max(p.w, p.h))) {
         drawBuilding(dc, hRect, p, E, F.time, this.inside);
         if (p.wet) { dc.fillStyle = `rgba(66,78,80,${.42 + .04 * Math.sin(F.time * 1.3 + p.id)})`; dc.fillRect(p.x, p.y, p.w, p.h); }   // standing in the flood
@@ -410,21 +410,23 @@ export class View {
 
   // ---------- below ground ----------
   // a map of the ground under the surface, made once: the colour of what is there, with seams of ore glinting
-  underBase() {
-    if (this.ugCv) return this.ugCv;
-    const U = underOf(this.W), cv = mk(MAP, MAP), g = cv.getContext('2d'), id = g.createImageData(MAP, MAP), D = id.data;
+  underBase(lv) {
+    this.ugCv = this.ugCv || [];
+    if (this.ugCv[lv]) return this.ugCv[lv];
+    const U = underOf(this.W, lv), cv = mk(MAP, MAP), g = cv.getContext('2d'), id = g.createImageData(MAP, MAP), D = id.data;
     for (let i = 0; i < MAP * MAP; i++) {
       const u = U[i], c = UGC[u & 7], x = i % MAP, y = i / MAP | 0, n = .93 + hash(x, y, 5) * .12, o = i * 4;
-      if (u & ORE && hash(x, y, 9) < .4) { D[o] = 172; D[o + 1] = 134; D[o + 2] = 80; } else { D[o] = c[0] * n; D[o + 1] = c[1] * n; D[o + 2] = c[2] * n; }
+      if (u & RARE && hash(x, y, 11) < .5) { D[o] = 120; D[o + 1] = 206; D[o + 2] = 188; }   // rare earths glint green-white in the ore
+      else if (u & ORE && hash(x, y, 9) < .4) { D[o] = 172; D[o + 1] = 134; D[o + 2] = 80; } else { D[o] = c[0] * n; D[o + 1] = c[1] * n; D[o + 2] = c[2] * n; }
       D[o + 3] = 255;
     }
-    g.putImageData(id, 0, 0); return (this.ugCv = cv);
+    g.putImageData(id, 0, 0); return (this.ugCv[lv] = cv);
   }
   // the view below ground: the soundings, the rooms dug into them, and whoever is down there
   drawBelow(F, sx, sy, z) {
-    const ui = this.ui, C = F.colony, t = F.time;
+    const ui = this.ui, C = F.colony, t = F.time, lv = this.below;
     ui.save(); ui.imageSmoothingEnabled = true; ui.imageSmoothingQuality = 'high';
-    ui.drawImage(this.underBase(), sx(0), sy(0), MAP * z, MAP * z);
+    ui.drawImage(this.underBase(lv), sx(0), sy(0), MAP * z, MAP * z);
     if (this.fog) { ui.globalAlpha = .9; ui.drawImage(this.mmFog, sx(0), sy(0), MAP * z, MAP * z); ui.drawImage(this.mmFog, sx(0), sy(0), MAP * z, MAP * z); ui.globalAlpha = 1; }
     ui.imageSmoothingEnabled = true;
     ui.fillStyle = 'rgba(8,8,12,.4)'; ui.fillRect(0, 0, this.VW, this.VH);
@@ -432,13 +434,16 @@ export class View {
     ui.strokeStyle = 'rgba(220,226,232,.28)'; ui.lineWidth = 1; ui.setLineDash([4, 4]);
     for (const p of C.projects) if (!p.below && p.type !== 'test') ui.strokeRect(sx(p.x), sy(p.y), p.w * z, p.h * z);
     const Ld = this.W.land; ui.beginPath(); ui.arc(sx(Ld.x), sy(Ld.y), 1.6 * z, 0, 6.3); ui.stroke(); ui.setLineDash([]);
-    const rooms = C.projects.filter(p => p.below);
+    const rooms = C.projects.filter(p => p.below && (p.lvl || 1) === lv);
     for (const p of rooms) this.drawRoom(p, sx, sy, z, t);
-    // people below: at their room's stairs as the simulation has them, drawn spread through the room
+    // the lift shafts going down through every level, and the cage in them
+    for (const p of C.projects) if (p.type === 'shaft' && (p.done || p.stage >= (lv < 3 ? 1 : 2))) this.drawShaft(p, sx, sy, z, t);
+    // people below: in the room the simulation has them in (or at its stairs), drawn spread through the room
     const r = Math.max(3, z * .32);
     for (let i = 0; i < F.n; i++) {
       const o = i * 4, act = F.pos[o + 3] >> 1; if (!hidden(act) || act === ACT.DEAD) continue;
-      const px = F.pos[o], py = F.pos[o + 1], p = rooms.find(q => q.door && Math.abs(q.door.x + .5 - px) < .9 && Math.abs(q.door.y + .5 - py) < .9); if (!p) continue;
+      const px = F.pos[o], py = F.pos[o + 1], at = C.p && C.p[i] ? C.p[i][10] : undefined;
+      const p = at != null ? rooms.find(q => q.id === at) : rooms.find(q => q.door && Math.abs(q.door.x + .5 - px) < .9 && Math.abs(q.door.y + .5 - py) < .9); if (!p) continue;
       const asleep = act === ACT.INSIDE, cols = Math.max(1, p.w - 2), k = asleep ? i % Math.max(1, p.cap.beds || 1) : (i * 7 + (t * .05 | 0)) % (cols * Math.max(1, p.h - 2));
       const X = sx(p.x + 1.5 + (k % cols)), Y = sy(p.y + 1.5 + ((k / cols | 0) % Math.max(1, p.h - 2))), c = F.arts[i].L.app;
       ui.fillStyle = `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`; ui.strokeStyle = 'rgba(10,8,6,.9)'; ui.lineWidth = 1.2;
@@ -446,6 +451,18 @@ export class View {
       if (act === ACT.DIG && Math.sin(t * 6 + i) > .3) { ui.fillStyle = 'rgba(200,180,150,.6)'; ui.beginPath(); ui.arc(X + r, Y - r, r * .4, 0, 6.3); ui.fill(); }
     }
     ui.restore();
+  }
+  drawShaft(p, sx, sy, z, t) {
+    const ui = this.ui, X = sx(p.x), Y = sy(p.y), Wd = p.w * z, Hd = p.h * z;
+    if (X > this.VW + 40 || Y > this.VH + 40 || X + Wd < -40 || Y + Hd < -40) return;
+    ui.fillStyle = '#0d0b0a'; ui.fillRect(X, Y, Wd, Hd);
+    ui.strokeStyle = p.done ? 'rgba(200,190,170,.9)' : 'rgba(240,226,190,.6)'; ui.lineWidth = Math.max(1.5, z * .12); ui.setLineDash(p.done ? [] : [5, 4]); ui.strokeRect(X, Y, Wd, Hd); ui.setLineDash([]);
+    if (p.stage >= 3 || p.done) {   // the guide rails, and the cage riding up and down between the levels
+      ui.strokeStyle = 'rgba(150,146,138,.8)'; ui.lineWidth = Math.max(1, z * .06);
+      ui.beginPath(); ui.moveTo(X + Wd * .2, Y + 2); ui.lineTo(X + Wd * .2, Y + Hd - 2); ui.moveTo(X + Wd * .8, Y + 2); ui.lineTo(X + Wd * .8, Y + Hd - 2); ui.stroke();
+      if (p.done) { const k = .5 + .5 * Math.sin(t * .4 + p.id), lit = p.powered; ui.fillStyle = lit ? 'rgba(255,200,120,.9)' : 'rgba(120,110,100,.8)'; ui.fillRect(X + Wd * .25, Y + Hd * (.15 + .4 * k), Wd * .5, Hd * .3); }
+    }
+    ui.font = `800 ${Math.max(9, Math.min(13, z * .5))}px Manrope,system-ui,sans-serif`; ui.fillStyle = '#e9d6b4'; ui.textAlign = 'center'; ui.textBaseline = 'middle'; ui.fillText('LIFT', X + Wd / 2, Y + Hd + Math.max(8, z * .4));
   }
   drawRoom(p, sx, sy, z, t) {
     const ui = this.ui, X = sx(p.x), Y = sy(p.y), Wd = p.w * z, Hd = p.h * z, stage = p.done ? 5 : p.stage, f = progress(p), [nx, ny] = [[0, -1], [1, 0], [0, 1], [-1, 0]][p.side];
@@ -500,7 +517,7 @@ export class View {
     const ui = this.ui;
     for (const p of F.colony.projects) {
       if (p.type === 'test') continue;
-      if (this.below && !p.below) continue;   // below ground, only the rooms down there are named
+      if (this.below ? !(p.below && (p.lvl || 1) === this.below) && p.type !== 'shaft' : p.via != null && p.id !== F.projSel) continue;   // below ground, only the rooms on that level (and the shafts) are named
       const stuck = !!p.stall || p.fire || p.wet || (p.done && p.type !== 'solar' && !p.powered), show = stuck || (!p.done && z >= 5) || (this.labels && z >= 8) || p.id === F.projSel;
       if (!show) continue;
       const up = p.below && !this.below && p.door, X = up ? sx(p.door.x + .5) : sx(p.x + p.w / 2), Y = (up ? sy(p.door.y) : sy(p.y)) - 10; if (X < -150 || X > this.VW + 150 || Y < -40 || Y > this.VH + 60) continue;

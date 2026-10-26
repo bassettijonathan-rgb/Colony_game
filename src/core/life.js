@@ -3,7 +3,8 @@
 import { MAP, HOUR, DAY_TICKS, YEAR_DAYS, ACT, SHIFTS, OUTDOOR, hidden } from './consts.js';
 import { rnd, ri, clamp } from './rng.js';
 import { workNext, dropCarry } from './work.js';
-import { byId } from './build.js';
+import { byId, capOf } from './build.js';
+import { flareNear } from './sky.js';
 import { lookAround, dietDay } from './food.js';
 import { dayWeather, fireOn } from './year.js';
 import { ailing, bodyTick, laidUp, needs, injure, danger, downed, woundText } from './body.js';
@@ -37,12 +38,13 @@ export function want(sim, c) {
   if (c.act === ACT.WAKE && c.timer > 0) return 'wake';
   if (c.alone > 0) return 'alone';
   if (c.held > S.tick) return 'held';                  // locked in the watch house for a day, after lashing out
+  if (S.hz.flare && c.life > 0 && flareNear(S)) return 'shelter';   // a particle storm overhead: everyone under cover (the smallest are in the Seed's nursery, inside the hull)
   if (c.nightEnd > S.tick) return 'watch';             // their turn to keep the night watch
   if (c.sleepTill > S.tick) return 'sleep';            // and the morning after it, asleep
   // the clinic's rule: the sick with something catching stay apart until it has passed
   if (S.care && S.care.iso && toIsolate(c)) return 'ward';
   // the hurt rest in a clinic bed if there is one, or their own; so does anyone waiting to be treated
-  if (c.cap && (laidUp(c) || (S.care && S.care.medics > 0 && needs(c, sim).some(n => TREAT.has(n.k))))) return 'ward';
+  if (c.cap && (laidUp(c) || (S.care && S.care.medics > 0 && needs(c, sim).some(n => TREAT.has(n.k))))) return 'ward';   // a particle storm overhead: everyone under cover
   // children: the smallest in the Seed's nursery; the others play by the fire, eat early and go to bed early
   if (c.life < 3) return c.life === 0 ? 'nursery' : h >= c.bed || h < 7 ? 'sleep' : h >= 17 ? 'eat' : c.life === 2 && h >= 8 && h < 15 && S.soc && S.soc.sch >= 0 ? 'school' : 'play';
   if (h >= c.bed || h < sh.a - .7) return 'sleep';
@@ -70,6 +72,7 @@ export function think(sim, c) {
     // a job that ran out of steps starts its next one
     if ((w === 'work' || w === 'fire' || w === 'ctl') && c.mv === 0 && c.timer <= 0 && !c.job) start(sim, c, w);
     else if (w === 'idle' && c.mv === 0 && c.act === ACT.IDLE && (rnd() < .04 || (coldOut(sim.S, c) && indoorsFor(sim.S, c)))) idleAt(sim, c);
+    else if (w === 'shelter' && c.mv === 0 && (c.act === ACT.INDOORS || c.act === ACT.INSIDE)) c.act = sleepy(sim, c) ? ACT.INSIDE : ACT.INDOORS;   // sitting out the storm, asleep at night
     else if ((w === 'play' || w === 'mind') && c.mv === 0 && (c.act === ACT.PLAY || c.act === ACT.MIND || c.act === ACT.IDLE) && (rnd() < (w === 'play' ? .12 : .03) || (coldOut(sim.S, c) && indoorsFor(sim.S, c)))) playAt(sim, c, w);
     return;
   }
@@ -100,6 +103,7 @@ function start(sim, c, w) {
     if (mess) sim.goTo(c, sim.doorOf(mess), ACT.INDOORS); else sim.goTo(c, c.seat, ACT.EAT);
   }
   else if (w === 'idle') idleAt(sim, c);
+  else if (w === 'shelter') { const p = shelterFor(S, c); if (p) { c.job = 'shelter'; c.warmAt = p.id; sim.goTo(c, sim.doorOf(p), sleepy(sim, c) ? ACT.INSIDE : ACT.INDOORS); } else idleAt(sim, c); }
   else if (w === 'play' || w === 'mind') playAt(sim, c, w);
   else if (w === 'nursery') { c.job = 'nursery'; sim.goTo(c, sim.cargoTile, ACT.INDOORS); }
   else if (w === 'school') { const p = byId(S, S.soc.sch); if (p) { c.job = 'school'; c.ws = p.id; sim.goTo(c, sim.doorOf(p), ACT.SCHOOL); } else playAt(sim, c, 'play'); }
@@ -115,6 +119,22 @@ function start(sim, c, w) {
   } else if (w === 'work') {
     if (!workNext(sim, c)) { c.noWork = S.tick + Math.round(HOUR / 2); c.plan = 'idle'; idleAt(sim, c); }
   }
+}
+// where to sit out a particle storm: the deep vault, then rooms below ground, then the lander's hull, then any roof;
+// the nearest of the best kind that still has room
+const sleepy = (sim, c) => sim.hour >= c.bed || sim.hour < 6;
+const COVER = { vault: 4, burrow: 3, cellar: 3, mine: 3, shelter: 2, dorm: 1, commons: 1, school: 1, library: 1, clinic: 1, workshop: 1, lab: 1, nursery: 1 };
+function shelterFor(S, c) {
+  const n = {}; for (const o of S.cols) if (!o.dead && o !== c && o.plan === 'shelter' && o.warmAt >= 0) n[o.warmAt] = (n[o.warmAt] || 0) + 1;
+  let best = null, bs = -1e9;
+  for (const p of S.projects) {
+    if (p.gone || !p.done || p.shut || p.fire || !COVER[p.type]) continue;
+    const room = p.type === 'vault' ? capOf(p).places : p.below ? Math.floor(p.w * p.h / 2) : 1e9;
+    if ((n[p.id] || 0) >= room) continue;
+    const s = COVER[p.type] * 100 + ((p.lvl || 1) > 1 ? 50 : 0) - Math.hypot(p.x + p.w / 2 - c.x, p.y + p.h / 2 - c.y);
+    if (s > bs) { bs = s; best = p; }
+  }
+  return best;
 }
 // somewhere to sit out the cold between jobs: the commons, or their own bunk
 const indoorsFor = (S, c) => usable(S, c.mess) || roofed(S, c.home) || refuge(S, c);
@@ -214,7 +234,7 @@ export function mindTick(sim, c) {
   }
   // the body
   if (c.fresh > 0) { c.fresh -= 30; if (c.fresh <= 0) remember(sim, c, 'Stopped feeling like a stranger in this body.'); }
-  if (land) exposeTick(sim, c, a, dt, wx.k === 'storm');
+  if (land) exposeTick(sim, c, a, dt);
   if (ailing(c.bd)) {
     const rest = asleep || ward || a === ACT.DOWN || c.plan === 'ward', sl = sleepHit(c), fl = c.bd.fl && c.bd.fl.some(q => q.k === 'immune') ? 1.2 : 1;
     const heal = (rest ? 1.5 : working ? .6 : 1) * (ward ? 1.25 : 1) * (c.hungry ? .4 : 1) * (c.chill > 35 ? .7 : 1) * (c.unwell ? .7 : 1) * (c.fat > 80 ? .8 : 1) * sl.heal * ageHeal(yearsOf(sim, c));

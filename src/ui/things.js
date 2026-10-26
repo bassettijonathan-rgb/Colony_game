@@ -65,7 +65,7 @@ export function thingCard(A, th) {
       const lab = F && F.lab, cur = lab && lab.cur >= 0 ? F.life[lab.cur] : null;
       let h = note('The lander’s mind. It came down with the colony’s founders stored as minds in its archive, prints their bodies, and plans the work, the meals and the power.', 8);
       h += sec('Archive and fabricator') + row('Minds stored', stored) + row('Feedstock left', `${sd.feed} ${sd.feed === 1 ? 'body' : 'bodies'}`) + (U.projects.some(p => p.type === 'plant' && p.done) ? row('Next body’s feedstock', pct(sd.fb / sd.per)) : !sd.feed ? note('A feedstock plant (Build window, Plan) makes more from biomass and stone.', 0) : '');
-      if (sd.printing) h += row(`Printing ${esc(names.get(sd.printing.fid) || '')}`, '');
+      if (sd.printing) h += row(`${sd.printing.rid != null ? 'Waking' : 'Printing'} ${esc(sd.printing.name || '')}`, '');
       if (sd.queue.length) h += row('Next in line', sd.queue.length);
       if (sd.fab) h += row('Making from salvage', esc(matName(sd.fab.k, 1)));
       if (U.gen) { const G = U.gen, kids = U.p.filter(r => !(r[6] & 16) && r[8] < 2).length; h += sec('Growth tanks and nursery') + row('Children growing', `${G.womb.length} of ${G.tanks}`) + G.womb.map(e => row(`Child of ${esc(e.names[0].split(' ')[0])} and ${esc(e.names[1].split(' ')[0])}`, `${e.left} day${e.left === 1 ? '' : 's'}`)).join('') + (G.asks.length ? row('Couples waiting', G.asks.length) : '') + row('In the nursery', kids); }

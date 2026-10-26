@@ -17,6 +17,8 @@ import { newBody, migrateBody, danger, woundText } from './body.js';
 import { careThink, follow, feedPatients, MED_KIT } from './care.js';
 import { illHour, newIll, illUI, ILL, toIsolate } from './illness.js';
 import { newHz, hzHour, hzMorning, fireStep, hzUI, FIRE_STEP } from './hazards.js';
+import { flareHour } from './sky.js';
+import { willScan, canRestore } from './scan.js';
 import { newDir, dirMorning } from './director.js';
 import { traumaUI } from './trauma.js';
 import { ctlHour, emergency } from './control.js';
@@ -86,7 +88,7 @@ export class Sim {
       cols: [], crews: [], archive: makeArchive(W.seed), autoCrews: true, crewPlan: mode === 'landfall', shift: 1,
       seedc: { feed: mode === 'stress' ? 0 : FIRST_BODIES, queue: [], printing: null, stakes: STAKES },
       projects: [shelterProject(W)], pid: 1, blueprints: [], fab: { job: null }, power: { supply: LANDER_KW, draw: 0 },
-      stores: { yard: { stone: 0, timber: 0, biomass: 0, salvage: SALVAGE, ore: 0 }, cargo: { module: CARGO, ...KIT } },
+      stores: { yard: { stone: 0, timber: 0, biomass: 0, salvage: SALVAGE, ore: 0, rare: 0 }, cargo: { module: CARGO, ...KIT } },
       mat: { stone: { tested: false, f: strength(W.seed, 'stone') }, timber: { tested: false, f: strength(W.seed, 'timber') } }, gone: {}, quarry: {},
       stakes: [], food: mode === 'stress' ? 1e9 : FOOD_DAYS * FIRST_BODIES,
       log: [], logN: 0, chunkLast: new Array(NCH * NCH).fill(0), rr: 0, walked: 0, knownN: 0, rv: 1,
@@ -281,7 +283,7 @@ export class Sim {
     for (const p of built(S)) if (p.type === 'field' && p.crop) fieldHour(this, p, t, h);
     labHour(this, SEED_LAB);
     illHour(this);
-    hzHour(this);
+    hzHour(this); flareHour(this);
     ctlHour(this);
     socHour(this);
     if (h === 18) feedPatients(this);
@@ -490,11 +492,11 @@ export class Sim {
     return {
       rv: S.rv, mode: S.mode, logN: S.logN, spots: { cook: this.cookTile, vat: this.vatTile },
       p: S.cols.map(c => [c.act, c.crew, Math.round(c.fat), Math.round(c.str), Math.round(c.tru), Math.round(Math.min(c.hp, 100 - danger(c) * 100)), (c.fresh > 0 ? 1 : 0) | (c.hurt > 0 ? 2 : 0) | (c.alone > 0 ? 4 : 0) | (c.hungry ? 8 : 0) | (c.dead ? 16 : 0) | (c.carry && c.mv ? 32 : 0) | (c.chill > 50 ? 64 : 0) | (c.unwell ? 128 : 0)
-        | (c.bd.w.some(w => w.kn && w.bl > .01) ? 256 : 0) | (c.down ? 512 : 0) | (c.plan === 'ward' || c.medBy >= 0 || c.carried >= 0 ? 1024 : 0) | (c.bd.worse && !c.dead ? 2048 : 0) | (c.bd.ill.some(q => q.st === 1 || q.st === 2) ? 4096 : 0) | (c.iso ? 8192 : 0) | (c.bd.ill.some(q => q.st === 2) ? 16384 : 0) | (toIsolate(c) ? 32768 : 0) | (c.life < 3 ? 65536 : 0) | (c.retired ? 131072 : 0) | (c.minding ? 262144 : 0), Math.round(c.chill), Math.round(yearsOf(this, c) * 10) / 10, Math.floor(mindAge(this, c))]),
+        | (c.bd.w.some(w => w.kn && w.bl > .01) ? 256 : 0) | (c.down ? 512 : 0) | (c.plan === 'ward' || c.medBy >= 0 || c.carried >= 0 ? 1024 : 0) | (c.bd.worse && !c.dead ? 2048 : 0) | (c.bd.ill.some(q => q.st === 1 || q.st === 2) ? 4096 : 0) | (c.iso ? 8192 : 0) | (c.bd.ill.some(q => q.st === 2) ? 16384 : 0) | (toIsolate(c) ? 32768 : 0) | (c.life < 3 ? 65536 : 0) | (c.retired ? 131072 : 0) | (c.minding ? 262144 : 0), Math.round(c.chill), Math.round(yearsOf(this, c) * 10) / 10, Math.floor(mindAge(this, c)), hidden(c.act) ? c.where : -1]),
       crews: S.crews.map(cr => ({ id: cr.id, name: cr.name, gone: cr.gone, lead: cr.lead, members: cr.members, work: cr.work, shift: cr.shift, rules: cr.rules, target: cr.target, dest: cr.dest, recalled: cr.recalled, proj: cr.proj })),
-      seed: { feed: sd.feed, fb: sd.fb || 0, stored: S.archive.filter(p => p.woke == null).length, per: FEED.per, queue: sd.queue, printing: sd.printing && { fid: sd.printing.fid, left: sd.printing.left }, stakes: sd.stakes, fab: S.fab.job && { k: S.fab.job.k, left: S.fab.job.left } },
+      seed: { feed: sd.feed, fb: sd.fb || 0, stored: S.archive.filter(p => p.woke == null).length, per: FEED.per, queue: sd.queue, printing: sd.printing && { fid: sd.printing.fid, rid: sd.printing.rid, name: sd.printing.rid != null ? S.cols[sd.printing.rid].name : S.archive[sd.printing.fid].name, left: sd.printing.left }, restore: sd.restore || [], stakes: sd.stakes, fab: S.fab.job && { k: S.fab.job.k, left: S.fab.job.left } },
       shelter: { stage: sh.stage, done: sh.done, beds: 12 },
-      projects: S.projects.filter(p => !p.gone).map(p => ({ crop: p.crop && { ...p.crop, plan: p.crop.st === 'bare' ? cropPlan(this, p) : null, eta: p.crop.st === 'grow' ? daysToRipen(this, p.crop.k, p.crop.g) : null }, id: p.id, type: p.type, name: p.name, x: p.x, y: p.y, w: p.w, h: p.h, side: p.side, door: p.door, stage: p.stage, need: p.need, got: p.got, done: p.done, powered: p.powered, paused: p.paused, wait: p.wait, stall: p.stall, mat: p.mat, cap: capOf(p), tanks: p.tanks, why: p.why, crews: S.crews.filter(cr => !cr.gone && cr.work === 'build' && cr.proj === p.id).map(cr => cr.name), out: p.out, fire: !!p.fire, burn: p.fire ? +(p.burn || 0).toFixed(2) : 0, shut: p.shut || '', dmg: p.dmg || '', wet: !!p.wetH, below: !!p.below, ug: p.ug && p.ug.name, ore: p.ug ? p.ug.ore : 0, seam: p.seam, rock: p.rock, rock0: p.rock0, back: refundOf(p) })),
+      projects: S.projects.filter(p => !p.gone).map(p => ({ crop: p.crop && { ...p.crop, plan: p.crop.st === 'bare' ? cropPlan(this, p) : null, eta: p.crop.st === 'grow' ? daysToRipen(this, p.crop.k, p.crop.g) : null }, id: p.id, type: p.type, name: p.name, x: p.x, y: p.y, w: p.w, h: p.h, side: p.side, door: p.door, stage: p.stage, need: p.need, got: p.got, done: p.done, powered: p.powered, paused: p.paused, wait: p.wait, stall: p.stall, mat: p.mat, cap: capOf(p), tanks: p.tanks, why: p.why, crews: S.crews.filter(cr => !cr.gone && cr.work === 'build' && cr.proj === p.id).map(cr => cr.name), out: p.out, fire: !!p.fire, burn: p.fire ? +(p.burn || 0).toFixed(2) : 0, shut: p.shut || '', dmg: p.dmg || '', wet: !!p.wetH, below: !!p.below, lvl: p.below ? p.lvl || 1 : 0, via: p.via, ug: p.ug && p.ug.name, ore: p.ug ? p.ug.ore : 0, seam: p.seam, rock: p.rock, rock0: p.rock0, back: refundOf(p) })),
       stores: { yard: S.stores.yard, cargo: S.stores.cargo, precise: Object.fromEntries(PRECISE.map(k => [k, stockOf(S, k)])) }, power: S.power, blueprints: S.blueprints,
       mat: { stone: { tested: S.mat.stone.tested, f: S.mat.stone.tested ? S.mat.stone.f : null }, timber: { tested: S.mat.timber.tested, f: S.mat.timber.tested ? S.mat.timber.f : null } },
       med: S.med, care: { triage: S.care.triage, medics: S.care.medics, iso: !!S.care.iso, ward: S.cols.filter(c => !c.dead && c.ward >= 0).map(c => [c.id, c.ward]) }, food: S.food, alive: S.cols.filter(c => !c.dead).length, year: this.yearUI(), F: this.foodUI(), known: S.knownN, stakes: S.stakes, auto: S.autoCrews, plan: !!S.crewPlan, shift: S.shift ?? 1, stats: S.stats, today: histRow(this, this.day), y0: S.y0 || 0, ill: illUI(S), hz: hzUI(S), ctl: S.ctl ?? -1, ord: S.ctl >= 0 && S.cols[S.ctl] ? S.cols[S.ctl].ord : null, emerg: emergency(this), gen: genUI(this),
@@ -515,6 +517,7 @@ export class Sim {
       ill: b.ill.filter(q => q.st >= 1).map(q => { const K = ILL[q.k]; return { name: q.kn ? K.name : '', sym: K.sym, st: q.st, d: q.d1, kn: q.kn, catching: q.kn && !!K.spread, abx: q.kn ? K.abx : null, tried: q.tried }; }),
       hx: b.hx.map(h => ({ name: h.kn || (S.ill.k[h.k] && S.ill.k[h.k].id && S.ill.k[h.k].named) ? ILL[h.k].name : '', sym: ILL[h.k].sym, d: h.d, e: h.e, out: h.out })),
       life: agingUI(this, c), repl: c.dead ? '' : canReplace(this),
+      scan: c.scan ? c.scan.d : -1, noScan: !willScan(c), restore: c.dead && c.scan ? { ...canRestore(this, c), lost: c.dday - c.scan.d } : null, restored: c.restored || 0,
       imm: Object.entries(b.imm).filter(([k, v]) => v && S.ill.k[k] && S.ill.k[k].named).map(([k, v]) => ({ name: ILL[k].name, v: Math.round(v * 100) / 100 })),
     };
   }
@@ -553,6 +556,8 @@ export class Sim {
     if (!this.S.hist) this.S.hist = newHist();
     if (!this.S.dir) this.S.dir = newDir();
     if (this.S.stores.yard.ore == null) this.S.stores.yard.ore = 0;
+    if (this.S.stores.yard.rare == null) this.S.stores.yard.rare = 0;
+    for (const p of this.S.projects) if (p.below && !p.lvl) p.lvl = 1;   // rooms dug before there were deeper levels
     for (const c of this.S.cols) { if (!c.tr) c.tr = []; if (c.ctl == null) { c.ctl = false; c.ord = null; } }
     if (this.S.ctl == null) this.S.ctl = -1;
     if (this.S.crewPlan == null) this.S.crewPlan = !!this.S.autoCrews;   // saves from before the Seed planned crews
