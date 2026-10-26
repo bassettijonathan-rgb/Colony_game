@@ -19,7 +19,7 @@ import { lesson, shelf, deadName, namedFor, ofAge, socDay } from './society.js';
 export const NURSERY = 2, SMALL = 6, APPRENTICE = 13, ADULT = 16, ELDER = 65, RETIRE = 72, COUPLE = 18;
 export const TANKS = 2, GROW_DAYS = 60;
 // the colony's rule can keep children at school two more years before they join the crews
-const stageAt = (y, ap = APPRENTICE) => y < NURSERY ? 0 : y < SMALL ? 1 : y < ap ? 2 : y < ADULT ? 3 : y < ELDER ? 4 : 5;
+export const stageAt = (y, ap = APPRENTICE) => y < NURSERY ? 0 : y < SMALL ? 1 : y < ap ? 2 : y < ADULT ? 3 : y < ELDER ? 4 : 5;
 export const now = sim => sim.S.tick / DAY_TICKS;
 export const yearsOf = (sim, c) => (now(sim) - c.born) / YEAR_DAYS;
 export const mindAge = (sim, c) => c.age + (sim.day - c.bday) / YEAR_DAYS;

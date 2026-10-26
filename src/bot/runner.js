@@ -19,6 +19,7 @@ import { ruleOk } from '../core/lives.js';
 import { mealsInStore, kitchenOnly } from '../core/food.js';
 import { toIsolate } from '../core/illness.js';
 import { doyOf, seasonOf, dayWeather } from '../core/year.js';
+import { nbUI, valueOf, KINDS, GOODS } from '../core/nb.js';
 
 const now = () => performance.now();
 export const siteScore = s => s.open + (s.water != null ? 30 - Math.min(30, s.water / 4) : 0) + s.wood * .3 - s.marsh - s.stone * .5;
@@ -37,6 +38,7 @@ const PLAN = [['field', 8, 6], ['workshop', 6, 7], ['solar', 6, 6], ['plant', 5,
 export function botBuild(sim) {
   const S = sim.S;
   botFood(sim);
+  botNb(sim);
   if (!S.projects[0].done) return;   // the shelter comes first
   for (const m of ['stone', 'timber']) if (!S.mat[m].tested) sim.command({ op: 'test', mat: m });
   // new feedstock wakes the Seed's pick from the archive, unless a couple is waiting for a tank
@@ -98,6 +100,24 @@ function grow(sim) {
   return out;
 }
 // crews for food, and the tests: one person at a time moved out of the build crew, the best suited first
+// visitors: anyone who asks to stay is welcome while there is food; traders get the colony's surplus for what they
+// know, and for food when it is short
+function botNb(sim) {
+  const S = sim.S, P = S.nb && S.nb.party; if (!P || P.st !== 'stay') return;
+  const live = S.cols.filter(c => !c.dead).length, days = mealsInStore(sim, true) / Math.max(1, live);
+  if (P.ask >= 0) sim.command({ op: 'join', yes: days > 15 && live < 150 });
+  if (P.kind !== 'trade' || P.traded) return;
+  const U = nbUI(sim), K = KINDS[S.nb.list[P.nb].k], have = U.have, keep = { stone: 80, timber: 80, biomass: 40, ore: 40, rare: 12, salvage: 40, meals: live * 30, dress: 12, abx: 6, seal: 4, pipe: 6, power: 4, panel: 4 };
+  const give = {}; for (const k in keep) { const n = (have[k] || 0) - keep[k]; if (n > 0 && (K.wants[k] ?? 1) >= .9) give[k] = n; }
+  const get = {}, know = {}; for (const l of U.party.lessons) { get[l.id] = 1; know[l.id] = l.v; }
+  if (days < 30 && P.goods.meals) get.meals = P.goods.meals;
+  if ((S.stores.yard.rare || 0) < 6 && P.goods.rare) get.rare = P.goods.rare;
+  // ask for less until they would take it, then give only as much as it needs
+  for (let k = 0; k < 40 && Object.keys(get).length && !valueOf(K, S.nb.list[P.nb].trust, give, get, know).ok; k++) { const g = Object.keys(get).find(q => GOODS[q] && get[q] > 0); if (g) { get[g] = Math.floor(get[g] * .7); if (!get[g]) delete get[g]; } else { delete get[Object.keys(get).pop()]; delete know[Object.keys(know).pop()]; } }
+  if (!Object.keys(get).length) return;
+  for (const k of Object.keys(give)) for (let n = give[k]; n > 0; n = Math.floor(n * .8)) { const t = { ...give, [k]: Math.floor(n * .8) }; if (!t[k]) delete t[k]; if (!valueOf(K, S.nb.list[P.nb].trust, t, get, know).ok) break; give[k] = t[k] || 0; if (!give[k]) { delete give[k]; break; } }
+  sim.command({ op: 'trade', give, get });
+}
 function botFood(sim) {
   const S = sim.S, F = S.F, live = S.crews.filter(c => !c.gone);
   for (let o = 0; o < F.life.length; o++) if (F.life[o].samples >= 3 && !F.life[o].tested && !F.life[o].queued) sim.command({ op: 'analyse', o });
@@ -142,7 +162,7 @@ export function runColony(seed, days = 1, mode = 'landfall', count = 300, onTick
   while (S.tick < end) {
     const a = now(); sim.tick(); const d = now() - a; total += d; if (d > worst) worst = d;
     const t = S.tick % DAY_TICKS, live = S.cols.filter(c => !c.dead);
-    if (t === Math.round(3 * HOUR)) nights.push(live.filter(c => c.act === ACT.BED || c.act === ACT.INSIDE || c.alone > 0 || (c.fid >= 0 && S.archive[c.fid].woke > S.tick - 2 * HOUR) || c.life === 0).length + '/' + live.length);   // someone who broke down may sit out the night, and someone just printed is still finding their bedroll
+    if (t === Math.round(3 * HOUR)) nights.push(live.filter(c => c.act === ACT.BED || c.act === ACT.INSIDE || c.alone > 0 || (c.fid >= 0 && S.archive[c.fid].woke > S.tick - 2 * HOUR) || c.life === 0 || c.plan === 'ward').length + '/' + live.length);   // someone who broke down may sit out the night, and someone just printed is still finding their bedroll
     if (t % HOUR === 0) { peak = Math.max(peak, ...live.map(c => c.chill)); }
     if (t === Math.round(12 * HOUR)) noons.push(live.filter(c => c.plan === 'work').length);
     if (t === Math.round(23 * HOUR)) {

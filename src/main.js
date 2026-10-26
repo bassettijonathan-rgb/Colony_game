@@ -39,7 +39,7 @@ function onSim(m) {
     case 'survey': return onSurvey(m);
     case 'ready': return onReady(m);
     case 'state': return onState(m);
-    case 'snap': A.prev = A.cur; A.cur = { pos: m.pos, t: performance.now() }; A.clock = m.clock; A.perf = m.perf; return;
+    case 'snap': A.prev = A.cur; A.cur = { pos: m.pos, t: performance.now() }; A.gprev = A.gcur; A.gcur = { pos: m.gpos || new Float32Array(0), t: A.cur.t }; A.clock = m.clock; A.perf = m.perf; return;
     case 'wear': if (A.view && A.phase === 'colony') for (const [k, d] of m.chunks) A.view.terrain.setWear(k, d); else A.pendingWear.push(...m.chunks); return;
     case 'known': if (A.view && A.phase === 'colony') for (const [k, d] of m.chunks) A.view.setKnown(k, d); else A.pendingKnown.push(...m.chunks); return;
     case 'marks': return onMarks(m);
@@ -74,7 +74,7 @@ function ensureView(W) {
   if (!A.raf) A.raf = requestAnimationFrame(frame);
   return true;
 }
-function resetPeople() { if (A.news) A.news.reset(); A.skipping = false; A.held = []; A.chron = []; $('skipping').hidden = true; $('skipMenu').hidden = true; A.n = 0; A.arts = []; A.names = []; A.people = []; A.archive = []; A.ui = null; A.log = []; A.leads = new Set(); A.cur = A.prev = null; A.pos = new Float32Array(0); select(-1); }
+function resetPeople() { if (A.news) A.news.reset(); A.skipping = false; A.held = []; A.chron = []; $('skipping').hidden = true; $('skipMenu').hidden = true; A.n = 0; A.arts = []; A.names = []; A.people = []; A.archive = []; A.ui = null; A.log = []; A.leads = new Set(); A.cur = A.prev = null; A.pos = new Float32Array(0); A.G = { n: 0, pos: new Float32Array(0), arts: [], names: [], sig: '' }; A.gcur = A.gprev = null; select(-1); }
 
 // from orbit: the planet, and three places to land
 function onSurvey(m) {
@@ -112,7 +112,7 @@ function onReady(m) {
   if (landing) A.view.land(W, m.patch);
   else { resetPeople(); if (!ensureView(W)) return; }
   setRoster(m.roster); A.ui = m.ui; A.log = m.log.slice(); A.hist = (m.hist || []).slice(); A.panels.logSeen = landing ? 0 : m.ui.logN;
-  A.cur = { pos: m.pos, t: performance.now() }; A.prev = null; A.pos = new Float32Array(m.pos.length); A.pos.set(m.pos);
+  A.cur = { pos: m.pos, t: performance.now() }; A.prev = null; A.pos = new Float32Array(m.pos.length); A.pos.set(m.pos); A.gcur = { pos: m.gpos || new Float32Array(0), t: A.cur.t }; A.gprev = null; guestArts();
   A.clock = m.clock; A.phase = 'colony';
   for (const [k, d] of A.pendingWear) A.view.terrain.setWear(k, d); for (const [k, d] of A.pendingKnown) A.view.setKnown(k, d); A.pendingWear = []; A.pendingKnown = [];
   recolour(); A.panels.orbit(null); A.panels.show(true);
@@ -131,6 +131,13 @@ function recolour() {
   // and children grow, and hair greys
   for (let i = 0; i < A.arts.length; i++) { const k = U.p[i] ? U.p[i][1] : -1, y = U.p[i] ? U.p[i][8] : 30; if (A.arts[i].crew !== k || A.arts[i].key !== artKey(y)) { const w = A.arts[i].walk; A.arts[i] = new PersonArt(A.people[i], k, y); A.arts[i].walk = w; } }
   A.leads = new Set(U.crews.filter(c => !c.gone && c.lead >= 0).map(c => c.lead));
+}
+// visitors: drawn in their settlement's colours, made again whenever a different party is in
+function guestArts() {
+  const P = A.ui && A.ui.nb && A.ui.nb.party, sig = P ? P.seq + ':' + P.people.map(p => p.name).join() : '';
+  if (!A.G) A.G = { n: 0, pos: new Float32Array(0), arts: [], names: [], sig: '' };
+  if (A.G.sig === sig) return;
+  A.G.sig = sig; A.G.arts = P ? P.people.map(p => new PersonArt({ look: p.look, coat: p.coat }, -1, p.age)) : []; A.G.names = P ? P.people.map(p => p.name) : []; A.G.place = P ? A.ui.nb.list.find(q => q.i === P.i)?.place || '' : '';
 }
 function onMarks(m) {
   const W = A.W; if (!W || !W.gone) return;
@@ -153,7 +160,7 @@ function onState(m) {
   if (m.chron) A.chron = m.chron;
   // while a skip runs, its news waits: the chronicle tells it afterwards
   if (m.log.length) { A.log.push(...m.log); if (A.log.length > 300) A.log.splice(0, A.log.length - 300); if (A.skipping) A.held.push(...m.log.filter(e => e.lvl)); else A.news.add(m.log); }
-  flushRetype(); recolour(); A.panels.update(); A.news.alerts(A.ui); A.guide.update(A.ui); A.stats.update();
+  flushRetype(); recolour(); guestArts(); A.panels.update(); A.news.alerts(A.ui); A.guide.update(A.ui); A.stats.update();
   if (A.projSel >= 0 && !A.ui.projects.some(p => p.id === A.projSel)) A.projSel = -1;
 }
 
@@ -177,15 +184,16 @@ function frame(now) {
   V.clampCam();
   const colony = A.phase === 'colony' && A.ui ? { seed: A.ui.seed, stakes: A.ui.stakes, crews: A.ui.crews, projects: A.ui.projects, stores: A.ui.stores, year: A.ui.year, F: A.ui.F, spots: A.ui.spots, hz: A.ui.hz, ctl: A.ui.ctl ?? -1, ord: A.ui.ord, day: A.clock ? A.clock.cal || A.clock.abs : 1 } : null;
   const hour = A.clock && A.phase === 'colony' ? A.clock.hour : 10.5;
-  V.frame({ n: A.n, pos: A.pos, arts: A.arts, names: A.names, leads: A.leads, hour, time: now / 1000, sel: A.sel, hover: A.hover, budget: A.frames.length > 30 && avgMs() > 22 ? 1 : 2, colony, orbit: A.phase === 'orbit' ? { sites: A.sites, sel: A.siteSel } : null, pickAt: A.pickCrew >= 0 ? A.pickAt : null, place: A.place, projSel: A.projSel, thing: A.thing, ctlMark: A.ctlMark });
+  V.frame({ n: A.n, pos: A.pos, arts: A.arts, names: A.names, leads: A.leads, hour, time: now / 1000, sel: A.sel, hover: A.hover, budget: A.frames.length > 30 && avgMs() > 22 ? 1 : 2, colony, orbit: A.phase === 'orbit' ? { sites: A.sites, sel: A.siteSel } : null, pickAt: A.pickCrew >= 0 ? A.pickAt : null, place: A.place, projSel: A.projSel, thing: A.thing, ctlMark: A.ctlMark, G: A.phase === 'colony' ? A.G : null, ghover: A.ghover ?? -1 });
   if (A.hold && A.phase === 'colony' && !V.landing) { A.hold = false; setSpeed(A.speed || 1); if (V.anim) toast('The Seed is down. Choose who the fabricator prints first.'); }
   A.frames.push(now - (A.lastNow || now)); A.lastNow = now; if (A.frames.length > 120) A.frames.shift();
   A.cpuMs = (A.cpuMs || 0) * .9 + (performance.now() - t0) * .1;
-  if (now - (A.lastHud || 0) > 250) { A.lastHud = now; hud(); V.drawMinimap({ n: A.n, pos: A.pos, arts: A.arts, orbit: A.phase === 'orbit' ? { sites: A.sites, sel: A.siteSel } : null, colony }); }
+  if (now - (A.lastHud || 0) > 250) { A.lastHud = now; hud(); V.drawMinimap({ n: A.n, pos: A.pos, arts: A.arts, G: A.phase === 'colony' ? A.G : null, orbit: A.phase === 'orbit' ? { sites: A.sites, sel: A.siteSel } : null, colony }); }
   autosave(now);
 }
 const avgMs = () => { const f = A.frames.slice(-30); return f.reduce((a, b) => a + b, 0) / Math.max(1, f.length); };
 function interpolate(now) {
+  interpGuests(now);
   const cur = A.cur; if (!cur) { A.n = 0; return; }
   if (A.pos.length !== cur.pos.length) { A.pos = new Float32Array(cur.pos.length); A.pos.set(cur.pos); }
   A.n = Math.min(cur.pos.length / 4, A.arts.length);
@@ -196,6 +204,22 @@ function interpolate(now) {
     const o = i * 4, x = Q[o] + (C[o] - Q[o]) * a, y = Q[o + 1] + (C[o + 1] - Q[o + 1]) * a;
     let da = C[o + 2] - Q[o + 2]; while (da > Math.PI) da -= 6.2832; while (da < -Math.PI) da += 6.2832;
     const moved = Math.hypot(x - P[o], y - P[o + 1]); if (moved < 2) A.arts[i].walk += moved * 9;
+    P[o] = x; P[o + 1] = y; P[o + 2] = Q[o + 2] + da * a; P[o + 3] = C[o + 3];
+  }
+}
+
+function interpGuests(now) {
+  const G = A.G, cur = A.gcur; if (!G) return;
+  if (!cur || cur.pos.length / 4 !== G.arts.length) { G.n = 0; return; }
+  if (G.pos.length !== cur.pos.length) { G.pos = new Float32Array(cur.pos.length); G.pos.set(cur.pos); }
+  G.n = G.arts.length;
+  const prev = A.gprev, P = G.pos;
+  if (!prev || prev.pos.length !== cur.pos.length) { P.set(cur.pos); return; }
+  const a = Math.min(1, (now - cur.t) / Math.max(8, cur.t - prev.t)), C = cur.pos, Q = prev.pos;
+  for (let i = 0; i < G.n; i++) {
+    const o = i * 4, x = Q[o] + (C[o] - Q[o]) * a, y = Q[o + 1] + (C[o + 1] - Q[o + 1]) * a;
+    let da = C[o + 2] - Q[o + 2]; while (da > Math.PI) da -= 6.2832; while (da < -Math.PI) da += 6.2832;
+    const moved = Math.hypot(x - P[o], y - P[o + 1]); if (moved < 2) G.arts[i].walk += moved * 9;
     P[o] = x; P[o + 1] = y; P[o + 2] = Q[o + 2] + da * a; P[o + 3] = C[o + 3];
   }
 }
@@ -293,10 +317,10 @@ function endPick() { A.pickCrew = -1; A.pickAt = null; $('pickHint').hidden = tr
 // ---------- placing a building ----------
 // Drawing: drag a rectangle on the map. A blueprint: the building follows the pointer, a click puts it down.
 // Either way the Seed checks the plot and its loads, and a card shows the bill before anything is committed.
-function startPlace(type, w, h, name) {
+function startPlace(type, w, h, name, lv0 = 0) {
   if (A.phase !== 'colony' || !TYPES[type]) return;
   endPick(); select(-1);
-  const was = A.view ? A.view.below : 0, lvs = levelsOf(type), lvl = TYPES[type].below ? (lvs.includes(was) ? was : lvs[0]) : 0;
+  const was = A.view ? A.view.below : 0, lvs = levelsOf(type), lvl = TYPES[type].below ? (lvs.includes(lv0) ? lv0 : lvs.includes(was) ? was : lvs[0]) : 0;
   A.place = { type, w: w || 0, h: h || 0, fixed: !!w, name: name || '', x: null, y: null, side: 0, turned: false, check: null, locked: false, seq: 0, wasBelow: was, lvl };
   if (TYPES[type].below || TYPES[type].ground) belowView(lvl || 1);   // the Seed's soundings show where to dig
   $('placeTxt').textContent = w ? `Move the ${name || TYPES[type].name} where it should go and click to put it down` : `Drag on the map to draw the ${TYPES[type].name.toLowerCase()}: at least ${TYPES[type].min} by ${TYPES[type].min} tiles, at most ${TYPES[type].max} long`;
@@ -434,9 +458,9 @@ function hookInput() {
     if (e.target.closest(HUD)) { A.hover = -1; return; }
     const [sx, sy] = local(e);
     if (A.pickCrew >= 0) A.pickAt = V.toWorld(sx, sy);
-    A.hover = A.phase === 'colony' ? pick(sx, sy) : -1;
+    A.hover = A.phase === 'colony' ? pick(sx, sy) : -1; A.ghover = A.phase === 'colony' && A.hover < 0 ? pickGuest(sx, sy) : -1;
     // a hand over anything that opens a card when clicked
-    let can = A.hover >= 0;
+    let can = A.hover >= 0 || A.ghover >= 0;
     if (!can && A.phase === 'colony' && !A.place && A.pickCrew < 0) { const [wx, wy] = V.toWorld(sx, sy); can = !!(thingAt(A, V, wx, wy) || projectAt(wx, wy)); }
     app.classList.toggle('can', can);
   });
@@ -465,6 +489,7 @@ function hookInput() {
     else if (e.code === 'KeyG' && colony) A.panels.toggleTab('life');
     else if (e.code === 'KeyK' && colony) A.panels.toggleTab('records');
     else if (e.code === 'KeyP' && colony) A.panels.toggleTab('society');
+    else if (e.code === 'KeyV' && colony) A.panels.toggleTab('nb');
     else if (e.code === 'KeyT' && colony) A.stats.show();
     else if (e.code === 'KeyB' && colony) A.panels.toggleTab('build');
     else if (e.code === 'KeyR' && A.place) turnDoor();
@@ -549,7 +574,8 @@ function click(sx, sy) {
     cmd('crewSet', { crew, target: y * MAP + x }); endPick(); toast(`The ${A.ui.crews[crew].name} crew will survey around there.`);
     return;
   }
-  const who = pick(sx, sy);
+  const who = pick(sx, sy), gi = who < 0 ? pickGuest(sx, sy) : -1;
+  if (gi >= 0) { A.panels.setTab('nb'); toast(`${A.G.names[gi]}, from ${A.G.place}.`); return; }
   if (who < 0) {
     const [wx, wy] = V.toWorld(sx, sy), th = thingAt(A, V, wx, wy), p = th && th.k !== 'life' && th.k !== 'tree' && th.k !== 'boulder' && th.k !== 'bush' ? null : projectAt(wx, wy);
     if (p) { select(-1); A.projSel = p.id; A.thing = null; A.panels.sig = ''; A.panels.update(); return; }
@@ -558,6 +584,12 @@ function click(sx, sy) {
   if (A.projSel >= 0) closeProject();
   if (A.thing) closeThing();
   select(who);
+}
+function pickGuest(sx, sy) {
+  const V = A.view, G = A.G, [wx, wy] = V.toWorld(sx, sy); let best = -1, bd = Math.max(.7, 9 / V.cam.z);
+  if (!G || V.below) return -1;
+  for (let i = 0; i < G.n; i++) { if (hidden(G.pos[i * 4 + 3] >> 1)) continue; const d = Math.hypot(G.pos[i * 4] - wx, G.pos[i * 4 + 1] - wy); if (d < bd) { bd = d; best = i; } }
+  return best;
 }
 function pick(sx, sy) {
   const V = A.view, [wx, wy] = V.toWorld(sx, sy); let best = -1, bd = Math.max(.7, 9 / V.cam.z);

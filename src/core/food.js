@@ -94,6 +94,7 @@ export const isCrop = src => src in CROPS;
 // what a larder entry is: a crop from home or a local kind, with its processing and properties
 export function foodOf(sim, src) {
   if (isCrop(src)) { const c = CROPS[src]; return { name: c.name, meals: CROP_LOAD, proc: 'cook', keep: c.keep, slow: 0, lacks: false }; }
+  if (src[0] === 'T') { const q = sim.S.nb && sim.S.nb.list[+src.slice(1)]; return { name: `Food from ${q ? q.place : 'the neighbours'}`, meals: 1, proc: 'ferment', keep: 60, slow: 0, lacks: false }; }   // dried and smoked, from a caravan
   const k = sim.kinds[+src.slice(1)]; return k && k.food ? { name: k.name, ...k.food } : null;
 }
 

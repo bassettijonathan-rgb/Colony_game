@@ -27,4 +27,15 @@ export const SEALED = {
     { id: 'sx1', name: 'Stand-in fever', sym: 'A stand-in fever after a day in the wet', src: { out: { terr: ['marsh', 'shallow'], season: [1, 1, 1, 0], p: .0016 } }, spread: null, incub: [48, 96], sick: [48, 96], crisis: [12, 24], sev: 1, crisisAt: .6, hits: { move: .3, consc: .1 }, fever: .8, kill: .3, abx: false, after: 'immune', imm: .8, text: 'Stand-in text for a local illness.' },
     { id: 'sx2', name: 'Stand-in rash', sym: 'A stand-in rash after gathering', src: { out: { act: ['gather'], season: [1, 1, 1, 0], p: .002 } }, spread: null, incub: [2, 6], sick: [24, 48], crisis: [1, 2], sev: .5, crisisAt: 2, hits: { manip: .4 }, fever: .1, kill: 0, abx: false, after: 'none', text: 'Stand-in text for a local illness.' },
   ],
+  // Neighbours: each world draws two or three kinds of settlement from this pool; the fields are described in the
+  // sealed file and read by src/core/nb.js.
+  nb: {
+    kinds: ['north', 'river', 'hill'].map((id, i) => ({
+      id, place: `Stand-in ${id}`, folk: `the ${id} folk`, pop: [50, 150], km: [20, 40], coat: [[110, 100, 120], [120, 130, 90], [130, 100, 80]][i], coat2: [190, 180, 160],
+      trust: [10, 20, 0][i], fair: 1, honest: 1, wants: { ore: 1.5, abx: 2, meals: 1.2 }, offers: { meals: [20, 60], timber: [5, 20], ore: [0, 10] },
+      knows: .5, ills: true, joins: .15, namesake: 0, given: ['Ash', 'Bee', 'Cal', 'Dee', 'Eli', 'Fay'], family: ['Stand', 'In'], drift: [],
+      about: 'Stand-in: people from {place}, {km} km to the {dir}, about {pop} of them.',
+      greet: ['Stand-in: {lead} from {place} is in camp to trade.'], joinWhy: ['Stand-in: {name} asks to stay.'],
+    })),
+  },
 };
