@@ -3,7 +3,7 @@
 // from then on the player chooses who the fabricator prints, runs the crews and plans what gets built.
 import { startSim } from './ui/simclient.js';
 import { View } from './render/view.js';
-import { PersonArt } from './render/people.js';
+import { PersonArt, artKey } from './render/people.js';
 import { Panels } from './ui/panels.js';
 import { News } from './ui/news.js';
 import { Guide } from './ui/guide.js';
@@ -120,12 +120,13 @@ function onReady(m) {
 }
 function setRoster(r) {
   A.people = r.people; A.archive = r.archive; A.names = r.people.map(p => p.name);
-  for (let i = 0; i < r.people.length; i++) if (!A.arts[i]) A.arts[i] = new PersonArt(r.people[i], A.ui && A.ui.p[i] ? A.ui.p[i][1] : -1);
+  for (let i = 0; i < r.people.length; i++) if (!A.arts[i]) A.arts[i] = new PersonArt(r.people[i], A.ui && A.ui.p[i] ? A.ui.p[i][1] : -1, A.ui && A.ui.p[i] ? A.ui.p[i][8] : 30);
 }
 // people wear their crew's colour, so a move to another crew changes their clothes
 function recolour() {
   const U = A.ui; if (!U) return;
-  for (let i = 0; i < A.arts.length; i++) { const k = U.p[i] ? U.p[i][1] : -1; if (A.arts[i].crew !== k) { const w = A.arts[i].walk; A.arts[i] = new PersonArt(A.people[i], k); A.arts[i].walk = w; } }
+  // and children grow, and hair greys
+  for (let i = 0; i < A.arts.length; i++) { const k = U.p[i] ? U.p[i][1] : -1, y = U.p[i] ? U.p[i][8] : 30; if (A.arts[i].crew !== k || A.arts[i].key !== artKey(y)) { const w = A.arts[i].walk; A.arts[i] = new PersonArt(A.people[i], k, y); A.arts[i].walk = w; } }
   A.leads = new Set(U.crews.filter(c => !c.gone && c.lead >= 0).map(c => c.lead));
 }
 function onMarks(m) {
@@ -561,6 +562,7 @@ window.__colony = {
   },
   setSpeed, select, goHome, requestSave, startColony, siteSelect, land, cmd, toast, startPlace, placeRect, confirmPlace, endPlace, showProject, get music() { return A.music.state; }, musicToggle,
   tab: t => A.panels.setTab(t), panels: () => A.panels, news: () => A.news,
+  who: i => ({ name: A.people[i] && A.people[i].name, row: A.ui && A.ui.p[i], x: A.pos[i * 4], y: A.pos[i * 4 + 1] }),
   look(x, y, z) { const V = A.view; V.fly = null; V.cam.x = x; V.cam.y = y; if (z) V.cam.z = z; V.clampCam(); },
 };
 boot();

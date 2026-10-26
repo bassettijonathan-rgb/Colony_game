@@ -213,7 +213,7 @@ export class View {
     }
     if (near) {
       order.sort((a, b) => pos[a * 4 + 1] - pos[b * 4 + 1]);
-      for (const i of order) { const o = i * 4, f = pos[o + 3], act = f >> 1, mv = f & 1; drawPerson(dc, arts[i], pos[o], pos[o + 1], pos[o + 2], mv, act, F.time); if (act !== ACT.BED && act !== ACT.DOWN) hDisc(pos[o], pos[o + 1], .28, act === ACT.EAT || act === ACT.ALONE || act === ACT.PLANT || act === ACT.QUARRY ? .8 : 1.2); else hDisc(pos[o], pos[o + 1], .3, .3); }
+      for (const i of order) { const o = i * 4, f = pos[o + 3], act = f >> 1, mv = f & 1; drawPerson(dc, arts[i], pos[o], pos[o + 1], pos[o + 2], mv, act, F.time); const z = arts[i].size || 1; if (act !== ACT.BED && act !== ACT.DOWN) hDisc(pos[o], pos[o + 1], .28 * z, (act === ACT.EAT || act === ACT.ALONE || act === ACT.PLANT || act === ACT.QUARRY ? .8 : 1.2) * z); else hDisc(pos[o], pos[o + 1], .3 * z, .3); }
     } else {
       const r = Math.max(.35, 2.2 / k);
       for (const i of order) drawDot(dc, arts[i], pos[i * 4], pos[i * 4 + 1], r);
@@ -477,6 +477,12 @@ export class View {
       const n = stage === 4 ? f : 1, cols = Math.max(1, p.w - 2), rows = Math.max(1, p.h - 2), all = cols * rows;
       for (let k = 0; k < all * n; k++) {
         const cx = X + (1 + k % cols) * z, cy = Y + (1 + (k / cols | 0)) * z;
+        if (p.type === 'mine') {   // a track down the middle of the gallery, and ore glinting in the faces at its edges
+          const r = k / cols | 0, c0 = k % cols, mid = rows >> 1, edge = c0 === 0 || c0 === cols - 1 || r === 0 || r === rows - 1;
+          if (r === mid) { ui.fillStyle = '#4a3d31'; ui.fillRect(cx, cy + z * .3, z, z * .4); ui.fillStyle = '#8f8a80'; ui.fillRect(cx, cy + z * .34, z, Math.max(1, z * .06)); ui.fillRect(cx, cy + z * .6, z, Math.max(1, z * .06)); if (c0 === (p.id % cols)) { ui.fillStyle = '#5b4a3a'; ui.fillRect(cx + z * .12, cy + z * .18, z * .76, z * .5); ui.fillStyle = '#ac8650'; ui.fillRect(cx + z * .2, cy + z * .12, z * .6, z * .22); } }
+          else if (edge && hash(k, p.id, 5) < .45) { ui.fillStyle = '#ac8650'; ui.fillRect(cx + z * .25, cy + z * .25, z * .3, z * .3); ui.fillStyle = '#d8b878'; ui.fillRect(cx + z * .35, cy + z * .3, z * .12, z * .12); }
+          continue;
+        }
         if (p.type === 'burrow') { if ((k / cols | 0) % 3 === 2) continue; ui.fillStyle = '#6f5a44'; ui.fillRect(cx + z * .1, cy + z * .2, z * .8, z * .6); ui.fillStyle = '#b8ad98'; ui.fillRect(cx + z * .18, cy + z * .28, z * .64, z * .44); }
         else { const edge = k % cols === 0 || k % cols === cols - 1 || (k / cols | 0) === 0 || (k / cols | 0) === rows - 1; if (!edge) continue; ui.fillStyle = '#5d4632'; ui.fillRect(cx + z * .08, cy + z * .08, z * .84, z * .84); ui.fillStyle = hash(k, p.id, 3) < .5 ? '#9a7a4a' : '#7d8a52'; ui.fillRect(cx + z * .22, cy + z * .22, z * .56, z * .56); }
       }

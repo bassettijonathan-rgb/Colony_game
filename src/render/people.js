@@ -18,11 +18,17 @@ const SKIN = [[238, 200, 170], [226, 180, 150], [214, 168, 130], [192, 138, 98],
 const HAIR = [[156, 64, 36], [58, 40, 28], [30, 28, 26], [28, 24, 30], [110, 96, 88], [222, 186, 110], [190, 190, 196], [120, 70, 40]];
 const STYLES = ['bob', 'curly', 'short', 'bun', 'pony', 'cap', 'bald', 'bandana', 'helmet', 'beanie', 'short', 'bun'];
 
-export function lookOf(c, crew) {
+// y is the body's age in years: children wear their own bright clothes until they join a crew, and hair greys after fifty
+export function lookOf(c, crew, y = 30) {
   const r = lcg(c.look + 11);
-  const app = crewColour(crew);
-  return { app, app2: mix3(app, [240, 230, 210], .55), skin: SKIN[(r() * SKIN.length) | 0], hair: HAIR[(r() * HAIR.length) | 0], style: STYLES[(r() * STYLES.length) | 0], capc: hsl(r() * 360, .35, .4), trim: r() };
+  const app = crew < 0 && y < 13 ? hsl((c.look * .37) % 360, .4, .56) : crewColour(crew);
+  const skin = SKIN[(r() * SKIN.length) | 0], hair0 = HAIR[(r() * HAIR.length) | 0], style = STYLES[(r() * STYLES.length) | 0], capc = hsl(r() * 360, .35, .4), trim = r();
+  const hair = y > 50 ? mix3(hair0, [206, 206, 210], Math.min(.85, (y - 50) / 28)) : hair0;
+  return { app, app2: mix3(app, [240, 230, 210], .55), skin, hair, style: y < 13 && (style === 'helmet' || style === 'cap' || style === 'bald') ? 'short' : style, capc, trim };
 }
+// what changes how a person is drawn as they age: a child's size, an older person's grey
+export const artKey = y => y < 16 ? 'k' + Math.round(sizeAt(y) * 20) : y > 50 ? 'g' + Math.min(6, Math.floor((y - 50) / 5)) : 'a';
+const sizeAt = y => y < 16 ? .5 + .5 * Math.max(0, y - 2) / 14 : 1;
 function makeBody(L) {
   const cv = mk(SP, SP), g = cv.getContext('2d'); g.translate(SP / 2, SP / 2); g.scale(SP, SP);
   const gr = g.createRadialGradient(0, -.04, 0, 0, 0, .3); gr.addColorStop(0, css(mix3(L.app, [255, 255, 255], .18))); gr.addColorStop(.7, css(L.app)); gr.addColorStop(1, css(mul3(L.app, .72)));
@@ -81,7 +87,7 @@ function makeSideHead(L) {
 
 // what the renderer keeps per person between frames
 export class PersonArt {
-  constructor(c, crew) { this.crew = crew; this.L = lookOf(c, crew); this.body = null; this.head = null; this.side = null; this.walk = Math.random() * 6; }
+  constructor(c, crew, y = 30) { this.crew = crew; this.key = artKey(y); this.size = sizeAt(y); this.hf = 1 + (1 - this.size) * .5; this.L = lookOf(c, crew, y); this.body = null; this.head = null; this.side = null; this.walk = Math.random() * 6; }
   ensure() { if (!this.body) { this.body = makeBody(this.L); this.head = makeHead(this.L); } }
 }
 
@@ -91,7 +97,7 @@ export function drawPerson(g, a, x, y, ang, moving, act, t) {
   a.ensure();
   if (act === 0) {   // asleep in a bedroll under the open sky, curled on one side
     if (!a.side) a.side = makeSideHead(a.L);
-    g.save(); g.translate(x, y); g.rotate(ang + Math.PI / 2); g.scale(1.6, 1.6);
+    g.save(); g.translate(x, y); g.rotate(ang + Math.PI / 2); g.scale(1.6 * a.size, 1.6 * a.size);
     const L = a.L, br = 1 + .012 * Math.sin(t * 1.3 + a.walk);   // slow breathing
     g.fillStyle = 'rgba(0,0,0,.25)'; rrect(g, -.3, -.47, .66, 1.12, .12); g.fill();
     g.fillStyle = '#5d6168'; rrect(g, -.33, -.5, .66, 1.12, .12); g.fill(); g.strokeStyle = 'rgba(255,255,255,.12)'; g.lineWidth = .015; rrect(g, -.31, -.48, .62, 1.08, .1); g.stroke();   // the bedroll's mat
@@ -110,7 +116,7 @@ export function drawPerson(g, a, x, y, ang, moving, act, t) {
   }
   if (act === 26) {   // down: lying where they fell, on their back, an arm flung out
     if (!a.side) a.side = makeSideHead(a.L);
-    g.save(); g.translate(x, y); g.rotate(ang + Math.PI / 2 + (a.walk % 1 - .5) * .5); g.scale(1.6, 1.6);
+    g.save(); g.translate(x, y); g.rotate(ang + Math.PI / 2 + (a.walk % 1 - .5) * .5); g.scale(1.6 * a.size, 1.6 * a.size);
     const L = a.L, br = 1 + .018 * Math.sin(t * 2.6 + a.walk), dark = css(mul3(L.app, .62)), arm = css(mul3(L.app, .8)), skin = css(L.skin);
     g.fillStyle = 'rgba(0,0,0,.28)'; ell(g, .04, .14, .3, .52); g.fill();
     g.fillStyle = dark; g.save(); g.rotate(.12); rrect(g, -.15, .1, .12, .5, .05); g.fill(); g.restore(); g.save(); g.rotate(-.2); rrect(g, .03, .1, .12, .48, .05); g.fill(); g.restore();   // legs, one bent out
@@ -126,7 +132,7 @@ export function drawPerson(g, a, x, y, ang, moving, act, t) {
   if (act === 9 && still) sc = 1.62;          // sitting by the fire
   if (act === 10 && still) sc = 1.5;          // hunched, alone
   if ((act === 11 || act === 21 || act === 24 || act === 27) && still) sc = 1.58;         // kneeling: planting a stake, picking, taking a sample
-  g.save(); g.translate(x, y); g.rotate(ang + Math.PI / 2); sc *= 1 + bob; g.scale(sc, sc);
+  g.save(); g.translate(x, y); g.rotate(ang + Math.PI / 2); sc *= (1 + bob) * a.size; g.scale(sc, sc);
   if (act === 12) {   // just woken: the fabricator's glow still on them
     const k = .5 + .5 * Math.sin(t * 2.4 + a.walk), q = g.createRadialGradient(0, 0, .05, 0, 0, .55);
     q.addColorStop(0, `rgba(150,235,255,${.35 + .2 * k})`); q.addColorStop(1, 'rgba(150,235,255,0)'); g.fillStyle = q; ell(g, 0, 0, .55, .55); g.fill();
@@ -174,8 +180,9 @@ export function drawPerson(g, a, x, y, ang, moving, act, t) {
   g.drawImage(a.body, -.5, -.5, 1, 1);
   if (prop === 'sack') { g.fillStyle = 'rgba(0,0,0,.25)'; ell(g, .05, .09, .2, .17); g.fill(); g.fillStyle = '#9a8460'; ell(g, .02, .06, .19, .16); g.fill(); g.strokeStyle = 'rgba(60,46,30,.6)'; g.lineWidth = .015; g.beginPath(); g.moveTo(-.1, -.06); g.quadraticCurveTo(.02, .02, .14, -.04); g.stroke(); }   // on the back
   if (prop === 'log') { g.save(); g.translate(.06, -.06); g.rotate(-.35); g.fillStyle = 'rgba(0,0,0,.25)'; rrect(g, -.53, -.03, 1.1, .14, .07); g.fill(); g.fillStyle = '#7a5430'; rrect(g, -.55, -.07, 1.1, .14, .07); g.fill(); g.fillStyle = '#c9a273'; ell(g, .54, 0, .06, .07); g.fill(); g.restore(); }   // over the shoulder
-  if (act === 10 && still) { g.globalAlpha = .85; g.drawImage(a.head, -.5, -.44, 1, 1); g.globalAlpha = 1; }
-  else g.drawImage(a.head, -.5, -.5, 1, 1);
+  const hf = a.hf;   // a child's head is bigger for the body
+  if (act === 10 && still) { g.globalAlpha = .85; g.drawImage(a.head, -.5 * hf, -.44 * hf, hf, hf); g.globalAlpha = 1; }
+  else g.drawImage(a.head, -.5 * hf, -.5 * hf, hf, hf);
   g.restore();
 }
 // far away, people are dots in their crew's colour
@@ -214,9 +221,9 @@ export function makeSeed() {
 
 // a portrait for the colonist bar and the person's card: head and shoulders, facing us, on a plate in their crew's colour
 const PORTRAITS = new Map();
-export function portrait(c, crew) {
-  const key = c.look + ':' + crew; let u = PORTRAITS.get(key); if (u) return u;
-  const L = lookOf(c, crew), S = 96, cv = mk(S, S), g = cv.getContext('2d');
+export function portrait(c, crew, y = 30) {
+  const key = c.look + ':' + crew + ':' + artKey(y); let u = PORTRAITS.get(key); if (u) return u;
+  const L = lookOf(c, crew, y), S = 96, cv = mk(S, S), g = cv.getContext('2d');
   const bg = g.createRadialGradient(S * .5, S * .35, 4, S * .5, S * .5, S * .75); bg.addColorStop(0, css(mix3(L.app, [255, 255, 255], .15))); bg.addColorStop(1, css(mul3(L.app, .28)));
   g.fillStyle = bg; g.fillRect(0, 0, S, S);
   g.scale(S, S); g.lineCap = 'round';

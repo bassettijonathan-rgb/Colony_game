@@ -4,9 +4,9 @@
 // card of the person you picked, the card of the building you picked, and the card for a building being placed. They only show what the simulation reports and send commands back; they decide nothing.
 import { ACT, ACT_NAME, SHIFTS, WORKS, RULES, SKILLS, SKILL_NAME, DAY_TICKS, HOUR, MAP } from '../core/consts.js';
 import { TRAITS, suggestFirst } from '../core/founders.js';
-import { PRINT_TICKS } from '../core/work.js';
+import { PRINT_TICKS, SMELT } from '../core/work.js';
 import { CROPS, CROP_KEYS, SAMPLES, TEST_H, PROC_NAME } from '../core/food.js';
-import { TYPES, PLANNABLE, STAGE_NAMES, TEST_STAGES, stagesOf, matName, LANDER_KW, FEED } from '../core/build.js';
+import { TYPES, PLANNABLE, STAGE_NAMES, TEST_STAGES, stagesOf, matName, LANDER_KW, FEED, seamOf } from '../core/build.js';
 import { progress } from '../render/buildings.js';
 import { crewColour, portrait } from '../render/people.js';
 import { LETTERS } from '../render/view.js';
@@ -25,14 +25,22 @@ const cap1 = s => s.charAt(0).toUpperCase() + s.slice(1);
 const SIDE = ['north', 'east', 'south', 'west'];
 const pct = f => Math.round(f * 100) + '%';
 const icon = (id, cls = 'ic') => `<svg class="${cls}"><use href="#i-${id}"/></svg>`;
-const TICON = { shelter: 'seed', dorm: 'dorm', commons: 'commons', workshop: 'tool', clinic: 'clinic', solar: 'solar', test: 'test', field: 'field', lab: 'lab', plant: 'tank', cellar: 'cellar', burrow: 'below' };
+const TICON = { shelter: 'seed', dorm: 'dorm', commons: 'commons', workshop: 'tool', clinic: 'clinic', solar: 'solar', test: 'test', field: 'field', lab: 'lab', plant: 'tank', cellar: 'cellar', burrow: 'below', mine: 'mine' };
+const KIN = { partner: 'Partner', parent: 'Parent', child: 'Child', sibling: 'Brother or sister' }, KIN_ORDER = ['partner', 'parent', 'child', 'sibling'];
+const GEN = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth'];
+// how old someone is: a founder's mind is older than the body the Seed printed for it
+function ageLine(p, r) {
+  const body = Math.floor(r[8] ?? p.age), mind = r[9] ?? p.age;
+  if (p.native) return `${body} · born here, ${GEN[Math.max(0, p.gen - 1)] || p.gen + 'th'} generation${r[8] < 2 ? ' · in the nursery' : r[8] < 13 ? ' · a child' : r[8] < 16 ? ' · an apprentice' : ''}`;
+  return `${mind}, in a body of ${body} · former ${p.trade.toLowerCase()}`;
+}
 const TAB = { archive: ['Archive', 'archive'], crews: ['Crews', 'crews'], build: ['Build', 'build'], life: ['Food and local life', 'life'], log: ['Log', 'log'] };
 // what a building holds, in a few words
-const holds = (type, c) => ({ shelter: `${c.beds} bunks`, dorm: `${c.beds} bunks`, commons: `seats for ${c.seats}`, workshop: `${c.benches} bench${c.benches > 1 ? 'es' : ''}`, clinic: `${c.beds} beds`, solar: `${c.panels} panels, ${c.supply} kW`, field: `${c.tiles} tiles of beds`, lab: `${c.benches} lab bench${c.benches > 1 ? 'es' : ''}`, plant: `${c.tanks} tank${c.tanks > 1 ? 's' : ''}`, cellar: `cool shelves for ${c.store} loads of food`, burrow: `${c.beds} bunks` })[type] || '';
+const holds = (type, c) => ({ shelter: `${c.beds} bunks`, dorm: `${c.beds} bunks`, commons: `seats for ${c.seats}`, workshop: `${c.benches} bench${c.benches > 1 ? 'es' : ''}`, clinic: `${c.beds} beds`, solar: `${c.panels} panels, ${c.supply} kW`, field: `${c.tiles} tiles of beds`, lab: `${c.benches} lab bench${c.benches > 1 ? 'es' : ''}`, plant: `${c.tanks} tank${c.tanks > 1 ? 's' : ''}`, cellar: `cool shelves for ${c.store} loads of food`, burrow: `${c.beds} bunks`, mine: `${c.faces} face${c.faces > 1 ? 's' : ''} to work` })[type] || '';
 const UG_TXT = { soil: 'soft soil: quick to dig, but the walls need a lot of shoring', clay: 'clay: heavier digging, and it holds its shape', stone: 'stone: slow digging, little shoring, and the spoil gives stone for the yard', 'hard rock': 'hard rock: very slow digging, but it barely needs shoring and gives stone' };
 const loads = L => Object.entries(L).filter(([k, n]) => n > 0 && k !== 'mark' && k !== 'test').map(([k, n]) => matName(k, n)).join(', ');const SHIFT_TXT = SHIFTS.map(s => `${s.name} ${s.a}–${s.b}`);
 // what a crew's members are doing, in a word each
-const DOING = { [ACT.BED]: 'asleep', [ACT.INSIDE]: 'asleep', [ACT.WALK]: 'walking', [ACT.HOME]: 'walking back', [ACT.TOBED]: 'turning in', [ACT.SURVEY]: 'surveying', [ACT.PLANT]: 'planting a stake', [ACT.CARRY]: 'carrying', [ACT.BUILD]: 'building', [ACT.EAT]: 'eating', [ACT.IDLE]: 'at camp', [ACT.ALONE]: 'off alone', [ACT.WAKE]: 'waking', [ACT.QUARRY]: 'cutting stone', [ACT.FELL]: 'felling', [ACT.STONE]: 'carrying stone', [ACT.LOG]: 'carrying logs', [ACT.TEST]: 'testing', [ACT.INDOORS]: 'indoors', [ACT.BENCH]: 'at a bench', [ACT.DEAD]: 'dead', [ACT.DOWN]: 'down', [ACT.TEND]: 'tending someone', [ACT.DRAG]: 'carrying someone', [ACT.FIGHT]: 'fighting a fire', [ACT.DIG]: 'digging' };
+const DOING = { [ACT.BED]: 'asleep', [ACT.INSIDE]: 'asleep', [ACT.WALK]: 'walking', [ACT.HOME]: 'walking back', [ACT.TOBED]: 'turning in', [ACT.SURVEY]: 'surveying', [ACT.PLANT]: 'planting a stake', [ACT.CARRY]: 'carrying', [ACT.BUILD]: 'building', [ACT.EAT]: 'eating', [ACT.IDLE]: 'at camp', [ACT.ALONE]: 'off alone', [ACT.WAKE]: 'waking', [ACT.QUARRY]: 'cutting stone', [ACT.FELL]: 'felling', [ACT.STONE]: 'carrying stone', [ACT.LOG]: 'carrying logs', [ACT.TEST]: 'testing', [ACT.INDOORS]: 'indoors', [ACT.BENCH]: 'at a bench', [ACT.DEAD]: 'dead', [ACT.DOWN]: 'down', [ACT.TEND]: 'tending someone', [ACT.DRAG]: 'carrying someone', [ACT.FIGHT]: 'fighting a fire', [ACT.DIG]: 'digging', [ACT.PLAY]: 'playing', [ACT.MIND]: 'minding the children' };
 const meterCol = (v, goodHigh) => { const x = goodHigh ? 100 - v : v; return x > 70 ? 'var(--bad)' : x > 45 ? 'var(--mid)' : 'var(--good)'; };
 // a row of buttons choosing a part of a window, and a numbered how-to for it
 const sub = (key, cur, items) => `<div class="seg sm sub">${items.map(([k, t]) => `<button data-act="sub" data-k="${key}" data-v="${k}" class="${cur === k ? 'on' : ''}">${t}</button>`).join('')}</div>`;
@@ -171,7 +179,7 @@ export class Panels {
       for (const f of suggestFirst(pool, capLeft)) this.chosen.add(f);
     }
     for (const f of [...this.chosen]) { const p = arch[f]; if (!p || p.woke != null || sd.queue.includes(f) || (sd.printing && sd.printing.fid === f)) this.chosen.delete(f); }
-    const sig = ['a', U.rv, sd.feed, sd.fb, sd.queue.join('.'), sd.printing ? sd.printing.fid : -1, [...this.chosen].join('.'), arch.length].join('|');
+    const G = U.gen, sig = ['a', U.rv, sd.feed, sd.fb, sd.queue.join('.'), sd.printing ? sd.printing.fid : -1, [...this.chosen].join('.'), arch.length, JSON.stringify(G)].join('|');
     return [sig, () => {
       const names = new Map(arch.map(p => [p.fid, p.name]));
       const plants = U.projects.filter(p => p.type === 'plant' && p.done);
@@ -181,6 +189,7 @@ export class Panels {
       if (sd.printing) h += `<div style="margin-top:8px;font-size:12px;font-weight:700">Printing ${esc(names.get(sd.printing.fid))}</div><div class="bar"><u id="prBar" style="width:0"></u></div>`;
       if (sd.queue.length) h += `<div class="sec">Next in line</div>` + sd.queue.map((f, i) => `<div class="q"><span>${i + 1}. ${esc(names.get(f))}</span><button data-act="unq" data-fid="${f}">Remove</button></div>`).join('');
       h += `</div>`;
+      h += this.tanksBox(U);
       if (capLeft > 0) {
         h += `<div class="note">Pick who wakes first. The archive keeps everyone you don't pick; ${capLeft} ${capLeft === 1 ? 'body is' : 'bodies are'} left to print.</div>
           <div class="row2" style="margin-bottom:6px"><button class="btn" data-act="seedpick">Seed's pick</button><button class="btn" data-act="clear"${this.chosen.size ? '' : ' disabled'}>Clear</button><span class="grow"></span><button class="btn go" data-act="print"${this.chosen.size ? '' : ' disabled'}>Print ${this.chosen.size || ''} selected</button></div>
@@ -198,6 +207,17 @@ export class Panels {
       if (awake.length) h += `<div class="sec">Awake · ${awake.length}</div>` + awake.map(p => row(p, false)).join('');
       return h;
     }];
+  }
+  // the Seed's growth tanks, the couples waiting, and the colony's rule on children
+  tanksBox(U) {
+    const G = U.gen; if (!G) return '';
+    const couples = U.p.filter(r => !(r[6] & 16)).length && G.born + G.womb.length + G.asks.length > 0;
+    let h = `<div class="box"><b>Growth tanks</b><div class="note" style="margin:2px 0 0">A couple can ask the Seed for a child. It grows one in each of its ${G.tanks} tanks for sixty days, from a body’s worth of feedstock and the genes of both parents. Founders you choose to print get the feedstock first.</div>`;
+    h += G.womb.length ? G.womb.map(e => `<div style="margin-top:8px;font-size:12px;font-weight:700">The child of ${esc(e.names[0])} and ${esc(e.names[1])}</div><div class="note" style="margin:0">Born in ${e.left} day${e.left === 1 ? '' : 's'}.</div><div class="bar"><u style="width:${Math.round((1 - e.left / 60) * 100)}%"></u></div>`).join('') : `<div class="note" style="margin:8px 0 0">${couples ? 'Both tanks are empty.' : 'Both tanks are empty. Couples form from close friendships, and ask for a child once they are settled.'}</div>`;
+    if (G.asks.length) h += `<div class="sec">Waiting for a tank</div>` + G.asks.map((q, i) => `<div class="q"><span>${i + 1}. ${esc(q.names[0])} and ${esc(q.names[1])} <small style="color:var(--mut)">· asked on day ${q.d}</small></span></div>`).join('');
+    const why = G.rule === 'no' ? 'Nobody gets a child while this rule stands.' : G.rule === 'fed' ? (G.ok ? `There are at least ${G.fedDays} days of food for everyone and nobody is hungry, so couples can have children.` : `There is less than ${G.fedDays} days of food for everyone, or someone is hungry, so couples wait.`) : 'Every couple who asks gets a child as soon as a tank and feedstock are free.';
+    h += `<div class="lbl">THE COLONY’S RULE ON CHILDREN</div><div class="seg sm">${[['yes', 'Every couple'], ['fed', 'If food allows'], ['no', 'Not now']].map(([k, t]) => `<button data-act="brule" data-v="${k}" class="${G.rule === k ? 'on' : ''}">${t}</button>`).join('')}</div><div class="note">${why}</div></div>`;
+    return h;
   }
   archiveLive(U) { const b = $('prBar'), p = U.seed.printing; if (b && p) b.style.width = Math.round((1 - p.left / PRINT_TICKS) * 100) + '%'; }
 
@@ -243,7 +263,8 @@ export class Panels {
       build: proj ? `Working on ${proj.name}: ${stagesOf(proj.type)[proj.stage].toLowerCase()}. When the yard runs out, they cut stone and fell trees themselves.` : 'Nothing they can build right now. Plan something in the Build tab, or check what the projects there are waiting for.',
       quarry: `They cut stone from boulders and rock faces and stack it in the yard, until there is enough for everything planned. ${y.stone} there now.`,
       timber: `They fell trees and carry the logs to the yard, until there is enough for everything planned. ${y.timber} there now.`,
-      workshop: ws ? 'They make airlock seals, pipe runs, power units and solar panels from salvage at the workshop benches, whichever the projects will run short of first.' : 'They need a finished workshop with power before they can make anything.',
+      workshop: ws ? `They make airlock seals, pipe runs, power units and solar panels from salvage at the workshop benches, whichever the projects will run short of first. When there is nothing to make, they smelt ore into salvage, ${SMELT.ore} loads into ${SMELT.out}.` : 'They need a finished workshop with power before they can make anything.',
+      mine: (() => { const m = U.projects.filter(p => p.type === 'mine' && p.done); return !m.length ? 'There is no finished mine yet. Plan one over a seam of ore in the Build window (press U to see the seams).' : m.some(p => p.seam > 0 && p.powered) ? `They cut ore at the mine faces and pile it in the yard, while the colony is short of metal. ${y.ore || 0} ore and ${y.salvage} salvage there now; the workshop smelts the ore.` : m.some(p => p.seam > 0) ? 'The mine is dark: it needs power for lights and air before anyone works it.' : 'Every mine is worked out. Plan a new one over another seam.'; })(),
       rest: `Resting: they stay around camp and recover.`,
       forage: (() => { const ok = U.F && U.F.life.some(l => l && l.tested && l.food); return ok ? 'They gather the wild food the tests showed is safe, bring compost for made soil when a field needs it, and take samples of anything not yet tested.' : 'Nothing found so far has been tested as food, so they take samples of what they find for the Seed to test.'; })(),
       farm: U.projects.some(p => p.type === 'field' && p.done) ? 'They sow, harvest and clear the fields. The Seed chooses each field’s crop unless you set one on its card.' : 'There is no finished field yet. Plan one in the Build window; a farm crew works it once it is made.',
@@ -321,7 +342,7 @@ export class Panels {
       const open = list.filter(p => !p.done), done = list.filter(p => p.done), bt = this.btab;
       let h = sub('btab', bt, [['plan', 'Plan'], ['list', `Projects · ${open.length}`], ['mat', 'Materials']]);
       if (bt === 'plan') {
-        h += how(['Pick a building below.', 'Drag on the map to draw it. <kbd>R</kbd> turns the door; the card shows what it needs. Confirm to add it to the projects.', 'Build crews (Crews window, <kbd>C</kbd>) work through the projects from the top, cutting stone and felling trees for what each needs.', 'A finished building only works with power: see Materials.', 'Root cellars and dug quarters go below ground: the map switches to the view underneath (<kbd>U</kbd>), where the Seed’s soundings show what can be dug.']);
+        h += how(['Pick a building below.', 'Drag on the map to draw it. <kbd>R</kbd> turns the door; the card shows what it needs. Confirm to add it to the projects.', 'Build crews (Crews window, <kbd>C</kbd>) work through the projects from the top, cutting stone and felling trees for what each needs.', 'A finished building only works with power: see Materials.', 'Root cellars, dug quarters and mines go below ground: the map switches to the view underneath (<kbd>U</kbd>), where the Seed’s soundings show what can be dug and where the seams of ore run.']);
         h += `<div class="types">${PLANNABLE.map(t => `<button data-act="plan" data-type="${t}"><i class="bi">${icon(TICON[t])}</i><b>${TYPES[t].name}</b><span>${esc(TYPES[t].use)}</span></button>`).join('')}</div>`;
         if (U.blueprints.length) h += `<div class="sec">Blueprints</div><div class="note" style="margin:0 0 6px">Buildings you saved to place again, same size and layout.</div>` + U.blueprints.map((b, i) => `<div class="q"><span>${esc(b.name)} <em class="dim">${TYPES[b.type].name.toLowerCase()} · ${b.w} × ${b.h}</em></span><button class="btn" data-act="bp" data-i="${i}">Place</button><button data-act="bpDel" data-i="${i}" title="Forget this blueprint">Forget</button></div>`).join('');
         return h;
@@ -339,8 +360,8 @@ export class Panels {
         h += `<div class="sec">Power and stock</div><div class="box"><div class="row2"><b class="grow">Power</b><span class="num">${pw.draw} of ${pw.supply} kW</span></div><div class="bar"><u style="width:${pct(used)}"></u></div>
           <div class="note" style="margin:6px 0 0">The lander makes ${LANDER_KW} kW${pw.supply > LANDER_KW ? ` and the solar fields ${+(pw.supply - LANDER_KW).toFixed(1)} kW` : ''}. Finished buildings take power in list order; any that don't fit stay dark and unused.${dark.length ? ` Dark now: ${dark.map(p => esc(p.name)).join(', ')}.` : ''}</div></div>`;
         const cg = st.cargo, pr = st.precise;
-        h += `<div class="box"><b>Stock</b><div class="stock"><span>Stone <em>${st.yard.stone}</em></span><span>Timber <em>${st.yard.timber}</em></span><span>Salvage <em>${st.yard.salvage}</em></span><span>Lander modules <em>${cg.module}</em></span><span>Airlock seals <em>${pr.seal}</em></span><span>Pipe runs <em>${pr.pipe}</em></span><span>Power units <em>${pr.power}</em></span><span>Solar panels <em>${pr.panel}</em></span></div>
-          <div class="note" style="margin:6px 0 0">${U.seed.fab ? `The fabricator is making ${matName(U.seed.fab.k, 1).replace(/^1 (.)/, (m, c) => ('aeiou'.includes(c) ? 'an ' : 'a ') + c)} from salvage. ` : ''}Stone and timber come from the land; seals, pipes, power units and panels are made from salvage at workshop benches, or slowly by the fabricator.</div></div>`;
+        h += `<div class="box"><b>Stock</b><div class="stock"><span>Stone <em>${st.yard.stone}</em></span><span>Timber <em>${st.yard.timber}</em></span><span>Salvage <em>${st.yard.salvage}</em></span>${st.yard.ore ? `<span>Ore <em>${st.yard.ore}</em></span>` : ''}<span>Lander modules <em>${cg.module}</em></span><span>Airlock seals <em>${pr.seal}</em></span><span>Pipe runs <em>${pr.pipe}</em></span><span>Power units <em>${pr.power}</em></span><span>Solar panels <em>${pr.panel}</em></span></div>
+          <div class="note" style="margin:6px 0 0">${U.seed.fab ? `The fabricator is making ${matName(U.seed.fab.k, 1).replace(/^1 (.)/, (m, c) => ('aeiou'.includes(c) ? 'an ' : 'a ') + c)} from salvage. ` : ''}Stone and timber come from the land; seals, pipes, power units and panels are made from salvage at workshop benches, or slowly by the fabricator. When the salvage the Seed brought down runs out, more comes from ore: a mine dug along a seam brings it up, and a workshop smelts it.</div></div>`;
         return h;
       }
       // the list
@@ -389,7 +410,7 @@ export class Panels {
     }
     if (T.below && c.ground) {
       const g = c.ground;
-      h += `<div class="sec">The ground below</div><div class="note">The Seed's soundings show ${esc(UG_TXT[g.name] || g.name)}.${g.dig > 1.05 ? ` Digging takes ${Math.round((g.dig - 1) * 100)}% longer than in soil.` : ''}${g.ore > .05 ? ' A seam of metal ore runs through it: the diggers will bring it up, and the fabricator refines it into salvage.' : ''} Below ground there is nothing to burn and the cold doesn't reach, but water finds its way down the stairs.</div>`;
+      h += `<div class="sec">The ground below</div><div class="note">The Seed's soundings show ${esc(UG_TXT[g.name] || g.name)}.${g.dig > 1.05 ? ` Digging takes ${Math.round((g.dig - 1) * 100)}% longer than in soil.` : ''}${P.type === 'mine' ? (g.ore > .05 ? ` A seam of metal ore runs under ${Math.round(g.ore * 100)}% of it: about ${seamOf(g, P.w, P.h)} loads, which a mining crew brings up once the galleries are dug.` : '') : g.ore > .05 ? ' A seam of metal ore runs through it: the diggers will bring it up, and a workshop or the fabricator smelts it into salvage.' : ''} Below ground there is nothing to burn and the cold doesn't reach, but water finds its way down the stairs.</div>`;
     }
     const L = c.load;
     if (L && !T.open && !T.below) {
@@ -432,6 +453,7 @@ export class Panels {
       case 'work': this.api.cmd('crewSet', { crew, work: el.dataset.v }); break;
       case 'shift': this.api.cmd('crewSet', { crew, shift: +el.dataset.v }); break;
       case 'shiftAll': this.api.cmd('shiftAll', { shift: +el.dataset.v }); break;
+      case 'brule': this.api.cmd('birthRule', { v: el.dataset.v }); break;
       case 'area': this.api.pickArea(crew); break;
       case 'areaClear': this.api.cmd('crewSet', { crew, target: -1 }); break;
       case 'person': this.api.select(+el.dataset.id, true); break;
@@ -491,7 +513,7 @@ export class Panels {
       const p = A.people[i], r = U.p[i], cond = Math.min(100 - r[2], 100 - r[3], r[5]), f = r[6], act = r[0];
       const asleep = act === ACT.BED || act === ACT.INSIDE, st = f & 512 ? ['!', 'down', 'Down'] : f & 16384 ? ['!', 'sick', 'Gravely ill'] : f & 256 ? ['+', 'bleed', 'Bleeding'] : f & 4096 ? ['~', 'sick', f & 8192 ? 'Sick, kept apart' : 'Sick'] : f & 2 ? ['+', 'hurt', f & 2048 ? 'Hurt, getting worse' : 'Hurt'] : f & 8 ? ['!', 'hungry', 'Hungry'] : asleep ? ['z', '', 'Asleep'] : null;
       const tip = `${p.name} · ${DOING[act] || ACT_NAME[act] || ''}${st && st[2] !== 'Asleep' ? ' · ' + st[2].toLowerCase() : ''}\nFatigue ${r[2]} · strain ${r[3]} · trust ${r[4]} · health ${r[5]}\nDouble-click to look at them`;
-      return `<button class="pc${A.sel === i ? ' on' : ''}${f & 1024 ? ' care' : ''}${act === ACT.INSIDE || act === ACT.INDOORS || act === ACT.BENCH ? ' out' : ''}" data-i="${i}" title="${esc(tip)}"><img src="${portrait(p, r[1])}" alt="">${st ? `<em class="${st[1]}">${st[0]}</em>` : ''}<span>${esc(p.name.split(' ')[0])}</span><u><i style="width:${cond}%;background:${meterCol(cond, true)}"></i></u></button>`;
+      return `<button class="pc${A.sel === i ? ' on' : ''}${f & 1024 ? ' care' : ''}${act === ACT.INSIDE || act === ACT.INDOORS || act === ACT.BENCH ? ' out' : ''}" data-i="${i}" title="${esc(tip)}"><img src="${portrait(p, r[1], r[8])}" alt="">${st ? `<em class="${st[1]}">${st[0]}</em>` : ''}<span>${esc(p.name.split(' ')[0])}</span><u><i style="width:${cond}%;background:${meterCol(cond, true)}"></i></u></button>`;
     }).join('');
     el.hidden = false;
   }
@@ -502,10 +524,10 @@ export class Panels {
     if (i < 0 || !U || !U.p[i] || !A.people[i]) { card.hidden = true; return; }
     const p = A.people[i], r = U.p[i], d = U.detail && U.detail.id === i ? U.detail : null, crew = r[1] >= 0 ? U.crews[r[1]] : null;
     const flags = r[6], extra = [flags & 16 ? 'dead' : '', flags & 1 ? 'getting used to a new body' : '', flags & 512 && r[0] !== ACT.DOWN ? 'down' : '', flags & 256 ? 'bleeding' : flags & 2 ? 'hurt' : '', flags & 2048 ? 'getting worse' : '', flags & 16384 ? 'gravely ill' : flags & 4096 ? 'sick' : '', flags & 8192 ? 'kept apart' : '', flags & 1024 && !(flags & 512) ? 'in care' : '', flags & 8 ? 'hungry' : '', flags & 64 ? 'cold' : '', flags & 128 ? 'unwell' : ''].filter(Boolean);
-    $('cName').textContent = p.name; const pic = portrait(p, r[1]); if ($('cPic').getAttribute('src') !== pic) $('cPic').src = pic;
-    $('cMeta').textContent = `${p.age} · former ${p.trade.toLowerCase()}`;
+    $('cName').textContent = p.name; const pic = portrait(p, r[1], r[8]); if ($('cPic').getAttribute('src') !== pic) $('cPic').src = pic;
+    $('cMeta').textContent = ageLine(p, r);
     $('cSw').style.background = rgb(crewColour(r[1]));
-    $('cCrew').textContent = crew ? `${crew.name} crew${crew.lead === i ? ', lead' : ''} · ${WORKS[crew.work].toLowerCase()} · ${SHIFT_TXT[crew.shift].toLowerCase()}` : 'Not in a crew';
+    $('cCrew').textContent = crew ? `${crew.name} crew${crew.lead === i ? ', lead' : ''}${r[8] < 16 ? ', apprentice' : ''} · ${WORKS[crew.work].toLowerCase()} · ${SHIFT_TXT[crew.shift].toLowerCase()}` : r[8] < 2 ? 'In the Seed’s nursery' : flags & 65536 ? 'Too young for the crews' : flags & 131072 ? 'Retired from the crews' : 'Not in a crew';
     $('cJob').textContent = (flags & 16 ? 'Dead' : ACT_NAME[r[0]] || '') + (extra.length && !(flags & 16) ? ' · ' + extra.join(', ') : '');
     { const cc = $('cCtl'), mine = U.ctl === i;
       cc.hidden = U.mode !== 'landfall' || !!(flags & 16); cc.textContent = mine ? 'Release' : 'Take charge'; cc.classList.toggle('on', mine); cc.disabled = !mine && !U.emerg;
@@ -525,8 +547,10 @@ export class Panels {
         const diet = d.tox > 4 ? ' Something in the diet is building up in the body: aching joints, headaches.' : d.lack > 10 ? ' The diet has been short of something for a long while: tired, slow to heal.' : d.tox > 2 || d.lack > 5 ? ' The diet is starting to tell.' : '';
         h += `<div class="note" style="margin:10px 0 0">${d.home ? `Sleeps in ${esc(d.home)}.` : 'Sleeps in a bedroll by the Seed.'} ${meal}${diet}</div>`;
         h += `<div class="sec">Skills</div><div class="skills">${SKILLS.map(k => `<div>${SKILL_NAME[k]}<em>${d.skills[k].toFixed(1)}</em></div>`).join('')}</div>`;
-        const ties = d.ties.filter(t => t.k);
-        if (ties.length) h += `<div class="sec">People</div><div class="chips">${ties.map(t => `<span class="chip ${t.k === 'rival' ? 'b' : 'g'}">${t.k === 'friend' ? 'Friend' : t.k === 'rival' ? 'Rival' : cap1(t.k)}: ${esc(A.names[t.id] || '')}</span>`).join('')}</div>`;
+        const gone = id => U.p[id] && U.p[id][6] & 16 ? ' (died)' : '';
+        const fam = d.ties.filter(t => KIN[t.k]).sort((a, b) => KIN_ORDER.indexOf(a.k) - KIN_ORDER.indexOf(b.k)), ties = d.ties.filter(t => t.k && !KIN[t.k]);
+        if (fam.length) h += `<div class="sec">Family</div><div class="chips">${fam.map(t => `<span class="chip g">${KIN[t.k]}: ${esc(A.names[t.id] || '')}${gone(t.id)}</span>`).join('')}</div>`;
+        if (ties.length) h += `<div class="sec">People</div><div class="chips">${ties.map(t => `<span class="chip ${t.k === 'rival' ? 'b' : 'g'}">${t.k === 'friend' ? 'Friend' : t.k === 'rival' ? 'Rival' : cap1(t.k)}: ${esc(A.names[t.id] || '')}${gone(t.id)}</span>`).join('')}</div>`;
         if (d.tr && d.tr.length) h += `<div class="sec">What they carry</div>${d.tr.slice().sort((a, b) => b.w - a.w).map(t => `<div class="mm2" title="${t.w >= 50 ? 'Heavy: it adds to their strain, troubles their sleep and brings a breakdown closer' : t.w >= 20 ? 'It still weighs on them, and comes back when the same thing happens again' : 'Fading'}"><em>${t.w >= 50 ? 'Heavy' : t.w >= 20 ? 'Weighing' : 'Fading'}</em>${esc(TR_NAME[t.k])}: ${esc(t.m)}</div>`).join('')}`;
         h += `<div class="sec">Memories</div>${d.mem.slice().reverse().map(m => `<div class="mm2"><em>${m.d ? 'Day ' + m.d : 'Before'}</em>${esc(m.m)}</div>`).join('')}`;
       }
@@ -539,7 +563,7 @@ export class Panels {
       ms.innerHTML = `<option value="-1">No crew</option>` + U.crews.filter(c => !c.gone).map(c => `<option value="${c.id}">${esc(c.name)} crew</option>`).join('');
       ms.value = String(r[1]);
     }
-    ms.disabled = !!(flags & 16);
+    ms.disabled = !!(flags & 16) || !!(flags & 65536);
     card.hidden = false;
   }
 
@@ -584,6 +608,10 @@ export class Panels {
       h += `<div class="sec">Next body · ${sd.fb} of ${sd.per} batches</div><div class="bar"><u style="width:${Math.round(sd.fb / sd.per * 100)}%"></u></div>`;
       h += `<div class="note" style="margin:6px 0 0">Each batch takes ${FEED.biomass} loads of biomass and ${FEED.stone} of stone from the yard and half a day with power. ${sd.feed ? `The fabricator holds feedstock for ${sd.feed} ${sd.feed === 1 ? 'body' : 'bodies'}: pick who wakes in the Archive (<kbd>Q</kbd>).` : ''}</div>`;
       if (p.why) h += `<div class="pw">${esc(p.why)}</div>`;
+    }
+    if (p.type === 'mine') {
+      const Y = U.stores.yard;
+      h += `<div class="sec">The seam</div><div class="note" style="margin:0">${p.seam > 0 ? `About ${p.seam} loads of ore are left to bring up${p.done ? '' : ', once the galleries are dug'}.` : 'Worked out: there is no ore left under it. Plan a new mine over another seam.'} ${p.done && p.seam > 0 ? 'A crew set to mine work cuts it, a load at a time, and piles it in the yard, while the colony is short of metal.' : ''} Every three loads of ore smelt into two of salvage at a workshop bench, or more slowly in the Seed's fabricator.${Y.ore ? ` The yard holds ${Y.ore} ${Y.ore === 1 ? 'load' : 'loads'} of ore.` : ''}</div>`;
     }
     if (p.type === 'field' && p.done) { const [state, sel] = fieldBits(p); h += `<div class="sec">Crop</div><div class="note" style="margin:0 0 6px">${state}</div>${sel}`; }
     if (!p.done) {

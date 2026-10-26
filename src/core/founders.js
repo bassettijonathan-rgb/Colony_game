@@ -4,7 +4,7 @@
 import { SKILLS } from './consts.js';
 import { lcg } from './rng.js';
 
-const GIVEN = ['Ada', 'Amara', 'Anders', 'Aiko', 'Bao', 'Bram', 'Cass', 'Chidi', 'Dalia', 'Dmitri', 'Eero', 'Elif', 'Esme', 'Farid', 'Freya', 'Gael', 'Hana', 'Idris', 'Ilse', 'Imani', 'Jonah', 'Juno', 'Kaito', 'Kesi', 'Lars', 'Leila', 'Lior', 'Mara', 'Mateo', 'Mei', 'Nadia', 'Niko', 'Noor', 'Oren', 'Orla', 'Pavel', 'Priya', 'Quinn', 'Rafael', 'Rhea', 'Rosa', 'Sami', 'Sanna', 'Selin', 'Tariq', 'Tomas', 'Uma', 'Vera', 'Wren', 'Yara', 'Yusuf', 'Zofia', 'Ines', 'Kofi', 'Liang', 'Maeve', 'Otto', 'Paz', 'Sofia', 'Teo'];
+export const GIVEN = ['Ada', 'Amara', 'Anders', 'Aiko', 'Bao', 'Bram', 'Cass', 'Chidi', 'Dalia', 'Dmitri', 'Eero', 'Elif', 'Esme', 'Farid', 'Freya', 'Gael', 'Hana', 'Idris', 'Ilse', 'Imani', 'Jonah', 'Juno', 'Kaito', 'Kesi', 'Lars', 'Leila', 'Lior', 'Mara', 'Mateo', 'Mei', 'Nadia', 'Niko', 'Noor', 'Oren', 'Orla', 'Pavel', 'Priya', 'Quinn', 'Rafael', 'Rhea', 'Rosa', 'Sami', 'Sanna', 'Selin', 'Tariq', 'Tomas', 'Uma', 'Vera', 'Wren', 'Yara', 'Yusuf', 'Zofia', 'Ines', 'Kofi', 'Liang', 'Maeve', 'Otto', 'Paz', 'Sofia', 'Teo'];
 const FAMILY = ['Abara', 'Lindqvist', 'Okafor', 'Varga', 'Moreau', 'Tanaka', 'Haddad', 'Novak', 'Castell', 'Mensah', 'Koval', 'Ferreira', 'Brandt', 'Osei', 'Petrov', 'Rahimi', 'Sorensen', 'Duarte', 'Nakamura', 'Quist', 'Achterberg', 'Belov', 'Cruz', 'Delacroix', 'Eklund', 'Fontaine', 'Grieve', 'Halloran', 'Iwu', 'Jensen', 'Kaur', 'Lemaire', 'Murata', 'Nwosu', 'Oyelaran', 'Pires', 'Reyes', 'Sato', 'Tamm', 'Ueda', 'Vance', 'Wekesa', 'Yilmaz', 'Zamora', 'Arslan', 'Bergstrom', 'Coelho', 'Draper'];
 
 // former trades and the skills they leave a person with
@@ -21,7 +21,7 @@ export const TRAITS = {
   patient: 'Takes long days without complaint', restless: 'Hates standing still; loves new ground', reckless: 'Fast, and careless with it', careful: 'Slow and safe',
   sociable: 'Needs company; suffers alone', solitary: 'Needs room; crowds wear on them', steady: 'Hard to shake', anxious: 'Takes worry to heart', cheerful: 'Bounces back quickly', stubborn: 'Slow to trust, slow to change their mind',
 };
-const OPP = { patient: 'restless', restless: 'patient', reckless: 'careful', careful: 'reckless', sociable: 'solitary', solitary: 'sociable', steady: 'anxious', anxious: 'steady' };
+export const OPP = { patient: 'restless', restless: 'patient', reckless: 'careful', careful: 'reckless', sociable: 'solitary', solitary: 'sociable', steady: 'anxious', anxious: 'steady' };
 const MEMORIES = [
   'Remembers teaching a nephew to ride a bicycle.', 'Remembers a kitchen that always smelled of bread.', 'Remembers an argument with a brother that was never settled.',
   'Remembers a night shift when everything went wrong, and fixing it by morning.', 'Remembers a garden left half planted.', 'Remembers singing in a choir.',

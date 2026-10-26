@@ -1,6 +1,6 @@
 // How a person lives a day: when they sleep, work, eat and rest, and the three states of mind that rise and
 // fall for reasons you can trace (fatigue, strain, trust in the Seed), the ties they form, and what breaks.
-import { MAP, HOUR, DAY_TICKS, ACT, SHIFTS, OUTDOOR, hidden } from './consts.js';
+import { MAP, HOUR, DAY_TICKS, YEAR_DAYS, ACT, SHIFTS, OUTDOOR, hidden } from './consts.js';
 import { rnd, ri, clamp } from './rng.js';
 import { workNext, dropCarry } from './work.js';
 import { byId } from './build.js';
@@ -13,6 +13,7 @@ import { toIsolate, illDay, ILL } from './illness.js';
 import { fightSpot } from './hazards.js';
 import { scar, relive, traumaTick, traumaDay } from './trauma.js';
 import { ctlStart } from './control.js';
+import { close, FAMILY, BIT, playSpot, lastFounder } from './lives.js';
 
 const WORKING = a => a === ACT.BUILD || a === ACT.CARRY || a === ACT.SURVEY || a === ACT.PLANT || a === ACT.QUARRY || a === ACT.FELL || a === ACT.STONE || a === ACT.LOG || a === ACT.TEST || a === ACT.BENCH || a === ACT.GATHER || a === ACT.FARM || a === ACT.COOK || a === ACT.SAMPLE || a === ACT.SACK || a === ACT.FIGHT;
 // a finished building with its lights on
@@ -37,7 +38,10 @@ export function want(sim, c) {
   if (S.care && S.care.iso && toIsolate(c)) return 'ward';
   // the hurt rest in a clinic bed if there is one, or their own; so does anyone waiting to be treated
   if (c.cap && (laidUp(c) || (S.care && S.care.medics > 0 && needs(c, sim).some(n => TREAT.has(n.k))))) return 'ward';
+  // children: the smallest in the Seed's nursery; the others play by the fire, eat early and go to bed early
+  if (c.life < 3) return c.life === 0 ? 'nursery' : h >= c.bed || h < 7 ? 'sleep' : h >= 17 ? 'eat' : 'play';
   if (h >= c.bed || h < sh.a - .7) return 'sleep';
+  if (c.minding && h >= 7 && h < 17) return 'mind';   // nobody else is looking after their small child today
   if (cr && cr.work !== 'rest' && h >= sh.a && h < endOf(c, sh)) {
     const off = h >= 16.5 ? 'eat' : 'idle';
     if (c.fat >= 90 && cr.rules.rest) return off;
@@ -60,6 +64,7 @@ export function think(sim, c) {
     // a job that ran out of steps starts its next one
     if ((w === 'work' || w === 'fire' || w === 'ctl') && c.mv === 0 && c.timer <= 0 && !c.job) start(sim, c, w);
     else if (w === 'idle' && c.mv === 0 && c.act === ACT.IDLE && (rnd() < .04 || (coldOut(sim.S, c) && indoorsFor(sim.S, c)))) idleAt(sim, c);
+    else if ((w === 'play' || w === 'mind') && c.mv === 0 && (c.act === ACT.PLAY || c.act === ACT.MIND || c.act === ACT.IDLE) && (rnd() < (w === 'play' ? .12 : .03) || (coldOut(sim.S, c) && indoorsFor(sim.S, c)))) playAt(sim, c, w);
     return;
   }
   start(sim, c, w);
@@ -89,6 +94,8 @@ function start(sim, c, w) {
     if (mess) sim.goTo(c, sim.doorOf(mess), ACT.INDOORS); else sim.goTo(c, c.seat, ACT.EAT);
   }
   else if (w === 'idle') idleAt(sim, c);
+  else if (w === 'play' || w === 'mind') playAt(sim, c, w);
+  else if (w === 'nursery') { c.job = 'nursery'; sim.goTo(c, sim.cargoTile, ACT.INDOORS); }
   else if (w === 'alone') {
     const L = W.land;
     for (let k = 0; k < 30; k++) { const a = rnd() * 6.283, r = 14 + rnd() * 6, x = Math.floor(L.x + Math.cos(a) * r), y = Math.floor(L.y + Math.sin(a) * r), t = y * MAP + x; if (W.reach[t] && W.cost[t] && W.cost[t] < 15) { c.job = 'alone'; sim.goTo(c, t, ACT.ALONE); return; } }
@@ -105,6 +112,14 @@ function refuge(S, c) {
   let best = null, bd = 1e9;
   for (const p of S.projects) if (!p.gone && p.done && !p.shut && REFUGE.includes(p.type)) { const d = Math.hypot(p.x + p.w / 2 - c.x, p.y + p.h / 2 - c.y) - (p.type === 'burrow' ? 6 : 0); if (d < bd) { bd = d; best = p; } }
   return best;
+}
+// children play near the fire, where whoever minds them can see them; in the hard cold they all go indoors
+export function playAt(sim, c, w) {
+  const S = sim.S;
+  if (S.mode === 'landfall' && coldOut(S, c)) { const p = indoorsFor(S, c); if (p) { c.job = 'warm'; c.warmAt = p.id; sim.goTo(c, sim.doorOf(p), ACT.INDOORS); return; } }
+  const t = playSpot(sim);
+  if (t < 0) { idleAt(sim, c); return; }
+  c.job = w === 'play' ? 'play' : 'mind'; sim.goTo(c, t, w === 'play' ? ACT.PLAY : ACT.MIND);
 }
 function idleAt(sim, c) {
   const W = sim.W, L = W.land, S = sim.S;
@@ -162,7 +177,7 @@ export function mindTick(sim, c) {
   for (const id in c.ties) {
     const t = c.ties[id], o = S.cols[id]; if (!t.k || !o || o.dead || asleep) continue;
     if (Math.abs(o.x - c.x) > 6 || Math.abs(o.y - c.y) > 6) continue;
-    if (t.k === 'friend') rel += .5; else if (t.k === 'rival') g += .5;
+    if (t.k === 'partner') rel += .8; else if (close(t)) rel += .5; else if (t.k === 'rival') g += .5;
   }
   g += tt.g;                                                     // the weight of what they carry
   if (c.hungry) g += 2; g += Math.min(1.5, c.bd.pain) * 1.1; if (c.chill > 35) g += .8 + (c.chill - 35) / 40; if (c.unwell) g += .4;
@@ -239,7 +254,8 @@ function hurtBy(sim, c, kind, s, lead, mem, how) {
 }
 function anyoneNear(S, c, r) { for (const o of S.cols) if (o !== c && !o.dead && !hidden(o.act) && Math.abs(o.x - c.x) < r && Math.abs(o.y - c.y) < r) return true; return false; }
 function countNear(S, c, r) { let n = 0; for (const o of S.cols) if (o !== c && o.act === c.act && (c.act !== ACT.INDOORS || o.where === c.where) && Math.abs(o.x - c.x) < r && Math.abs(o.y - c.y) < r) n++; return n; }
-const grow = (c, k, v) => { c.skills[k] = Math.min(10, Math.round((c.skills[k] + v) * 1000) / 1000); };
+// practice: a few points a year of full-time work for a beginner, slower the better someone already is
+const grow = (c, k, v) => { c.skills[k] = Math.min(10, Math.round((c.skills[k] + v * .15 * (1.1 - c.skills[k] / 10)) * 1000) / 1000); c.pr |= BIT[k]; };
 
 // ---------- ties: working and eating together makes people familiar; temperament decides the rest ----------
 function bonds(sim, c, dt, working) {
@@ -258,6 +274,7 @@ function bonds(sim, c, dt, working) {
     if (c.traits.includes('cheerful') || o.traits.includes('cheerful')) da += .3;
     if (c.str > 60 || o.str > 60) da -= 1.2;   // tempers fray
     t.a = clamp(t.a + da * dt, -100, 100);
+    if (FAMILY.has(t.k)) continue;   // family stays family, whatever the day was like
     const k = t.a >= 25 && t.f >= 30 ? 'friend' : t.a <= -25 && t.f >= 15 ? 'rival' : t.k === 'friend' && t.a > 10 ? 'friend' : t.k === 'rival' && t.a < -10 ? 'rival' : null;
     if (k !== t.k) {
       t.k = k;
@@ -284,25 +301,31 @@ export function daily(sim, c) {
   if (S.mode === 'landfall') { dietDay(sim, c); illDay(sim, c); traumaDay(sim, c); }
   // keep only the ties that matter
   const ids = Object.keys(c.ties);
-  if (ids.length > 10) { ids.sort((a, b) => (c.ties[b].k ? 200 : 0) + c.ties[b].f - (c.ties[a].k ? 200 : 0) - c.ties[a].f); for (const id of ids.slice(10)) delete c.ties[id]; }
+  const w = t => (FAMILY.has(t.k) ? 1000 : t.k ? 200 : 0) + t.f;
+  if (ids.length > 10) { ids.sort((a, b) => w(c.ties[b]) - w(c.ties[a])); for (const id of ids.slice(10)) if (!FAMILY.has(c.ties[id].k)) delete c.ties[id]; }
 }
 // trust moves for the whole colony at once when something the Seed planned works out
 export function trustAll(sim, v, why) {
   for (const c of sim.S.cols) if (!c.dead) { c.tru = clamp(c.tru + v * (c.traits.includes('stubborn') ? .6 : 1), 0, 100); if (why) remember(sim, c, why); }
 }
-const DIED = { starved: ' of hunger', froze: ' of the cold', diet: ' after a long sickness from what they ate', bled: ': they lost too much blood', shock: ' of shock from their injuries', infection: ' of an infection that got into their wounds', head: ' of a head injury' };
-function die(sim, c, why) {
+const DIED = { old: ' of old age', starved: ' of hunger', froze: ' of the cold', diet: ' after a long sickness from what they ate', bled: ': they lost too much blood', shock: ' of shock from their injuries', infection: ' of an infection that got into their wounds', head: ' of a head injury' };
+export function die(sim, c, why) {
   if (c.care) endCare(sim, c);
   dropCarry(sim, c); c.dead = true; c.act = ACT.DEAD; c.mv = 0; c.home = c.mess = c.ward = -1; c.carried = -1; c.down = false; sim.S.stats.deaths++; spend(sim, 4, 'death');
   const ill = why.startsWith('ill:') && why.split(':');
-  sim.log(`${c.name} died${ill ? (ill[2] === '1' ? ` of ${ILL[ill[1]].name.toLowerCase()}` : ' of an illness nobody had named') : DIED[why] || ''}.`, 'bad', { e: 'death', lvl: 2, who: c.id, title: `${c.name} died` });
+  const yrs = Math.floor((sim.S.tick / DAY_TICKS - c.born) / YEAR_DAYS);
+  sim.log(`${c.name} died${ill ? (ill[2] === '1' ? ` of ${ILL[ill[1]].name.toLowerCase()}` : ' of an illness nobody had named') : DIED[why] || ''}${why === 'old' || c.life < 4 ? `, at ${yrs}` : ''}.`, 'bad', { e: why === 'old' ? 'oldage' : 'death', lvl: 2, who: c.id, title: `${c.name} died` });
   relive(sim, ['grief', 'death']);
   for (const o of sim.S.cols) if (!o.dead) {
     const t = o.ties[c.id], saw = !hidden(o.act) && o.act !== ACT.BED && Math.hypot(o.x - c.x, o.y - c.y) < 10;
-    o.str = Math.min(100, o.str + (t && t.k === 'friend' ? 25 : 8)); if (t && t.k) remember(sim, o, `Lost ${c.name}.`);
-    if (t && t.k === 'friend') scar(sim, o, 'grief', 45, `Lost ${c.name}.`, c.id); else if (saw || (o.care && o.care.who === c.id)) scar(sim, o, 'death', 22, `Saw ${c.name} die.`, c.id);
+    // a death of age is mourned, but it is not the same shock; the loss of a partner or a child is the hardest of all
+    const near = t && (t.k === 'partner' || t.k === 'child'), soft = why === 'old' ? .6 : 1;
+    o.str = Math.min(100, o.str + (near ? 35 : close(t) ? 25 : 8) * soft); if (t && t.k) remember(sim, o, `Lost ${c.name}.`);
+    if (close(t)) scar(sim, o, 'grief', (near ? 60 : 45) * soft, `Lost ${c.name}.`, c.id); else if (saw || (o.care && o.care.who === c.id)) scar(sim, o, 'death', 22, `Saw ${c.name} die.`, c.id);
   }
   const cr = c.crew >= 0 ? sim.S.crews[c.crew] : null;
   if (cr) { cr.members = cr.members.filter(i => i !== c.id); if (cr.lead === c.id) cr.lead = cr.members[0] ?? -1; }
+  if (c.partner >= 0 && sim.S.cols[c.partner]) sim.S.cols[c.partner].partner = -1;
+  lastFounder(sim, c);
   sim.S.rv++;
 }

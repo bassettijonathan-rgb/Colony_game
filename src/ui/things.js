@@ -68,6 +68,7 @@ export function thingCard(A, th) {
       if (sd.printing) h += row(`Printing ${esc(names.get(sd.printing.fid) || '')}`, '');
       if (sd.queue.length) h += row('Next in line', sd.queue.length);
       if (sd.fab) h += row('Making from salvage', esc(matName(sd.fab.k, 1)));
+      if (U.gen) { const G = U.gen, kids = U.p.filter(r => !(r[6] & 16) && r[8] < 2).length; h += sec('Growth tanks and nursery') + row('Children growing', `${G.womb.length} of ${G.tanks}`) + G.womb.map(e => row(`Child of ${esc(e.names[0].split(' ')[0])} and ${esc(e.names[1].split(' ')[0])}`, `${e.left} day${e.left === 1 ? '' : 's'}`)).join('') + (G.asks.length ? row('Couples waiting', G.asks.length) : '') + row('In the nursery', kids); }
       if (F) { h += sec('Analyser'); h += cur ? row(`Testing ${esc(cur.name.toLowerCase())}`, pct(lab.work / TEST_H)) : note('Idle. Samples of local life go here to be tested before anyone eats them.', 0); if (lab.queue.length) h += row('Waiting to be tested', lab.queue.length); }
       if (U.med) { const M = U.med; h += sec('Medical supplies') + row('Dressings', M.dress) + row('Painkillers', M.pk) + row('Antibiotic courses', M.abx) + row('Blood substitute', `${M.blood} unit${M.blood === 1 ? '' : 's'}`) + note('The fabricator makes more from salvage when they run low.', 0); }
       h += sec('Supplies') + row('Lander power', `${LANDER_KW} kW`) + (U.mode === 'stress' ? '' : row('Lander rations', `${Math.floor(U.food)} meals`)) + row('Sensor stakes not yet planted', sd.stakes);

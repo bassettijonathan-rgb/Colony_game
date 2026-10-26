@@ -11,6 +11,7 @@ import { dropCarry } from './work.js';
 import { diagnose, illMeal } from './illness.js';
 import { eat } from './food.js';
 import { spend } from './director.js';
+import { BIT } from './lives.js';
 
 export const MED_KIT = { dress: 24, pk: 16, abx: 8, blood: 6 };          // what the lander carried down
 export const MED_MADE = { dress: 8, pk: 4, abx: 2, blood: 2 };           // one batch from the fabricator
@@ -242,7 +243,7 @@ function treat(sim, o, c, k) {
   if (k === 'set') remember(sim, c, ok ? `${o.name} set a broken bone for them.` : `${o.name} set a broken bone for them, but it didn't go straight.`);
   if (k === 'surgery' && ok) remember(sim, c, `${o.name} operated on them and stopped a bleed inside.`);
 }
-const grow = (o, v) => { o.skills.medicine = Math.min(10, Math.round((o.skills.medicine + v) * 1000) / 1000); };
+const grow = (o, v) => { o.skills.medicine = Math.min(10, Math.round((o.skills.medicine + v) * 1000) / 1000); o.pr |= BIT.medicine; };
 
 // ---------- supper for the bedridden: brought to them where they lie ----------
 export function feedPatients(sim) {
