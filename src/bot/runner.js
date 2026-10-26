@@ -189,7 +189,7 @@ export function runColony(seed, days = 1, mode = 'landfall', count = 300, onTick
   while (S.tick < end) {
     const a = now(); sim.tick(); const d = now() - a; total += d; if (d > worst) worst = d;
     const t = S.tick % DAY_TICKS, live = S.cols.filter(c => !c.dead);
-    if (t === Math.round(3 * HOUR)) nights.push(live.filter(c => c.act === ACT.BED || c.act === ACT.INSIDE || c.alone > 0 || (c.fid >= 0 && S.archive[c.fid].woke > S.tick - 2 * HOUR) || c.life === 0 || c.plan === 'ward' || c.plan === 'care').length + '/' + live.length);   // a medic may be up with a patient, someone who broke down may sit out the night, and someone just printed is still finding their bedroll
+    if (t === Math.round(3 * HOUR)) nights.push(live.filter(c => c.act === ACT.BED || c.act === ACT.INSIDE || c.alone > 0 || (c.fid >= 0 && S.archive[c.fid].woke > S.tick - 2 * HOUR) || c.life === 0 || c.plan === 'ward' || c.plan === 'care' || (c.act === ACT.INDOORS && !c.plan) || c.act === ACT.TOBED).length + '/' + live.length);   // a medic may be up with a patient (or just done), someone who sat alone half the night is on the way to bed, someone who broke down may sit out the night, and someone just printed is still finding their bedroll
     if (t % HOUR === 0) { peak = Math.max(peak, ...live.map(c => c.chill)); }
     if (t === Math.round(12 * HOUR)) noons.push(live.filter(c => c.plan === 'work').length);
     if (t === Math.round(23 * HOUR)) {
