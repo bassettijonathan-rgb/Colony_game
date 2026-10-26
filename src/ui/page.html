@@ -378,6 +378,8 @@ table.rt{width:100%;border-collapse:collapse;font-size:11px;margin:4px 0 8px}tab
 #ctlHint[hidden]{display:none}
 #cCtl.on{color:#08131b;background:linear-gradient(180deg,#9fe6ff,#5fc1e6);border-color:#8fe0ff}
 #cCtl:disabled{opacity:.45;cursor:default}
+#cGrd.on{color:#1b0d08;background:linear-gradient(180deg,#ffc79a,#e8925a);border-color:#ffb27a}
+.nbp.raid{border-left:2px solid var(--bad)}.chip.bad{opacity:.6}
 #belowTag{position:absolute;left:50%;bottom:calc(var(--bot) + 74px);transform:translateX(-50%);padding:6px 8px 6px 12px;border-radius:3px;background:rgba(30,22,14,.9);border:1px solid rgba(201,162,107,.6);font-size:12px;font-weight:700;color:#e9d6b4;z-index:6;display:none;gap:10px;align-items:center;pointer-events:auto;box-shadow:0 8px 20px rgba(0,0,0,.45)}
 #app.below #belowTag{display:flex}
 #belowTag #belowTxt{white-space:nowrap}
@@ -650,7 +652,7 @@ table.rt{width:100%;border-collapse:collapse;font-size:11px;margin:4px 0 8px}tab
       <div class="in">
         <div class="job"><span class="dot"></span><span id="cJob"></span></div>
         <div id="cBody"></div>
-        <div class="foot"><button class="pill" id="cFollow">Follow</button><button class="pill" id="cCtl" hidden>Take charge</button><select id="cMove" aria-label="Move to crew"></select></div>
+        <div class="foot"><button class="pill" id="cFollow">Follow</button><button class="pill" id="cCtl" hidden>Take charge</button><button class="pill" id="cGrd" hidden title="When raiders come, the guard goes out to meet them">Guard</button><select id="cMove" aria-label="Move to crew"></select></div>
       </div>
     </div>
     <div class="glass" id="stats" hidden>

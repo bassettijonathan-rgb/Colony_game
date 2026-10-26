@@ -137,7 +137,7 @@ function guestArts() {
   const P = A.ui && A.ui.nb && A.ui.nb.party, sig = P ? P.seq + ':' + P.people.map(p => p.name).join() : '';
   if (!A.G) A.G = { n: 0, pos: new Float32Array(0), arts: [], names: [], sig: '' };
   if (A.G.sig === sig) return;
-  A.G.sig = sig; A.G.arts = P ? P.people.map(p => new PersonArt({ look: p.look, coat: p.coat }, -1, p.age)) : []; A.G.names = P ? P.people.map(p => p.name) : []; A.G.place = P ? A.ui.nb.list.find(q => q.i === P.i)?.place || '' : '';
+  A.G.sig = sig; A.G.arts = P ? P.people.map(p => new PersonArt({ look: p.look, coat: p.coat }, -1, p.age)) : []; A.G.names = P ? P.people.map(p => p.name) : []; A.G.place = P ? A.ui.nb.list.find(q => q.i === P.i)?.place || '' : ''; A.G.raid = !!P && P.kind === 'raid';
 }
 function onMarks(m) {
   const W = A.W; if (!W || !W.gone) return;
@@ -530,7 +530,8 @@ function hookInput() {
   $('bList').onclick = () => { if (A.thing) { const c = A.panels.thingInfo; if (c && c.btn) A.panels.setTab(c.btn.tab); return; } const id = A.projSel; A.panels.setTab('build:list'); showProject(id); };
   $('bCancel').onclick = () => { if (A.projSel >= 0) A.panels.askCancel(A.projSel); };
   $('bPause').onclick = () => { const p = A.ui && A.ui.projects.find(q => q.id === A.projSel); if (p) cmd('projPause', { id: p.id, on: !p.paused }); };
-  $('cCtl').onclick = () => toggleCtl(A.sel); $('ctlEnd').onclick = () => { if (A.ui && A.ui.ctl >= 0) toggleCtl(A.ui.ctl); };
+  $('cCtl').onclick = () => toggleCtl(A.sel);
+  $('cGrd').onclick = () => { const r = A.ui && A.ui.p[A.sel]; if (r) cmd('guard', { id: A.sel, on: !(r[6] & 524288) }); }; $('ctlEnd').onclick = () => { if (A.ui && A.ui.ctl >= 0) toggleCtl(A.ui.ctl); };
   // right-click gives the person under direct orders their next order
   app.addEventListener('contextmenu', e => {
     e.preventDefault();

@@ -103,7 +103,14 @@ function grow(sim) {
 // visitors: anyone who asks to stay is welcome while there is food; traders get the colony's surplus for what they
 // know, and for food when it is short
 function botNb(sim) {
-  const S = sim.S, P = S.nb && S.nb.party; if (!P || P.st !== 'stay') return;
+  const S = sim.S, P = S.nb && S.nb.party;
+  // a raid: the guard goes out, everyone if the guard is outnumbered; the hurt left behind are treated if there are dressings
+  if (P && P.kind === 'raid') {
+    if ((P.st === 'come' || P.st === 'loot') && !P.bot) { P.bot = 1; if (!S.cols.some(c => !c.dead && c.grd)) sim.command({ op: 'guardAuto' }); const n = S.cols.filter(c => !c.dead && c.grd).length; sim.command({ op: 'raidMode', m: n >= P.n ? 'guard' : 'all' }); }
+    if (P.st === 'held') sim.command({ op: 'captives', treat: (S.med.dress || 0) >= 4 });
+    return;
+  }
+  if (!P || P.st !== 'stay') return;
   const live = S.cols.filter(c => !c.dead).length, days = mealsInStore(sim, true) / Math.max(1, live);
   if (P.ask >= 0) sim.command({ op: 'join', yes: days > 15 && live < 150 });
   if (P.kind !== 'trade' || P.traded) return;
@@ -181,6 +188,7 @@ export function runColony(seed, days = 1, mode = 'landfall', count = 300, onTick
     }
     if (policy === 'careless' && t === Math.round(5 * HOUR)) careless();
     if (mode === 'landfall' && t === Math.round(6 * HOUR)) botBuild(sim);
+    else if (mode === 'landfall' && t % HOUR === 0 && S.nb && S.nb.party && S.nb.party.kind === 'raid') botNb(sim);   // a raid can't wait for the morning
     if (onTick) onTick(sim);
   }
   let worn = 0; for (const v of sim.wear) if (v > 60) worn++;

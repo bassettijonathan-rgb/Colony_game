@@ -17,8 +17,10 @@ import { ctlStart } from './control.js';
 import { close, FAMILY, BIT, playSpot, lastFounder, yearsOf } from './lives.js';
 import { exposeTick, sleepHit, ageHeal, ageTire } from './aging.js';
 import { lashOut, lostWith, noteDeath } from './society.js';
+import { raidOn, MUSTER } from './raid.js';
+import { nearFree } from './nb.js';
 
-const WORKING = a => a === ACT.TEACH || a === ACT.READ || a === ACT.WATCH || a === ACT.BUILD || a === ACT.CARRY || a === ACT.SURVEY || a === ACT.PLANT || a === ACT.QUARRY || a === ACT.FELL || a === ACT.STONE || a === ACT.LOG || a === ACT.TEST || a === ACT.BENCH || a === ACT.GATHER || a === ACT.FARM || a === ACT.COOK || a === ACT.SAMPLE || a === ACT.SACK || a === ACT.FIGHT;
+const WORKING = a => a === ACT.TEACH || a === ACT.READ || a === ACT.WATCH || a === ACT.BUILD || a === ACT.CARRY || a === ACT.SURVEY || a === ACT.PLANT || a === ACT.QUARRY || a === ACT.FELL || a === ACT.STONE || a === ACT.LOG || a === ACT.TEST || a === ACT.BENCH || a === ACT.GATHER || a === ACT.FARM || a === ACT.COOK || a === ACT.SAMPLE || a === ACT.SACK || a === ACT.FIGHT || a === ACT.BRAWL;
 // a finished building with its lights on
 const usable = (S, id) => { const p = id >= 0 ? byId(S, id) : null; return p && p.done && p.powered ? p : null; };
 // a bunkhouse with no power is still a roof: a dark, cold one, but out of the wind (not while it burns or stands in water)
@@ -35,6 +37,7 @@ export function want(sim, c) {
   if (c.care) return 'care';
   if (c.ctl) return 'ctl';          // under the player's direct orders in an emergency
   if (c.fight > 0) return 'fire';   // all hands to a fire near the camp
+  if (c.def >= 0) return 'defend';  // out to meet the raiders
   if (c.act === ACT.WAKE && c.timer > 0) return 'wake';
   if (c.alone > 0) return 'alone';
   if (c.held > S.tick) return 'held';                  // locked in the watch house for a day, after lashing out
@@ -44,7 +47,8 @@ export function want(sim, c) {
   // the clinic's rule: the sick with something catching stay apart until it has passed
   if (S.care && S.care.iso && toIsolate(c)) return 'ward';
   // the hurt rest in a clinic bed if there is one, or their own; so does anyone waiting to be treated
-  if (c.cap && (laidUp(c) || (S.care && S.care.medics > 0 && needs(c, sim).some(n => TREAT.has(n.k))))) return 'ward';   // a particle storm overhead: everyone under cover
+  if (c.cap && (laidUp(c) || (S.care && S.care.medics > 0 && needs(c, sim).some(n => TREAT.has(n.k))))) return 'ward';
+  if (c.life > 0 && raidOn(S)) return 'shelter';   // raiders in the camp: everyone not meeting them goes under a roof
   // children: the smallest in the Seed's nursery; the others play by the fire, eat early and go to bed early
   if (c.life < 3) return c.life === 0 ? 'nursery' : h >= c.bed || h < 7 ? 'sleep' : h >= 17 ? 'eat' : c.life === 2 && h >= 8 && h < 15 && S.soc && S.soc.sch >= 0 ? 'school' : 'play';
   if (h >= c.bed || h < sh.a - .7) return 'sleep';
@@ -70,7 +74,7 @@ export function think(sim, c) {
   if (w === 'carried') return;
   if (w === c.plan) {
     // a job that ran out of steps starts its next one
-    if ((w === 'work' || w === 'fire' || w === 'ctl') && c.mv === 0 && c.timer <= 0 && !c.job) start(sim, c, w);
+    if ((w === 'work' || w === 'fire' || w === 'ctl' || w === 'defend') && c.mv === 0 && c.timer <= 0 && !c.job) start(sim, c, w);
     else if (w === 'idle' && c.mv === 0 && c.act === ACT.IDLE && (rnd() < .04 || (coldOut(sim.S, c) && indoorsFor(sim.S, c)))) idleAt(sim, c);
     else if (w === 'shelter' && c.mv === 0 && (c.act === ACT.INDOORS || c.act === ACT.INSIDE)) c.act = sleepy(sim, c) ? ACT.INSIDE : ACT.INDOORS;   // sitting out the storm, asleep at night
     else if ((w === 'play' || w === 'mind') && c.mv === 0 && (c.act === ACT.PLAY || c.act === ACT.MIND || c.act === ACT.IDLE) && (rnd() < (w === 'play' ? .12 : .03) || (coldOut(sim.S, c) && indoorsFor(sim.S, c)))) playAt(sim, c, w);
@@ -88,6 +92,12 @@ function start(sim, c, w) {
   if (w === 'wake') return;
   if (w === 'ctl') { ctlStart(sim, c); return; }
   if (w === 'fire') { c.job = 'fire'; sim.goTo(c, fightSpot(sim, c.fight), ACT.FIGHT, ACT.WALK); return; }
+  if (w === 'defend') {
+    const P = S.nb.party;
+    if (c.def === MUSTER && P) { c.job = 'defend'; if (!(c.post >= 0) || P.seq !== c.postSeq) { c.post = nearFree(sim, P.tgt, 4); c.postSeq = P.seq; } sim.goTo(c, c.post, ACT.IDLE, ACT.WALK); return; }
+    const g = S.nb.g.find(o => o.id === c.def && !o.down && !o.out); if (!g) { c.def = -1; c.plan = ''; return; }
+    c.job = 'defend'; sim.goTo(c, g.tile, ACT.BRAWL, ACT.WALK); return;
+  }
   if (w === 'down') { c.job = 'down'; c.mv = 0; if (!hidden(c.act) && c.act !== ACT.BED) c.act = ACT.DOWN; return; }
   if (w === 'sleep' || w === 'ward') {
     // the hurt sleep where they rest: a clinic bed if there is one free

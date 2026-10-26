@@ -181,6 +181,7 @@ const HURT = {
   gather: [['hand_', 'punct', 3], ['hand_', 'cut', 2], ['leg_', 'punct', 1]],
   farm: [['hand_', 'cut', 2], ['leg_', 'cut', 1], ['hand_', 'punct', 1.5], ['spine', 'crush', .4]],
   fight: [['head', 'crush', 2], ['torso', 'crush', 1.2], ['arm_', 'crush', 1], ['hand_', 'frac', .5], ['leg_', 'crush', .6]],
+  raid: [['arm_', 'cut', 3], ['hand_', 'cut', 2], ['head', 'crush', 1.2], ['torso', 'cut', 1.2], ['leg_', 'cut', 1], ['torso', 'punct', .6], ['arm_', 'frac', .5]],
   fall: [['arm_', 'frac', 2], ['hand_', 'frac', 1.2], ['head', 'crush', 1.2], ['leg_', 'frac', 1], ['spine', 'crush', 1], ['hand_', 'cut', 1]],
   frost: [['hand_', 'frost', 3], ['skin', 'frost', 1.5]],
   lightning: [['skin', 'burn', 3], ['chest', 'crush', 1]],

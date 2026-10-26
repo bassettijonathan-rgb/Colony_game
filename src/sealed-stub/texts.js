@@ -33,7 +33,7 @@ export const SEALED = {
     kinds: ['north', 'river', 'hill'].map((id, i) => ({
       id, place: `Stand-in ${id}`, folk: `the ${id} folk`, pop: [50, 150], km: [20, 40], coat: [[110, 100, 120], [120, 130, 90], [130, 100, 80]][i], coat2: [190, 180, 160],
       trust: [10, 20, 0][i], fair: 1, honest: 1, wants: { ore: 1.5, abx: 2, meals: 1.2 }, offers: { meals: [20, 60], timber: [5, 20], ore: [0, 10] },
-      knows: .5, ills: true, joins: .15, namesake: 0, given: ['Ash', 'Bee', 'Cal', 'Dee', 'Eli', 'Fay'], family: ['Stand', 'In'], drift: [],
+      knows: .5, ills: true, joins: .15, lean: [.5, .2, .3][i], raid: [1.2, .4, .8][i], noScan: i === 0, namesake: 0, given: ['Ash', 'Bee', 'Cal', 'Dee', 'Eli', 'Fay'], family: ['Stand', 'In'], drift: [],
       about: 'Stand-in: people from {place}, {km} km to the {dir}, about {pop} of them.',
       greet: ['Stand-in: {lead} from {place} is in camp to trade.'], joinWhy: ['Stand-in: {name} asks to stay.'],
     })),

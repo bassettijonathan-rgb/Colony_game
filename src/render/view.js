@@ -383,11 +383,11 @@ export class View {
     if (F.hover >= 0 && F.hover !== F.sel) label(F.hover, false);
     // visitors' names, on a tag in their colours
     if (F.G && F.G.n && !this.below) for (let i = 0; i < F.G.n; i++) {
-      if (!(i === F.ghover || (this.labels && z >= 14))) continue;
+      if (!(i === F.ghover || F.G.raid || (this.labels && z >= 14))) continue;   // raiders are always named
       const o = i * 4; if (hidden(F.G.pos[o + 3] >> 1)) continue;
       const X = sx(F.G.pos[o]), Y = sy(F.G.pos[o + 1]); if (X < -60 || Y < -40 || X > this.VW + 60 || Y > this.VH + 40) continue;
       const name = F.G.names[i] || '', ly = Y + Math.max(10, z * .62) + fs * .2, tw = ui.measureText(name).width + 12, c = F.G.arts[i].L.app;
-      ui.fillStyle = `rgba(${c[0] * .5 | 0},${c[1] * .5 | 0},${c[2] * .5 | 0},.88)`; ui.beginPath(); ui.roundRect(X - tw / 2, ly - fs * .65, tw, fs * 1.3, fs * .65); ui.fill(); ui.strokeStyle = `rgb(${Math.min(255, c[0] * 1.5) | 0},${Math.min(255, c[1] * 1.5) | 0},${Math.min(255, c[2] * 1.5) | 0})`; ui.lineWidth = 1.5; ui.stroke();
+      ui.fillStyle = F.G.raid ? 'rgba(112,28,22,.9)' : `rgba(${c[0] * .5 | 0},${c[1] * .5 | 0},${c[2] * .5 | 0},.88)`; ui.beginPath(); ui.roundRect(X - tw / 2, ly - fs * .65, tw, fs * 1.3, fs * .65); ui.fill(); ui.strokeStyle = F.G.raid ? '#ff7a66' : `rgb(${Math.min(255, c[0] * 1.5) | 0},${Math.min(255, c[1] * 1.5) | 0},${Math.min(255, c[2] * 1.5) | 0})`; ui.lineWidth = 1.5; ui.stroke();
       ui.fillStyle = '#f2f4f8'; ui.fillText(name, X, ly + .5);
     }
     if (F.sel >= 0 && F.sel < F.n) {

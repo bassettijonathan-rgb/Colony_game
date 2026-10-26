@@ -44,7 +44,7 @@ const holds = (type, c) => ({ shelter: `${c.beds} bunks`, dorm: `${c.beds} bunks
 const UG_TXT = { soil: 'soft soil: quick to dig, but the walls need a lot of shoring', clay: 'clay: heavier digging, and it holds its shape', stone: 'stone: slow digging, little shoring, and the spoil gives stone for the yard', 'hard rock': 'hard rock: very slow digging, but it barely needs shoring and gives stone', 'hot rock': 'hot rock: the deep’s own heat, very slow to cut, and hot enough to run a heat engine' };
 const loads = L => Object.entries(L).filter(([k, n]) => n > 0 && k !== 'mark' && k !== 'test').map(([k, n]) => matName(k, n)).join(', ');const SHIFT_TXT = SHIFTS.map(s => `${s.name} ${s.a}–${s.b}`);
 // what a crew's members are doing, in a word each
-const DOING = { [ACT.BED]: 'asleep', [ACT.INSIDE]: 'asleep', [ACT.WALK]: 'walking', [ACT.HOME]: 'walking back', [ACT.TOBED]: 'turning in', [ACT.SURVEY]: 'surveying', [ACT.PLANT]: 'planting a stake', [ACT.CARRY]: 'carrying', [ACT.BUILD]: 'building', [ACT.EAT]: 'eating', [ACT.IDLE]: 'at camp', [ACT.ALONE]: 'off alone', [ACT.WAKE]: 'waking', [ACT.QUARRY]: 'cutting stone', [ACT.FELL]: 'felling', [ACT.STONE]: 'carrying stone', [ACT.LOG]: 'carrying logs', [ACT.TEST]: 'testing', [ACT.INDOORS]: 'indoors', [ACT.BENCH]: 'at a bench', [ACT.DEAD]: 'dead', [ACT.DOWN]: 'down', [ACT.TEND]: 'tending someone', [ACT.DRAG]: 'carrying someone', [ACT.FIGHT]: 'fighting a fire', [ACT.DIG]: 'digging', [ACT.PLAY]: 'playing', [ACT.MIND]: 'minding the children' };
+const DOING = { [ACT.BED]: 'asleep', [ACT.INSIDE]: 'asleep', [ACT.WALK]: 'walking', [ACT.HOME]: 'walking back', [ACT.TOBED]: 'turning in', [ACT.SURVEY]: 'surveying', [ACT.PLANT]: 'planting a stake', [ACT.CARRY]: 'carrying', [ACT.BUILD]: 'building', [ACT.EAT]: 'eating', [ACT.IDLE]: 'at camp', [ACT.ALONE]: 'off alone', [ACT.WAKE]: 'waking', [ACT.QUARRY]: 'cutting stone', [ACT.FELL]: 'felling', [ACT.STONE]: 'carrying stone', [ACT.LOG]: 'carrying logs', [ACT.TEST]: 'testing', [ACT.INDOORS]: 'indoors', [ACT.BENCH]: 'at a bench', [ACT.DEAD]: 'dead', [ACT.DOWN]: 'down', [ACT.TEND]: 'tending someone', [ACT.DRAG]: 'carrying someone', [ACT.FIGHT]: 'fighting a fire', [ACT.BRAWL]: 'fighting raiders', [ACT.DIG]: 'digging', [ACT.PLAY]: 'playing', [ACT.MIND]: 'minding the children' };
 const meterCol = (v, goodHigh) => { const x = goodHigh ? 100 - v : v; return x > 70 ? 'var(--bad)' : x > 45 ? 'var(--mid)' : 'var(--good)'; };
 // a row of buttons choosing a part of a window, and a numbered how-to for it
 const sub = (key, cur, items) => `<div class="seg sm sub">${items.map(([k, t]) => `<button data-act="sub" data-k="${key}" data-v="${k}" class="${cur === k ? 'on' : ''}">${t}</button>`).join('')}</div>`;
@@ -78,7 +78,7 @@ export class Panels {
     this.A = A; this.api = api; this.tab = 'archive'; this.chosen = new Set(); this.touched = false; this.sig = ''; this.cardSig = ''; this.moveSig = '';
     this.btab = 'plan'; this.ltab = 'larder'; this.logSeen = 0; this.busy = false; this.min = false; this.confirm = -1; this.planSig = '';
     const side = $('side'), body = $('sideBody');
-    this.nbp = new NbPanel({ cmd: (op, m) => api.cmd(op, m), toast: m => api.toast(m), refresh: () => { this.sig = ''; this.update(); } });
+    this.nbp = new NbPanel({ cmd: (op, m) => api.cmd(op, m), toast: m => api.toast(m), name: id => this.A.people[id] && this.A.people[id].name, refresh: () => { this.sig = ''; this.update(); } });
     document.querySelectorAll('#dock [data-tab]').forEach(b => b.onclick = () => this.toggleTab(b.dataset.tab));
     $('sideMin').onclick = () => this.fold(true);
     $('kBuild').onclick = e => { const b = e.target.closest('[data-proj]'); if (b) this.api.showProject(+b.dataset.proj); const g = e.target.closest('[data-sug]'); if (g) this.api.startPlace(g.dataset.sug, 0, 0, '', +g.dataset.lvl); };
@@ -644,6 +644,7 @@ export class Panels {
     $('cJob').textContent = (flags & 16 ? 'Dead' : ACT_NAME[r[0]] || '') + (extra.length && !(flags & 16) ? ' · ' + extra.join(', ') : '');
     { const cc = $('cCtl'), mine = U.ctl === i;
       cc.hidden = U.mode !== 'landfall' || !!(flags & 16); cc.textContent = mine ? 'Release' : 'Take charge'; cc.classList.toggle('on', mine); cc.disabled = !mine && !U.emerg;
+      { const g = $('cGrd'), on = !!(flags & 524288); g.hidden = U.mode !== 'landfall' || !!(flags & (16 | 65536 | 131072)) || r[8] < 16; g.textContent = on ? 'On the guard' : 'Guard'; g.classList.toggle('on', on); }
       cc.title = mine ? 'Hand them back to their crew (Esc)' : U.emerg ? `Direct them yourself, for now: ${EM_TXT[U.emerg]}. Right-click to give orders` : 'Only in an emergency: a fire near the camp, someone down or bleeding, a flood, or someone freezing'; }
     const sig = JSON.stringify([i, r, d, A.names.length, this.ctab]);
     if (sig !== this.cardSig) {
