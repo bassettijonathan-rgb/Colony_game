@@ -233,7 +233,7 @@ export class Panels {
       const adults = R.filter(r => r.wk.length), works = [...new Set(adults.map(r => r.wk[0][0]))];
       const known = [...new Set(R.flatMap(r => r.ch))];
       if (known.length && works.length) {
-        h += `<div class="sec">Conditions by main work</div><table class="rt"><tr><th></th>${known.map(k => `<th>${esc(cond(k))}</th>`).join('')}</tr>${works.map(w => { const g = adults.filter(r => r.wk[0][0] === w); return `<tr><td>${esc(WORKS[w] || w)} <small>${g.length}</small></td>${known.map(k => { const n = g.filter(r => r.ch.includes(k)).length; return `<td>${n ? Math.round(n / g.length * 100) + '%' : '-'}</td>`; }).join('')}</tr>`; }).join('')}</table>`;
+        h += `<div class="sec">Conditions by main work</div><table class="rt"><tr><th></th>${known.map(k => `<th>${esc(cond(k))}</th>`).join('')}</tr>${works.map(w => { const g = adults.filter(r => r.wk[0][0] === w); return `<tr><td>${esc(WORKS[w] || w)} <small>${g.length}</small></td>${known.map(k => { const n = g.filter(r => r.ch.includes(k)).length; return `<td>${!n ? '-' : g.length < 5 ? `${n} of ${g.length}` : Math.round(n / g.length * 100) + '%'}</td>`; }).join('')}</tr>`; }).join('')}</table>`;
       }
       const dead = R.filter(r => r.dead), causes = {};
       for (const r of dead) { const k = WHY[r.why] || (r.why.startsWith('ill:') ? 'of an illness' : 'other'); causes[k] = (causes[k] || 0) + 1; }

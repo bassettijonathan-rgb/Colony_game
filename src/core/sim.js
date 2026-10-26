@@ -8,7 +8,7 @@ import { R, srand, rnd, ri, lcg } from './rng.js';
 import { makeArchive, makePerson } from './founders.js';
 import { propsIn } from './world.js';
 import { think, mindTick, daily, remember } from './life.js';
-import { crewThink, seedTick, onArrive, onTimer, command, projectsThink, dropCarry, planCrews, refundOf } from './work.js';
+import { crewThink, seedTick, onArrive, onTimer, command, projectsThink, dropCarry, planCrews, refundOf, THAW_GAP } from './work.js';
 import { shelterProject, strength, powerCheck, capOf, byId, stockOf, built, PRECISE, SALVAGE, KIT, CARGO, LANDER_KW, FEED } from './build.js';
 import { drawLife, placeLife, newFood, labHour, fieldHour, spoil, cellarShare, mealsInStore, kitchenOnly, patchLeft, inSeason, cropPlan, daysToRipen, foodOf, CROPS, SEED_LAB, verdict, PROC_NAME } from './food.js';
 import { newHist, histHour, histDay, histRow } from './history.js';
@@ -224,7 +224,7 @@ export class Sim {
   }
   // a tree felled (n logs still lying there), a boulder quarried away, a bush cleared
   setGone(t, n) { this.S.gone[t] = n; this.W.gone.set(t, n); this.gnew.push(t, n); }
-  regrow(t) { delete this.S.gone[t]; this.W.gone.delete(t); this.gnew.push(t, -1); }   // -1 tells the page it is back
+  propBack(t) { delete this.S.gone[t]; this.W.gone.delete(t); this.gnew.push(t, -1); }   // -1 tells the page it is back
   setQuarry(t, n) { this.S.quarry[t] = n; this.qnew.push(t, n); }
   // the patch of local life growing on a tile, or -1
   patchAt(t) {
@@ -295,9 +295,9 @@ export class Sim {
   }
   // how long the food would last, in plain words
   foodNote() {
-    const n = mealsInStore(this, true), all = mealsInStore(this), eaters = this.S.cols.filter(c => !c.dead).length || 1, days = Math.floor(n / eaters), deep = untilDeep(this.cal) + 20;
+    const n = mealsInStore(this, true), all = mealsInStore(this), eaters = this.S.cols.filter(c => !c.dead).length || 1, days = Math.floor(n / eaters), deep = untilDeep(this.cal) + 20 + THAW_GAP;
     const locked = Math.floor((all - n) / eaters);
-    return `The colony has food for about ${days} day${days === 1 ? '' : 's'} at ${eaters} meal${eaters === 1 ? '' : 's'} a day${days < deep ? `, and it needs ${deep} to see the cold through` : ', enough to see the cold through'}.${locked > 0 ? ` Another ${locked} day${locked === 1 ? '' : 's'} of it is raw food only a kitchen crew can make safe.` : ''}`;
+    return `The colony has food for about ${days} day${days === 1 ? '' : 's'} at ${eaters} meal${eaters === 1 ? '' : 's'} a day${days < deep ? `, and it needs about ${deep} to see the cold through and the thaw after it, until the first crops ripen` : ', enough to see the cold and the thaw through'}.${locked > 0 ? ` Another ${locked} day${locked === 1 ? '' : 's'} of it is raw food only a kitchen crew can make safe.` : ''}`;
   }
   fieldNote() {
     const late = built(this.S).filter(p => p.type === 'field' && p.crop && p.crop.st === 'grow' && daysToRipen(this, p.crop.k, p.crop.g) === Infinity);

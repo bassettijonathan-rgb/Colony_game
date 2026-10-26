@@ -15,7 +15,7 @@ import { illMeal } from './illness.js';
 import { FIRE_STEP, beat } from './hazards.js';
 import { take, order, release } from './control.js';
 import { eat, analyse, labHour, kitchenJob, cookMeals, foodOf, add, patchLeft, takePatch, inSeason, cropPlan, sowUnits, harvestLoads, keyOf, isCrop, mealsInStore, kitchenOnly, hasKitchen, SAMPLES, PROC_DAYS, CROPS, CROP_KEYS } from './food.js';
-import { dayWeather, untilDeep } from './year.js';
+import { dayWeather, untilDeep, doyOf, seasonOf } from './year.js';
 import { careArrive, careTimer, MED_KIT, MED_MADE, TRIAGE, MEDIC } from './care.js';
 import { capOf as bodyCap } from './body.js';
 import { worker, portion, playSpot } from './lives.js';
@@ -137,6 +137,8 @@ function fitFor(c, w) {
   if (c.cap) { const q = CAPW[CAPOF[w] || w] || CAPW.build; let f = 0; for (const k in q) f += q[k] * bodyCap(c, k); e *= f; }
   return e;
 }
+// after Deep cold, the weeks of thaw before the first crops ripen: the larder has to cover them too
+export const THAW_GAP = 20;
 export function crewNeeds(sim) {
   const S = sim.S, F = S.F, Y = S.stores.yard, people = S.cols.filter(c => !c.dead), n = people.filter(worker).length, B = built(S), has = t => B.filter(p => p.type === t && (p.powered || t === 'field'));
   const need = [];   // in order of what matters most
@@ -147,7 +149,9 @@ export function crewNeeds(sim) {
   const days = mealsInStore(sim) / Math.max(1, people.length), tested = F.life.some((L, o) => L.tested && sim.kinds[o].food);
   add('forage', days < 3 ? Math.ceil(people.length / 4) : days < 8 ? Math.max(1, Math.ceil(people.length / 8)) : 1);
   // the last weeks before Deep cold: enough put by to see the cold through, when nothing grows and little can be found
-  const ahead = untilDeep(sim.cal); if (ahead > 0 && ahead <= 25 && days < 22) add('forage', Math.ceil(people.length / 5));
+  // and the thaw after it, until the first crops ripen: the hungry weeks
+  const ahead = untilDeep(sim.cal); if (ahead > 0 && ahead <= 30 && days < ahead + 20 + THAW_GAP) add('forage', Math.ceil(people.length / (days < ahead + 20 ? 3 : 5)));
+  { const doy = doyOf(sim.cal); if (seasonOf(doy) === 0 && doy < 25 && days < 12) add('forage', Math.ceil(people.length / 3)); }
   if (tested || F.firstHarvest || F.vats.length) add('kitchen', Math.max(1, Math.ceil(people.length / 10)) + (people.some(c => c.hungry) && kitchenOnly(sim) > 4 ? 1 : 0));
   // a working feedstock plant eats biomass and stone every half day: a quarry crew for as long as it runs, and another
   // forager while biomass is short. New people come from it, so it comes before the rest

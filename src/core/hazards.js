@@ -92,7 +92,7 @@ function regrowth(sim) {
     const x = t % MAP, y = t / MAP | 0;
     if (W.type[t] === T.SCORCH || plots.some(p => x >= p.x && x < p.x + p.w && y >= p.y && y < p.y + p.h)) continue;
     const q = propAt(W, x, y); if (!q || q.k !== k || S.cols.some(c => !c.dead && c.src === t)) continue;
-    sim.regrow(t);
+    sim.propBack(t);
   }
 }
 

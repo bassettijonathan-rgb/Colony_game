@@ -75,7 +75,7 @@ function grow(sim) {
   if (draw > supply - 1) return 'solar';
   if (sum(['shelter', 'dorm', 'burrow'], 'beds') < soon + 2) return 'dorm';
   if (sum(['commons'], 'seats') < soon) return 'commons';
-  if (mine.filter(p => p.type === 'field').length < Math.ceil(soon / 8)) return 'field';
+  if (mine.filter(p => p.type === 'field').length < Math.ceil(soon / 6)) return 'field';
   if (sum(['clinic'], 'beds') < Math.ceil(soon / 6)) return 'clinic';
   if (sum(['cellar'], 'store') < soon * 4) return 'cellar';
   return null;

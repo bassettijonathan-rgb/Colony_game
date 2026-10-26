@@ -16,7 +16,7 @@ function harm(B) {
   const h = new Array(PARTS.length).fill(0);
   for (const w of B.w) h[w.p] += w.s * (1 - w.heal) * (w.k === 'frac' && !w.set ? 1.6 : .8);
   for (const w of B.inner) h[w.p] += .5;
-  for (const m of B.marks) h[m.p] += m.loss;
+  for (const m of B.marks) if (m.k !== 'age' && !m.sub) h[m.p] += m.loss;   // the years are not an injury
   return h.map(v => Math.min(1, v));
 }
 // the body from the front, its parts coloured by how hurt they are; hover a part for its name
