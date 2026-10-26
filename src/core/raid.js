@@ -215,7 +215,7 @@ function hit(sim, c, g, q, P) {
 function fall(sim, P, q, g, c) {
   const S = sim.S;
   g.down = 1; g.mv = 0; g.wps = []; g.act = ACT.DOWN; g.eng = 0;
-  if (rnd() < .08 + (c.traits.includes('reckless') ? .06 : 0) + Math.max(0, -g.hp) * .5) {
+  if (rnd() < .05 + (c.traits.includes('reckless') ? .05 : 0) + Math.max(0, -g.hp) * .3) {
     g.dead = true; q.lost = (q.lost || 0) + 1; q.trust = clamp(q.trust - 12, -100, 100); S.stats.raidDead = (S.stats.raidDead || 0) + 1;
     sim.log(`${c.name} struck ${g.name} of ${q.place} down, and ${g.name} did not get up again.`, 'bad', { e: 'raidkill', lvl: 2, who: c.id, title: 'A raider killed' });
     scar(sim, c, 'kill', 40, `Killed ${g.name} of ${q.place} in the raid.`); remember(sim, c, `Killed ${g.name} of ${q.place} in the raid.`);
