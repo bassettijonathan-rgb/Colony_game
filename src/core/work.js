@@ -179,7 +179,8 @@ export function planCrews(sim, why = '') {
   if (!people.length) return '';
   const { need } = crewNeeds(sim), crewOf = c => c.crew >= 0 && !S.crews[c.crew].gone ? S.crews[c.crew].work : '';
   // building keeps at least a quarter of the colony while there is something to build, and never fewer than one
-  const building = active(S).some(p => !p.paused && p.type !== 'test');
+  // (a project stalled for parts nobody can make doesn't count: those hands are better spent on food)
+  const building = active(S).some(p => !p.paused && p.type !== 'test' && !p.stall);
   let room = people.length - (building ? Math.max(1, Math.ceil(people.length / 4)) : 1);
   const free = new Set(people), want = {};
   for (const [w, k] of need) {
@@ -731,6 +732,7 @@ export function onTimer(sim, c) {
       const p = byId(S, c.ws); c.where = -1;
       if (!p || !(p.seam > 0)) { c.job = ''; break; }
       p.seam--; S.stats.mined = (S.stats.mined || 0) + 1; S.rv++;
+      if (p.seam === 30 && !S.projects.some(q => !q.gone && q.type === 'mine' && q.seam > 30)) sim.log(`${p.name} is nearly worked out: about 30 loads of ore are left in its seam. Plan the next mine over another seam now, so it is dug before this one runs dry.`, 'bad', { e: 'mineLow', lvl: 1, pid: p.id, title: 'A mine is running out' });
       if (!p.seam) sim.log(`${p.name} is worked out: the seam under it is exhausted. To keep the colony in metal, plan a new mine over another seam (press U to see them).`, 'bad', { e: 'workedout', lvl: 1, pid: p.id, title: 'A mine is worked out' });
       c.carry = 'ore'; c.cn = 1; c.job = 'drop'; sim.goTo(c, sim.yardTile, ACT.IDLE, ACT.STONE);
       break;
