@@ -14,7 +14,7 @@ import { Sim } from '../core/sim.js';
 import { DAY_TICKS, HOUR, ACT } from '../core/consts.js';
 import { findPlot, built, capacity, LANDER_KW, TYPES } from '../core/build.js';
 import { laidUp } from '../core/body.js';
-import { sizeFor, DEEP_SUN, stoneLeft } from '../core/work.js';
+import { sizeFor, DEEP_SUN, stoneLeft, foodShort } from '../core/work.js';
 import { ruleOk } from '../core/lives.js';
 import { mealsInStore, kitchenOnly } from '../core/food.js';
 import { toIsolate } from '../core/illness.js';
@@ -45,7 +45,9 @@ export function botBuild(sim) {
   for (const m of ['stone', 'timber']) if (!S.mat[m].tested) sim.command({ op: 'test', mat: m });
   // new feedstock wakes the Seed's pick from the archive, unless a couple is waiting for a tank
   const sd = S.seedc;
-  if (sd.feed > 0 && !sd.queue.length && !sd.printing && !(S.gen.asks.length && S.gen.womb.length < 2 && ruleOk(sim))) sim.command({ op: 'print', ids: sim.command({ op: 'suggest' }).slice(0, sd.feed) });
+  // (a careful player holds them in the archive while the food wouldn't see the colony through the lean months)
+  const short = foodShort(sim);
+  if (sd.feed > 0 && !sd.queue.length && !sd.printing && !(short && short.days < short.need * .75) && !(S.gen.asks.length && S.gen.womb.length < 2 && ruleOk(sim))) sim.command({ op: 'print', ids: sim.command({ op: 'suggest' }).slice(0, sd.feed) });
   // a catching illness going round: keep the sick apart, once there is a clinic; lift the rule when it has passed
   const ill = S.cols.filter(c => !c.dead && toIsolate(c)).length, clinic = S.projects.some(p => p.type === 'clinic' && p.done);
   if (clinic && ill >= 2 && !S.care.iso) sim.command({ op: 'iso', v: true }); else if (S.care.iso && !ill) sim.command({ op: 'iso', v: false });
@@ -187,7 +189,7 @@ export function runColony(seed, days = 1, mode = 'landfall', count = 300, onTick
   while (S.tick < end) {
     const a = now(); sim.tick(); const d = now() - a; total += d; if (d > worst) worst = d;
     const t = S.tick % DAY_TICKS, live = S.cols.filter(c => !c.dead);
-    if (t === Math.round(3 * HOUR)) nights.push(live.filter(c => c.act === ACT.BED || c.act === ACT.INSIDE || c.alone > 0 || (c.fid >= 0 && S.archive[c.fid].woke > S.tick - 2 * HOUR) || c.life === 0 || c.plan === 'ward' || c.plan === 'care').length + '/' + live.length);   // a medic may be up with a patient, someone who broke down may sit out the night, and someone just printed is still finding their bedroll
+    if (t === Math.round(3 * HOUR)) nights.push(live.filter(c => c.act === ACT.BED || c.act === ACT.INSIDE || c.alone > 0 || (c.fid >= 0 && S.archive[c.fid].woke > S.tick - 2 * HOUR) || c.life === 0 || c.plan === 'ward' || c.plan === 'care' || (c.act === ACT.INDOORS && !c.plan) || c.act === ACT.TOBED).length + '/' + live.length);   // a medic may be up with a patient (or just done), someone who sat alone half the night is on the way to bed, someone who broke down may sit out the night, and someone just printed is still finding their bedroll
     if (t % HOUR === 0) { peak = Math.max(peak, ...live.map(c => c.chill)); }
     if (t === Math.round(12 * HOUR)) noons.push(live.filter(c => c.plan === 'work').length);
     if (t === Math.round(23 * HOUR)) {

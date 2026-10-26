@@ -11,7 +11,7 @@ import { findHours, findDone } from './story.js';
 
 export const POOL = SEALED.life || [];
 const TERR = { meadow: T.MEADOW, dirt: T.DIRT, sand: T.SAND, shallow: T.SHALLOW, marsh: T.MARSH, forest: T.FOREST, scree: T.SCREE };
-export const WILD_REGROW = 2, SAMPLES = 3, TEST_H = 12, SEED_LAB = .5, VATS = 4, MAX_PER_KIND = 900;
+export const WILD_REGROW = 2, SAMPLES = 3, TEST_H = 12, SEED_LAB = .5, VATS = 4, VAT_LOADS = 6, VAT_FILL = 4 * HOUR, MAX_PER_KIND = 900;
 export const PROC_DAYS = { leach: 1, ferment: 4 }, FERMENT_KEEP = 40, COOKED_KEEP = 4, CROP_LOAD = 4;
 export const PROC_NAME = { cook: 'cooking', leach: 'leaching in running water for a day, then cooking', ferment: 'fermenting for four days' };
 
@@ -28,12 +28,20 @@ export const CROP_KEYS = Object.keys(CROPS);
 // ---------- which life this world has, and where ----------
 // one kind for each role first, then three more, all from the world's seed. The pool has been replaced once: kinds
 // marked old are drawn only for worlds saved before that (legacy), so those worlds keep the life they had.
+// Since version 3 a world always has at least four kinds people can eat, one of them in Thaw: the few draws
+// that didn't trade their last extras for ones that do (worlds saved earlier keep what they drew).
+export const LIFE_V = 3;
 export const poolOf = (list, legacy) => { const o = list.filter(k => !!k.old === !!legacy); return o.length ? o : list.filter(k => !k.old); };
-export function drawLife(seed, legacy = false) {
+export function drawLife(seed, legacy = false, v = LIFE_V) {
   let n = 0; const r = () => hash(seed, n++, 77), out = [], left = poolOf(POOL, legacy);
   const take = k => { const i = left.indexOf(k); if (i >= 0) { left.splice(i, 1); out.push(k); } };
   for (const role of ['staple', 'leach', 'ferment', 'compost']) { const c = left.filter(k => k.role === role); if (c.length) take(c[Math.floor(r() * c.length)]); }
   for (let n = 0; n < 3 && left.length; n++) take(left[Math.floor(r() * left.length)]);
+  if (v >= 3 && !legacy) {
+    const swap = ok => { for (let i = out.length - 1; i >= 4; i--) { if (out[i].food && (out.filter(k => k.food).length <= 4 || ok(out[i]))) continue; const c = left.filter(ok); if (!c.length) return; const k = c[Math.floor(r() * c.length)]; left.splice(left.indexOf(k), 1, out[i]); out[i] = k; return; } };
+    while (out.filter(k => k.food).length < 4 && left.some(k => k.food)) { const was = out.map(k => k.id).join(); swap(k => !!k.food); if (out.map(k => k.id).join() === was) break; }
+    if (!out.some(k => k.food && k.season[0])) swap(k => !!(k.food && k.season[0]));
+  }
   return out;
 }
 // patches of each kind on the ground it likes, in drifts rather than scattered evenly; kept by chunk so a
@@ -154,17 +162,37 @@ export function verdict(k) {
 // ---------- fields ----------
 // what the Seed would plant in a field now: the best crop that can ripen before Deep cold, judged on this
 // world's usual seasons, or nothing if no crop has time. It waits for the last usual frost a crop can't stand;
-// an unusually cold night can still catch it.
+// an unusually cold night can still catch it. A quick crop sown now can cost a field the season's keeping crop,
+// so when a better one can be sown within a fortnight and the quick one wouldn't be off the field in time for
+// it, the field waits for the better one (cropWait says which, and how long).
+const cropScore = k => CROPS[k].yield * (1 + CROPS[k].keep / 60);
 export function cropPlan(sim, p) {
   if (p.crop.want && p.crop.want !== 'auto') return p.crop.want === 'fallow' ? null : (canGrow(sim, p.crop.want) ? p.crop.want : null);
-  let best = null, bs = -1;
-  for (const k of CROP_KEYS) { if (!canGrow(sim, k)) continue; const c = CROPS[k], s = c.yield * (1 + c.keep / 60); if (s > bs) { bs = s; best = k; } }
-  return best;
+  return autoPlan(sim).k;
+}
+export function cropWait(sim, p) {
+  if (p.crop.want && p.crop.want !== 'auto') return null;
+  const a = autoPlan(sim); return a.wait ? { k: a.wait, days: a.days } : null;
+}
+function autoPlan(sim) {
+  const memo = sim._crop; if (memo && memo.cal === sim.cal && memo.seed === sim.W.seed) return memo;   // the same for every field all day
+  const seed = sim.W.seed, d = sim.cal, out = { cal: d, seed, k: null, wait: null, days: 0 };
+  let bs = -1;
+  for (const k of CROP_KEYS) { if (ripenFrom(seed, d, k) === Infinity) continue; const s = cropScore(k); if (s > bs) { bs = s; out.k = k; } }
+  for (const k of CROP_KEYS) {
+    if (cropScore(k) <= bs || ripenFrom(seed, d, k) < Infinity) continue;
+    let w = 1; while (w <= 14 && ripenFrom(seed, d + w, k) === Infinity) w++;
+    if (w > 14) continue;
+    if (out.k && ripenFrom(seed, d + ripenFrom(seed, d, out.k) + 2, k) < Infinity) continue;   // room for both
+    out.wait = k; out.days = w; out.k = null; bs = cropScore(k);
+  }
+  return (sim._crop = out);
 }
 // expected days to ripen from today at this world's usual temperatures; Infinity if Deep cold or a usual frost
 // would get it first
-export function daysToRipen(sim, k, g = 0) {
-  const c = CROPS[k], seed = sim.W.seed; let d = sim.cal, left = 1 - g;
+export function daysToRipen(sim, k, g = 0) { return ripenFrom(sim.W.seed, sim.cal, k, g); }
+function ripenFrom(seed, d, k, g = 0) {
+  const c = CROPS[k]; let left = 1 - g;
   for (let n = 0; n < 60; n++, d++) {
     if (seasonOf(doyOf(d)) === DEEP) return Infinity;
     let r = 0;
@@ -238,10 +266,10 @@ export function cellarShare(S) {
   return n ? Math.min(1, room / n) : 1;
 }
 export const hasKitchen = sim => sim.S.crews.some(c => !c.gone && c.work === 'kitchen' && c.members.length);
-// the kitchen makes more vats as the colony grows: four to start with, one more for every four people past twelve
-export const vatsFor = S => Math.min(12, VATS + Math.floor(Math.max(0, S.cols.filter(c => !c.dead).length - 12) / 4));
+// the kitchen makes more vats as the colony grows: four to start with, one more for every three people past twelve
+export const vatsFor = S => Math.min(16, VATS + Math.floor(Math.max(0, S.cols.filter(c => !c.dead).length - 12) / 3));
 // loads of raw food the vats can work through in about eight days: more than that waits, and some of it spoils first
-export const vatLimit = (S, proc) => vatsFor(S) * 4 * 8 / PROC_DAYS[proc];
+export const vatLimit = (S, proc) => vatsFor(S) * VAT_LOADS * 8 / PROC_DAYS[proc];
 // what the kitchen should do next: empty a finished vat, cook if few meals are ready, or start a vat
 export function kitchenJob(sim, eaters) {
   const S = sim.S, F = S.F, Ld = F.larder;
@@ -255,8 +283,19 @@ export function kitchenJob(sim, eaters) {
     if (!best) for (const k in Ld.raw) { const f = foodOf(sim, k); if (f && f.proc === 'cook' && Ld.raw[k] >= 1 && f.keep < bk) { bk = f.keep; best = { k: 'cook', src: k, from: 'raw' }; } }
     if (best) return best;
   }
-  if (F.vats.length < vatsFor(S)) for (const k in Ld.raw) { const f = foodOf(sim, k); if (f && (f.proc === 'leach' || f.proc === 'ferment') && Ld.raw[k] >= 1) return { k: 'vat', src: k }; }
-  return null;
+  // a vat still being filled comes first: one load in a vat ties it up as long as a full one
+  const open = F.vats.find(q => q.n < VAT_LOADS && q.start > S.tick - VAT_FILL && Ld.raw[q.src] >= 1);
+  if (open) return { k: 'vat', src: open.src };
+  if (F.vats.length >= vatsFor(S)) return null;
+  // leaching takes a day and fermenting four, so while meals run short the kitchen leaches first; otherwise it
+  // starts on whatever spoils soonest, and on a full vat's worth before a single load
+  let best = null, bs = -1e9;
+  for (const k in Ld.raw) {
+    const f = foodOf(sim, k); if (!f || (f.proc !== 'leach' && f.proc !== 'ferment') || Ld.raw[k] < 1) continue;
+    const s = (ready < want && f.proc === 'leach' ? 1000 : 0) + (Ld.raw[k] >= VAT_LOADS ? 100 : 0) - f.keep;
+    if (s > bs) { bs = s; best = k; }
+  }
+  return best ? { k: 'vat', src: best } : null;
 }
 // a cook's meals from a load: better with skill, and a little worse when everyone just cooks their own
 export const cookMeals = (f, skill, own) => f.meals * (own ? .8 : .85 + skill * .04);
