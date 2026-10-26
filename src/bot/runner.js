@@ -13,7 +13,7 @@ import { Pathfinder } from '../core/path.js';
 import { Sim } from '../core/sim.js';
 import { DAY_TICKS, HOUR, ACT } from '../core/consts.js';
 import { findPlot, built, capacity, LANDER_KW } from '../core/build.js';
-import { sizeFor, DEEP_SUN } from '../core/work.js';
+import { sizeFor, DEEP_SUN, stoneLeft } from '../core/work.js';
 import { ruleOk } from '../core/lives.js';
 import { mealsInStore, kitchenOnly } from '../core/food.js';
 import { toIsolate } from '../core/illness.js';
@@ -54,6 +54,11 @@ export function botBuild(sim) {
   if (metal < 40 && !mines.length && S.projects.some(p => p.type === 'workshop' && !p.gone)) {
     const z = sizeFor(sim, 'mine'), spot = z && findPlot(sim, 'mine', z.w, z.h);
     if (spot) { sim.command({ op: 'place', type: 'mine', ...spot }); const q = S.projects[S.projects.length - 1]; for (let k = 0; k < 20; k++) { const i = S.projects.indexOf(q), up = S.projects.slice(0, i).filter(r => !r.gone && !r.done); if (!up.length) break; sim.command({ op: 'projMove', id: q.id, d: -1 }); } }
+  }
+  // the loose stone near camp running out: a stone pit, before the builders are left with nothing to cut
+  if (!S.projects.some(p => !p.gone && p.type === 'pit' && !(p.done && !(p.rock > 0))) && stoneLeft(sim) < 120) {
+    const z = sizeFor(sim, 'pit'), spot = z && findPlot(sim, 'pit', z.w, z.h);
+    if (spot) sim.command({ op: 'place', type: 'pit', ...spot });
   }
   if (S.projects.filter(p => !p.gone && !p.done && p.type !== 'test').length >= 2) return;
   const n = {}; let next = PLAN.find(([t]) => { n[t] = (n[t] || 0) + 1; return S.projects.filter(p => !p.gone && p.type === t).length < n[t]; });

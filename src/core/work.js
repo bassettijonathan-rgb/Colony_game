@@ -8,7 +8,7 @@ import { remember, trustAll, playAt } from './life.js';
 import { suggestFirst } from './founders.js';
 import {
   TYPES, RAW, PRECISE, RECIPE, FIT_H, FAB_SLOW, STAGE_NAMES, matName, stageLoads, loadsOf, billOf, loadCheck, capacity, checkPlot, addProject,
-  active, built, byId, capOf, powerCheck, shortOf, stockOf, sources, takeFrom, putBack, nextOrder, rawWanted, clearPlot, LANDER_KW, PANEL_KW, LABOUR, stagesOf, FEED, plantStop,
+  active, built, byId, capOf, powerCheck, shortOf, stockOf, sources, takeFrom, putBack, nextOrder, rawWanted, clearPlot, LANDER_KW, PANEL_KW, LABOUR, stagesOf, FEED, plantStop, PIT_ROCK,
 } from './build.js';
 import { illMeal } from './illness.js';
 import { FIRE_STEP, beat } from './hazards.js';
@@ -283,8 +283,15 @@ function gatherJob(sim, c, k, pj) {
     const s = e.d - (e.kind === 0 && g > 0 ? 15 : 0);
     if (s < bs) { bs = s; best = e; }
   }
+  // a stone pit: cut from its face when it is nearer than what is left lying about, or when nothing else is
+  if (k === 'stone') for (const p of built(S)) {
+    if (p.type !== 'pit' || !(p.rock > 0)) continue;
+    const src = -1 - p.id; let used = 0; for (const o of S.cols) if (!o.dead && o.job === 'cut' && o.src === src) used++;
+    const t = sim.doorOf(p), d = Math.hypot(t % MAP - sim.yardTile % MAP, (t / MAP | 0) - (sim.yardTile / MAP | 0));
+    if (used < capOf(p).faces && d < bs) { bs = d; best = { src, work: t, kind: 4 }; }
+  }
   if (!best) return false;
-  c.job = 'cut'; c.want = k; c.pj = pj; c.src = best.src; c.srcKind = best.kind; c.fx = best.src % MAP + .5; c.fy = (best.src / MAP | 0) + .5;
+  c.job = 'cut'; c.want = k; c.pj = pj; c.src = best.src; c.srcKind = best.kind; const ft = best.kind === 4 ? best.work : best.src; c.fx = ft % MAP + .5; c.fy = (ft / MAP | 0) + .5;
   sim.goTo(c, best.work, k === 'stone' ? ACT.QUARRY : k === 'biomass' ? ACT.GATHER : ACT.FELL);
   return true;
 }
@@ -503,6 +510,22 @@ function finish(sim, p) {
   assignHomes(sim);
 }
 // why a project isn't moving, or '' when there is work for a crew to do
+// loads of stone still lying about near camp, in boulders and rock faces: for the bot, to plan a pit in time
+export function stoneLeft(sim) {
+  const S = sim.S; let n = 0;
+  for (const e of sim.rocks) { if (!sim.W.cost[e.work]) continue; const g = S.gone[e.src], q = S.quarry[e.src] || 0; n += e.kind === 1 ? (g === undefined ? Math.max(0, 2 - q) : 0) : Math.max(0, 30 - q); }
+  return n;
+}
+// is anything left to cut for this near camp: a rock or tree in reach, or a stone pit with stone in it
+function sourceLeft(sim, k) {
+  const S = sim.S, W = sim.W, list = k === 'stone' ? sim.rocks : k === 'biomass' ? sim.scrub : sim.trees;
+  for (const e of list) {
+    if (!W.cost[e.work]) continue;
+    const g = S.gone[e.src], q = S.quarry[e.src] || 0;
+    if (e.kind === 0 ? g !== 0 : e.kind === 1 || e.kind === 3 ? g === undefined && q < 2 : q < 30) return true;
+  }
+  return k === 'stone' && built(S).some(p => p.type === 'pit' && p.rock > 0);
+}
 function waitReason(sim, p) {
   const S = sim.S;
   if (p.paused) return 'Paused';
@@ -512,12 +535,14 @@ function waitReason(sim, p) {
   let miss = null;
   for (const k in p.need) {
     const left = p.need[k] - (p.got[k] || 0); if (left <= 0) continue;
-    if (LABOUR.has(k) || RAW.includes(k) || stockOf(S, k) > 0 || inflight(S, p, k) > 0) return '';
+    if (LABOUR.has(k) || stockOf(S, k) > 0 || inflight(S, p, k) > 0 || (RAW.includes(k) && sourceLeft(sim, k))) return '';
     if (!miss) miss = [k, left];
   }
   if (!miss) return '';
   const [k, n] = miss;
   if (k === 'module') return 'Out of lander modules';
+  if (k === 'stone') return 'Needs stone and there is none left to cut near camp: plan a stone pit on stony ground';
+  if (RAW.includes(k)) return `Needs ${matName(k, n)} and there is none left to gather near camp`;
   if ((S.fab.job && S.fab.job.k === k) || S.cols.some(o => !o.dead && o.make === k)) return `Waiting for ${matName(k, n)}, being made`;
   if (S.stores.yard.salvage < RECIPE[k].salvage) return `Needs ${matName(k, n)} and there is no salvage left to make them${(S.stores.yard.ore || 0) >= SMELT.ore ? ': ore is waiting to be smelted' : built(S).some(q => q.type === 'mine' && q.seam > 0) ? ': the miners bring up ore to smelt' : ''}`;
   return `Waiting for ${matName(k, n)}`;
@@ -538,6 +563,7 @@ export function projectsThink(sim) {
     if (!p.done && !w && !taken.has(p.id)) w = crews.length ? 'Queued: the build crews are on other projects' : 'No build crew';
     const stuck = !p.done && !!w && !/^(Paused|Queued|No build crew)/.test(w);
     if (stuck && !S.salvOut && /no salvage left/.test(w)) { S.salvOut = 1; sim.log(`The salvage the Seed brought down is used up, and ${p.name} needs parts nobody can make without it. Metal has to come from this world now: plan a mine over a seam of ore (the Build window, then press U to see the seams), and a workshop to smelt what the miners bring up.`, 'bad', { e: 'nosalvage', lvl: 2, pid: p.id, title: 'Out of salvage' }); }
+    if (stuck && !S.stoneOut && /^Needs stone and there is none/.test(w)) { S.stoneOut = 1; sim.log(`There is no stone left to cut near camp: the boulders and rock faces are used up, and ${p.name} needs more. Plan a stone pit in the Build window, on ground where stone lies under shallow soil (press U to see it), and the quarry crew will cut it there for years.`, 'bad', { e: 'nostone', lvl: 2, pid: p.id, title: 'Out of stone' }); }
     if (stuck && !p.stall) { p.stall = 1; sim.log(`${p.name} stalled: ${w[0].toLowerCase() + w.slice(1)}.`, 'bad', { e: 'stalled', lvl: 1, pid: p.id, title: 'A project stalled' }); }
     else if (!stuck && p.stall) { p.stall = 0; if (!p.done && !w) sim.log(`Work on ${p.name} picked up again.`, '', { pid: p.id }); }
     if (w !== p.wait) { p.wait = w; S.rv++; }
@@ -699,7 +725,11 @@ export function onTimer(sim, c) {
     case 'fit': fitted(sim, c); if (c.plan === 'work') workNext(sim, c); break;
     case 'cut': {
       const k = c.want, t = c.src;
-      if (c.srcKind === 3) { if (S.gone[t] !== undefined) { c.job = ''; break; } sim.setGone(t, 0); }
+      if (c.srcKind === 4) {   // a load from a stone pit's face
+        const p = byId(S, -1 - t); if (!p || !(p.rock > 0)) { c.job = ''; break; }
+        p.rock--; S.stats.quarried++; S.rv++;
+        if (!p.rock) sim.log(`${p.name} is cut out: the stone left in it is too deep to reach. Plan another pit on stony ground.`, 'bad', { e: 'pitout', lvl: 1, pid: p.id, title: 'A stone pit is used up' });
+      } else if (c.srcKind === 3) { if (S.gone[t] !== undefined) { c.job = ''; break; } sim.setGone(t, 0); }
       else if (c.srcKind === 0) {
         if (S.gone[t] === undefined) { sim.setGone(t, 2); S.stats.felled++; }
         if (!(S.gone[t] > 0)) { c.job = ''; break; }
@@ -869,6 +899,7 @@ export function sizeFor(sim, type) {
     case 'workshop': { r = fit(soon >= 15 ? 3 : 2, 'benches'); why = `${n(r.v, 'bench', 'benches')}, enough to keep the projects in parts`; break; }
     case 'lab': { r = fit(1, 'benches'); why = 'One bench, which tests samples far faster than the Seed’s own analyser'; break; }
     case 'mine': { r = fit(2, 'faces'); why = 'Two faces for the miners to work. Draw it over a seam of ore: the view below ground shows where they run'; break; }
+    case 'pit': { r = fit(4, 'faces'); why = `${n(r.v, 'face', 'faces')} for the quarry crew to cut, about ${PIT_ROCK * r.w * r.h} loads of stone. Draw it where stone lies under shallow soil: the view below ground shows where`; break; }
     case 'plant': { r = fit(2, 'tanks'); why = `${n(r.v, 'tank', 'tanks')}: a new body about every ${Math.round(FEED.per * FEED.h / 24 / r.v)} days, with biomass and stone to feed it`; break; }
     case 'solar': {
       // sized for the short days of Deep cold, when panels make about half what they do in summer

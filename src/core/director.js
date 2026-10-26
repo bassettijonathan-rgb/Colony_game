@@ -163,6 +163,8 @@ const WEAR = {
   dorm: 'a roof beam split along the grain and the bunks underneath had to be cleared. It needs repairs.',
   burrow: 'the air shaft fan seized and the room went stale. Nobody can sleep down there until it is fixed.',
   cellar: 'a shoring prop bowed under the weight of the earth and the cellar had to be cleared. It needs repairs.',
+  mine: 'a run of shoring gave way in a gallery, and the miners had to come up until it is propped again. It needs repairs.',
+  pit: 'a bench slumped into the pit and took the hoist footing with it. It needs repairs.',
 };
 function cache(sim) {
   const S = sim.S, W = sim.W, L = W.land, n = 10 + Math.floor(rnd() * 14), a = rnd() * 6.283, r = 30 + rnd() * 40;

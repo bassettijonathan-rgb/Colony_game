@@ -24,7 +24,8 @@ export const STAGE_NAMES = ['Marking out', 'Foundations', 'Frame', 'Systems', 'F
 export const TEST_STAGES = ['Taking samples', 'Testing'];
 export const FIELD_STAGES = ['Marking out', 'Breaking ground', 'Making soil', 'Drains', 'Raised beds'];
 export const DIG_STAGES = ['Marking out', 'Digging', 'Shoring', 'Venting', 'Fit-out'];
-export const stagesOf = type => type === 'test' ? TEST_STAGES : type === 'field' ? FIELD_STAGES : TYPES[type] && TYPES[type].below ? DIG_STAGES : STAGE_NAMES;
+export const PIT_STAGES = ['Marking out', 'Stripping the soil', 'Cutting benches', 'The hoist', 'Opening the face'];
+export const stagesOf = type => type === 'test' ? TEST_STAGES : type === 'field' ? FIELD_STAGES : type === 'pit' ? PIT_STAGES : TYPES[type] && TYPES[type].below ? DIG_STAGES : STAGE_NAMES;
 const SHELTER_STAGES = [['mark', 4], ['module', 8], ['module', 12], ['module', 12], ['module', 10]];
 export const SHELTER_FITS = SHELTER_STAGES.reduce((t, s) => t + s[1], 0), CARGO = SHELTER_STAGES.reduce((t, s) => t + (s[0] === 'module' ? s[1] : 0), 0);
 
@@ -41,10 +42,11 @@ export const TYPES = {
   plant: { name: 'Feedstock plant', min: 5, max: 9, size: [5, 6], use: 'Tanks that turn biomass and crushed stone into feedstock, which the fabricator prints new people from. They take their loads from the yard and need power' },
   cellar: { name: 'Root cellar', min: 4, max: 10, size: [5, 6], below: true, use: 'A cool room dug under the ground, where the larder keeps far longer. Needs no power' },
   mine: { name: 'Mine', min: 4, max: 10, size: [5, 6], below: true, use: 'Galleries dug along a seam of metal ore. A mining crew brings the ore up, and the workshop smelts it into metal for parts. It is dug and shored with stone and timber alone, and needs a little power for its lamps, which it takes before any other building' },
+  pit: { name: 'Stone pit', min: 4, max: 10, size: [6, 6], open: true, use: 'An open pit cut down into stony ground. Once the boulders and outcrops near camp are used up, the quarry crew cuts stone here, for years' },
   burrow: { name: 'Dug quarters', min: 5, max: 12, size: [6, 8], below: true, use: 'Bunks dug into the ground: the earth keeps them warm in Deep cold, and fire and storms can’t reach them. A little power for light' },
   test: { name: 'Load test', fixed: true },
 };
-export const PLANNABLE = ['field', 'workshop', 'plant', 'commons', 'clinic', 'dorm', 'solar', 'lab', 'cellar', 'burrow', 'mine'];
+export const PLANNABLE = ['field', 'workshop', 'plant', 'commons', 'clinic', 'dorm', 'solar', 'lab', 'cellar', 'burrow', 'mine', 'pit'];
 const inner = (w, h) => Math.max(0, (w - 2) * (h - 2));
 // what a building of this size holds, and the power it draws (kW) or makes
 export function capacity(type, w, h) {
@@ -62,6 +64,7 @@ export function capacity(type, w, h) {
     case 'cellar': return { store: a * 4, kw: 0 };
     case 'burrow': { const beds = Math.floor(a / 3); return { beds, kw: +(.2 + beds * .03).toFixed(1) }; }
     case 'mine': return { faces: clamp(Math.floor(a / 6), 1, 4), kw: .5 };
+    case 'pit': return { faces: clamp(Math.floor(w * h / 9), 1, 4), kw: 0 };
   }
   return { kw: 0 };
 }
@@ -109,6 +112,14 @@ export function stageLoads(S, type, w, h, st, mat, ground) {
     // its lamps run on a cable from the camp
     if (st === 3) { if (type === 'mine') add('timber', 2 + a / 10); else { add('pipe', 1 + a / 30); if (cap.kw) add('power', 1); } }
     if (st === 4) { add('stone', a / 12); add('timber', fixtures); }
+    return L;
+  }
+  if (type === 'pit') {   // strip the soil, cut ramps and benches down into the stone, and a timber hoist at the edge
+    if (st === 0) add('mark', per / 8);
+    if (st === 1) add('dig', a / 3);
+    if (st === 2) add('dig', a / 4);
+    if (st === 3) add('timber', 2 + a / 12);
+    if (st === 4) add('dig', a / 6);
     return L;
   }
   if (TYPES[type].open) {   // footings, racks, cable runs, then the panels
@@ -167,6 +178,7 @@ export function checkPlot(sim, type, x, y, w, h, side) {
   }
   const L = W.land;
   if (!bad.length && Math.hypot(x + w / 2 - L.x, y + h / 2 - L.y) > 70) { out.why = 'Too far from camp: keep it within 140 m of the Seed.'; return out; }
+  if (!bad.length && type === 'pit') { const g = groundOf(W, x, y, w, h); if (g.stone < .5) { out.why = 'The ground here is too deep in soil and clay for a pit: the view below ground (U) shows where the stone lies near the surface.'; return out; } out.ground = g; }
   if (!Ty.open) {
     const d = doorOf(x, y, w, h, side), t = d.y * MAP + d.x; out.door = d;
     if (!bad.length && (!W.cost[t] || !W.reach[t] || reservedAt(sim, d.x, d.y, 0))) { bad.push(t); why.set('The door would open onto blocked ground. Turn it to another side.', 1); }
@@ -198,7 +210,7 @@ function checkBelow(sim, type, x, y, w, h, side, out, note, why) {
   out.ok = true; return out;
 }
 // the ore a mine can bring up: a share of each tile of seam it is dug along
-export const SEAM = 40;
+export const SEAM = 40, PIT_ROCK = 40;   // loads of stone a pit holds, per tile
 export const seamOf = (g, w, h) => Math.round((g ? g.ore : 0) * w * h) * SEAM;
 // what is under a plot: how much harder than soil it is to dig, how much more shoring it needs, and the ore in it
 const DIG = [1, 1.25, 2, 3], SHORE = [1.3, 1, .5, .3];
@@ -243,6 +255,7 @@ export function addProject(sim, type, x, y, w, h, side, mat) {
     stage: 0, need: stageLoads(S, type, w, h, 0, mat), got: {}, done: false, powered: false, paused: false, gone: false, blocked: false, wait: '', stall: 0, since: S.tick, out: {}, used: {}, mat,
   };
   if (type === 'mine') p.seam = seamOf(p.ug, w, h);
+  if (type === 'pit') p.rock = p.rock0 = PIT_ROCK * w * h;
   if (type === 'test') S.projects.unshift(p); else S.projects.push(p);
   S.rv++;
   return p;

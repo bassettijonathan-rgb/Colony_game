@@ -24,6 +24,7 @@ export function drawBuilding(g, hRect, p, E, t, inside = false) {
   if (p.type === 'test') return;
   if (p.type === 'solar') return drawSolar(g, hRect, p);
   if (p.type === 'field') return drawField(g, hRect, p, t || 0);
+  if (p.type === 'pit') return drawPit(g, hRect, p);
   const st = STYLE[p.type] || STYLE.dorm, stage = p.done ? 5 : p.stage, f = progress(p);
   const x = p.x, y = p.y, w = p.w, h = p.h, long = w >= h;
   const along = (fr, fn) => { const n = long ? w : h; for (let i = 0; i < n * fr; i++) fn(long ? x + i : x, long ? y : y + i, long ? 1 : w, long ? h : 1); };
@@ -171,6 +172,39 @@ function plot(g, hRect, x, y, w, h, stage, f) {
   for (let i = 0; i < np; i++) { const [a, b] = pegs[i], [c, d] = pegs[(i + 1) % 4]; if (i + 1 < np || np === 4) { g.moveTo(a, b); g.lineTo(c, d); } }
   g.stroke();
   for (let i = 0; i < np; i++) { g.fillStyle = '#c98a3e'; g.beginPath(); g.arc(pegs[i][0], pegs[i][1], .1, 0, 6.3); g.fill(); hRect(pegs[i][0] - .06, pegs[i][1] - .06, .12, .12, .5); }
+}
+// a stone pit: the soil stripped back to bare rock, benches stepping down into it, a timber hoist at the edge;
+// it reads deeper as the stone is cut out
+function drawPit(g, hRect, p) {
+  const stage = p.done ? 5 : p.stage, f = progress(p), x = p.x, y = p.y, w = p.w, h = p.h;
+  if (stage < 5) plot(g, hRect, x, y, w, h, stage, f);
+  if (stage >= 1) {   // stripped: bare grey stone showing through, spreading from one side
+    const fr = stage === 1 ? f : 1;
+    g.fillStyle = 'rgba(128,122,112,.8)'; g.fillRect(x + .1, y + .1, (w - .2) * fr, h - .2);
+    for (let i = 0; i < w * h * 2 * fr; i++) { g.fillStyle = i % 2 ? 'rgba(90,84,76,.5)' : 'rgba(160,154,142,.45)'; g.fillRect(x + .1 + hash(i, 3, p.id) * (w - .3) * fr, y + .1 + hash(i, 4, p.id) * (h - .3), .1, .08); }
+  }
+  const full = p.rock0 || 40 * w * h, dug = stage >= 5 ? 1 - (p.rock || 0) / full : 0;
+  const steps = stage >= 2 ? Math.min(3, Math.floor((stage === 2 ? f : 1) * 3) + (stage >= 5 ? Math.min(2, Math.floor(dug * 3)) : 0)) : 0;
+  for (let k = 1; k <= steps; k++) {   // each bench a step further in and darker, with its lit lip
+    const m = k * Math.min(w, h) / 9;
+    g.fillStyle = `rgba(${96 - k * 14},${90 - k * 13},${82 - k * 12},.9)`; g.fillRect(x + m, y + m, w - m * 2, h - m * 2);
+    g.strokeStyle = 'rgba(200,192,176,.35)'; g.lineWidth = .05; g.strokeRect(x + m, y + m, w - m * 2, h - m * 2);
+  }
+  if (stage >= 2) {   // the ramp down one side
+    g.fillStyle = 'rgba(150,140,124,.75)'; g.fillRect(x + w * .1, y + h - .6, w * .45, .45);
+    g.strokeStyle = 'rgba(70,64,56,.5)'; g.lineWidth = .03; for (let i = 1; i < 5; i++) { g.beginPath(); g.moveTo(x + w * .1 + i * w * .09, y + h - .6); g.lineTo(x + w * .1 + i * w * .09, y + h - .15); g.stroke(); }
+  }
+  if (stage >= 3) {   // the hoist: a timber A-frame over the rim
+    const fr = stage === 3 ? f : 1, hx = x + w - .9, hy = y + .5;
+    g.strokeStyle = '#7d5d3e'; g.lineWidth = .14; g.lineCap = 'round';
+    g.beginPath(); g.moveTo(hx - .4, hy + .6); g.lineTo(hx, hy - .1 + (1 - fr) * .7); g.lineTo(hx + .4, hy + .6); g.stroke();
+    if (fr >= 1) { g.lineWidth = .1; g.beginPath(); g.moveTo(hx, hy - .1); g.lineTo(hx - .9, hy + .9); g.stroke(); g.strokeStyle = 'rgba(40,36,30,.7)'; g.lineWidth = .03; g.beginPath(); g.moveTo(hx - .9, hy + .9); g.lineTo(hx - .9, hy + 1.6); g.stroke(); }
+    hRect(hx - .4, hy - .1, .8, .7, 1.6);
+  }
+  if (stage >= 4) {   // cut blocks stacked by the rim, waiting for the carriers
+    const n = stage === 4 ? Math.floor(f * 4) : 4;
+    for (let i = 0; i < n; i++) { const a = x + .3 + i * .45, b = y + .25; g.fillStyle = i % 2 ? '#b0a999' : '#9d968a'; g.fillRect(a, b, .38, .3); hRect(a, b, .38, .3, .3); }
+  }
 }
 // a solar field: stone footings, timber racks, cable runs, then the panels, one every two tiles by two
 function drawSolar(g, hRect, p) {

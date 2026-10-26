@@ -8,7 +8,7 @@
 import { MAP, T, HOUR, ACT, hidden } from './consts.js';
 import { rnd, clamp, hash } from './rng.js';
 import { dayWeather, fireOn, seasonOf, doyOf } from './year.js';
-import { floodPlain, propsIn } from './world.js';
+import { floodPlain, propsIn, propAt } from './world.js';
 import { stageLoads, loadsOf, powerCheck, byId } from './build.js';
 import { injure, laidUp, woundText } from './body.js';
 import { assignHomes, dropCarry } from './work.js';
@@ -79,6 +79,20 @@ export function hzMorning(sim) {
     const keep = [];
     for (const s of H.scorch) { if (s[2] <= sim.day - REGROW) { const t = s[0]; if (sim.W.type[t] === T.SCORCH) { sim.W.type[t] = T.MEADOW; sim.tnew.push(t, T.MEADOW); } } else keep.push(s); }
     H.scorch = keep;
+  }
+  regrowth(sim);
+}
+// felled woodland comes back: a stump puts up a new tree in a few years, cut scrub in a season or two. Not under a
+// building or a field, and not where the ground burned and has not greened over yet
+const TREE_BACK = 1 / 240, BUSH_BACK = 1 / 60;
+function regrowth(sim) {
+  const S = sim.S, W = sim.W, plots = S.projects.filter(p => !p.gone);
+  for (const [list, ch, k] of [[sim.trees, TREE_BACK, 'tree'], [sim.scrub, BUSH_BACK, 'bush']]) for (const e of list) {
+    const t = e.src; if (S.gone[t] !== 0 || rnd() >= ch) continue;
+    const x = t % MAP, y = t / MAP | 0;
+    if (W.type[t] === T.SCORCH || plots.some(p => x >= p.x && x < p.x + p.w && y >= p.y && y < p.y + p.h)) continue;
+    const q = propAt(W, x, y); if (!q || q.k !== k || S.cols.some(c => !c.dead && c.src === t)) continue;
+    sim.regrow(t);
   }
 }
 

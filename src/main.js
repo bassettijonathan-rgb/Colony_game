@@ -132,7 +132,7 @@ function recolour() {
 function onMarks(m) {
   const W = A.W; if (!W || !W.gone) return;
   const tiles = [];
-  for (let i = 0; i < m.gone.length; i += 2) { const t = m.gone[i]; if (!W.gone.has(t)) tiles.push(t); W.gone.set(t, m.gone[i + 1]); }
+  for (let i = 0; i < m.gone.length; i += 2) { const t = m.gone[i], n = m.gone[i + 1]; if (n < 0) { if (W.gone.delete(t)) tiles.push(t); continue; } if (!W.gone.has(t)) tiles.push(t); W.gone.set(t, n); }
   for (let i = 0; i < m.quarry.length; i += 2) W.quarry.set(m.quarry[i], m.quarry[i + 1]);
   if (tiles.length && A.view) A.view.terrain.propsGone(tiles);
   // burnt ground, and ground grown back: repainted in batches, not tile by tile

@@ -6,7 +6,7 @@ import { ACT, ACT_NAME, SHIFTS, WORKS, RULES, SKILLS, SKILL_NAME, DAY_TICKS, HOU
 import { TRAITS, suggestFirst } from '../core/founders.js';
 import { PRINT_TICKS, SMELT } from '../core/work.js';
 import { CROPS, CROP_KEYS, SAMPLES, TEST_H, PROC_NAME } from '../core/food.js';
-import { TYPES, PLANNABLE, STAGE_NAMES, TEST_STAGES, stagesOf, matName, LANDER_KW, FEED, seamOf } from '../core/build.js';
+import { TYPES, PLANNABLE, STAGE_NAMES, TEST_STAGES, stagesOf, matName, LANDER_KW, FEED, seamOf, PIT_ROCK } from '../core/build.js';
 import { progress } from '../render/buildings.js';
 import { crewColour, portrait } from '../render/people.js';
 import { LETTERS } from '../render/view.js';
@@ -25,7 +25,7 @@ const cap1 = s => s.charAt(0).toUpperCase() + s.slice(1);
 const SIDE = ['north', 'east', 'south', 'west'];
 const pct = f => Math.round(f * 100) + '%';
 const icon = (id, cls = 'ic') => `<svg class="${cls}"><use href="#i-${id}"/></svg>`;
-const TICON = { shelter: 'seed', dorm: 'dorm', commons: 'commons', workshop: 'tool', clinic: 'clinic', solar: 'solar', test: 'test', field: 'field', lab: 'lab', plant: 'tank', cellar: 'cellar', burrow: 'below', mine: 'mine' };
+const TICON = { shelter: 'seed', dorm: 'dorm', commons: 'commons', workshop: 'tool', clinic: 'clinic', solar: 'solar', test: 'test', field: 'field', lab: 'lab', plant: 'tank', cellar: 'cellar', burrow: 'below', mine: 'mine', pit: 'stone' };
 const KIN = { partner: 'Partner', parent: 'Parent', child: 'Child', sibling: 'Brother or sister' }, KIN_ORDER = ['partner', 'parent', 'child', 'sibling'];
 const GEN = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth'];
 // how old someone is: a founder's mind is older than the body the Seed printed for it
@@ -36,7 +36,7 @@ function ageLine(p, r) {
 }
 const TAB = { archive: ['Archive', 'archive'], crews: ['Crews', 'crews'], build: ['Build', 'build'], life: ['Food and local life', 'life'], log: ['Log', 'log'] };
 // what a building holds, in a few words
-const holds = (type, c) => ({ shelter: `${c.beds} bunks`, dorm: `${c.beds} bunks`, commons: `seats for ${c.seats}`, workshop: `${c.benches} bench${c.benches > 1 ? 'es' : ''}`, clinic: `${c.beds} beds`, solar: `${c.panels} panels, ${c.supply} kW`, field: `${c.tiles} tiles of beds`, lab: `${c.benches} lab bench${c.benches > 1 ? 'es' : ''}`, plant: `${c.tanks} tank${c.tanks > 1 ? 's' : ''}`, cellar: `cool shelves for ${c.store} loads of food`, burrow: `${c.beds} bunks`, mine: `${c.faces} face${c.faces > 1 ? 's' : ''} to work` })[type] || '';
+const holds = (type, c) => ({ shelter: `${c.beds} bunks`, dorm: `${c.beds} bunks`, commons: `seats for ${c.seats}`, workshop: `${c.benches} bench${c.benches > 1 ? 'es' : ''}`, clinic: `${c.beds} beds`, solar: `${c.panels} panels, ${c.supply} kW`, field: `${c.tiles} tiles of beds`, lab: `${c.benches} lab bench${c.benches > 1 ? 'es' : ''}`, plant: `${c.tanks} tank${c.tanks > 1 ? 's' : ''}`, cellar: `cool shelves for ${c.store} loads of food`, burrow: `${c.beds} bunks`, mine: `${c.faces} face${c.faces > 1 ? 's' : ''} to work`, pit: `${c.faces} face${c.faces > 1 ? 's' : ''} to cut` })[type] || '';
 const UG_TXT = { soil: 'soft soil: quick to dig, but the walls need a lot of shoring', clay: 'clay: heavier digging, and it holds its shape', stone: 'stone: slow digging, little shoring, and the spoil gives stone for the yard', 'hard rock': 'hard rock: very slow digging, but it barely needs shoring and gives stone' };
 const loads = L => Object.entries(L).filter(([k, n]) => n > 0 && k !== 'mark' && k !== 'test').map(([k, n]) => matName(k, n)).join(', ');const SHIFT_TXT = SHIFTS.map(s => `${s.name} ${s.a}–${s.b}`);
 // what a crew's members are doing, in a word each
@@ -261,7 +261,7 @@ export class Panels {
     const y = U.stores.yard, ws = U.projects.some(p => p.type === 'workshop' && p.done && p.powered), proj = U.projects.find(p => p.id === cr.proj && !p.done);
     const t = {
       build: proj ? `Working on ${proj.name}: ${stagesOf(proj.type)[proj.stage].toLowerCase()}. When the yard runs out, they cut stone and fell trees themselves.` : 'Nothing they can build right now. Plan something in the Build tab, or check what the projects there are waiting for.',
-      quarry: `They cut stone from boulders and rock faces and stack it in the yard, until there is enough for everything planned. ${y.stone} there now.`,
+      quarry: `They cut stone from boulders and rock faces, or from a stone pit when that is nearer, and stack it in the yard, until there is enough for everything planned. ${y.stone} there now.`,
       timber: `They fell trees and carry the logs to the yard, until there is enough for everything planned. ${y.timber} there now.`,
       workshop: ws ? `They make airlock seals, pipe runs, power units and solar panels from salvage at the workshop benches, whichever the projects will run short of first. When there is nothing to make, they smelt ore into salvage, ${SMELT.ore} loads into ${SMELT.out}.` : 'They need a finished workshop with power before they can make anything.',
       mine: (() => { const m = U.projects.filter(p => p.type === 'mine' && p.done); return !m.length ? 'There is no finished mine yet. Plan one over a seam of ore in the Build window (press U to see the seams).' : m.some(p => p.seam > 0 && p.powered) ? `They cut ore at the mine faces and pile it in the yard, while the colony is short of metal. ${y.ore || 0} ore and ${y.salvage} salvage there now; the workshop smelts the ore.` : m.some(p => p.seam > 0) ? 'The mine is dark: it needs power for its lamps before anyone works it.' : 'Every mine is worked out. Plan a new one over another seam.'; })(),
@@ -412,6 +412,7 @@ export class Panels {
       const g = c.ground;
       h += `<div class="sec">The ground below</div><div class="note">The Seed's soundings show ${esc(UG_TXT[g.name] || g.name)}.${g.dig > 1.05 ? ` Digging takes ${Math.round((g.dig - 1) * 100)}% longer than in soil.` : ''}${P.type === 'mine' ? (g.ore > .05 ? ` A seam of metal ore runs under ${Math.round(g.ore * 100)}% of it: about ${seamOf(g, P.w, P.h)} loads, which a mining crew brings up once the galleries are dug.` : '') : g.ore > .05 ? ' A seam of metal ore runs through it: the diggers will bring it up, and a workshop or the fabricator smelts it into salvage.' : ''} Below ground there is nothing to burn and the cold doesn't reach, but water finds its way down the stairs.</div>`;
     }
+    if (P.type === 'pit' && c.ground) h += `<div class="sec">The ground</div><div class="note">The Seed's soundings show stone under ${Math.round(c.ground.stone * 100)}% of it, close to the surface: about ${PIT_ROCK * P.w * P.h} loads to cut.</div>`;
     const L = c.load;
     if (L && !T.open && !T.below) {
       h += `<div class="sec">Load check</div><div class="note">`;
@@ -613,6 +614,7 @@ export class Panels {
       const Y = U.stores.yard;
       h += `<div class="sec">The seam</div><div class="note" style="margin:0">${p.seam > 0 ? `About ${p.seam} loads of ore are left to bring up${p.done ? '' : ', once the galleries are dug'}.` : 'Worked out: there is no ore left under it. Plan a new mine over another seam.'} ${p.done && p.seam > 0 ? 'A crew set to mine work cuts it, a load at a time, and piles it in the yard, while the colony is short of metal.' : ''} Every three loads of ore smelt into two of salvage at a workshop bench, or more slowly in the Seed's fabricator.${Y.ore ? ` The yard holds ${Y.ore} ${Y.ore === 1 ? 'load' : 'loads'} of ore.` : ''}</div>`;
     }
+    if (p.type === 'pit') h += `<div class="sec">The stone</div><div class="note" style="margin:0">${p.rock > 0 ? `About ${p.rock} loads of stone are left to cut${p.done ? '' : ', once the face is open'}.` : 'Cut out: the stone left is too deep to reach. Plan a new pit on stony ground.'} ${p.done && p.rock > 0 ? 'Quarry crews and builders cut here when it is nearer than the rocks left lying about, or when nothing else is left.' : ''}</div>`;
     if (p.type === 'field' && p.done) { const [state, sel] = fieldBits(p); h += `<div class="sec">Crop</div><div class="note" style="margin:0 0 6px">${state}</div>${sel}`; }
     if (!p.done) {
       h += `<div class="sec">Progress · ${pct(all)}</div><div class="bar"><u style="width:${pct(all)}"></u></div>`;
