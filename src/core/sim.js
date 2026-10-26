@@ -186,7 +186,8 @@ export class Sim {
     if (!s.length) s.push(p.door ? p.door.y * MAP + p.door.x : this.yardTile);
     this.spotCache.set(key, s); return s;
   }
-  doorOf(p) { return p.type === 'shelter' ? this.doorTile : p.door.y * MAP + p.door.x; }
+  // where to stand to reach a building: its door, or for an open plot (a field, a solar field) the middle of its near edge
+  doorOf(p) { return p.type === 'shelter' ? this.doorTile : p.door ? p.door.y * MAP + p.door.x : Math.min(MAP - 1, p.y + p.h) * MAP + p.x + (p.w >> 1); }
 
   // ---------- the ground a building stands on ----------
   // once foundations start, a plot can't be walked across: the paths around it are searched again
