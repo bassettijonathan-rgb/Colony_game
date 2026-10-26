@@ -38,4 +38,24 @@ export const SEALED = {
       greet: ['Stand-in: {lead} from {place} is in camp to trade.'], joinWhy: ['Stand-in: {name} asks to stay.'],
     })),
   },
+  // The hidden story: plain functions over the API in src/core/story.js. The stand-in leaves one find, whose lab
+  // result opens one building, keeps one reading, and adds one rule, so every part of the page can be tried.
+  story: {
+    devices: { sx: { name: 'Stand-in post', min: 2, max: 3, size: [2, 2], cap: { kw: .1 }, look: 'post', use: 'A stand-in for something the hidden story opens to build.' } },
+    finds: { sx: { name: 'A stand-in find', h: 4 } },
+    facts: { sx: { unlock: 'sx' } },
+    rules: { sxr: { name: 'A stand-in rule', opts: [['a', 'The first way'], ['b', 'The other way']] } },
+    init(G) { G.st.at = 15; },
+    morning(G) {
+      if (!G.st.at) G.st.at = 15;
+      if (!G.found('sx') && G.day >= G.st.at) { const c = G.people()[0]; G.find('sx', { who: c && c.id, text: 'Stand-in text for something found.' }); }
+      if (G.built('sx').length) G.read('sx', .5 + G.rnd(), 'A stand-in reading', 'units');
+    },
+    lab(G, f) { return { text: 'A stand-in result: it opens a stand-in building and a stand-in rule.', fact: 'sx', then: G2 => { G2.addRule('sxr', 'a'); G2.open('sx', 'A stand-in record', 'Stand-in text for a record.'); G2.mark(G2.land.x + 20, G2.land.y, 'line'); } }; },
+    advise(G) { return G.know('sx') && !G.projects().some(p => p.type === 'sx') ? [{ type: 'sx', why: 'Stand-in advice.' }] : []; },
+    card(G, p) { return p.type === 'sx' && p.done ? [{ id: 'ping', label: 'A stand-in action' }] : []; },
+    act(G, p, id) { G.note('The stand-in action was done.'); },
+    plot(G, x, y, w, h, m) { return G.know('sx') ? 'A stand-in note about this ground.' : ''; },
+    opinion(G, c, k, add) { add('b', .2, 'prefers the stand-in'); },
+  },
 };

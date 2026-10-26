@@ -10,7 +10,7 @@ import { built } from './build.js';
 // what stops a skip: the things the player would want to see happen, or has to answer
 // (an illness at its crisis is left to the medics: the skip stops if it ends in a death)
 export const STOP = new Set(['death', 'bfire', 'wildfire', 'flood', 'floodwarn', 'nofood', 'protest', 'verdict', 'lost', 'gutted', 'tremor', 'nosalvage', 'nostone',
-  'firstfight', 'fight', 'unseen', 'nbsight', 'nbjoin', 'raid', 'raidheld', 'raidkill']);
+  'firstfight', 'fight', 'unseen', 'nbsight', 'nbjoin', 'raid', 'raidheld', 'raidkill', 'find', 'storybig']);
 const MAX_KEPT = 120;
 
 const dateOf = cal => { const d = doyOf(cal); return `day ${d % SEASON_DAYS + 1} of ${SEASONS[seasonOf(d)]}, year ${Math.floor((cal - 1) / YEAR_DAYS) + 1}`; };
@@ -90,6 +90,14 @@ export function chronicle(sim, M, why) {
   p = bits.length ? `There ${(fires || floods || flares || hurt) === 1 && bits.length === 1 ? 'was' : 'were'} ${list(bits)}. ` : '';
   if (ill) p += `${cap(num(ill, 'person', 'people'))} fell ill${crisis ? `, ${crisis === 1 ? 'one' : word(crisis)} of them gravely` : ''}. `;
   for (const e of of('illfound', 'heartattack')) p += e.m + ' ';
+  if (p) P.push(p.trim());
+  // what the colony found, and what it learned
+  p = '';
+  const fnd = of('find'), res = of('findres'), big = of('storybig'), small = of('story');
+  if (fnd.length) p += `${cap(num(fnd.length, 'thing was', 'things were'))} found and brought in: ${list(fnd.map(e => (e.title || '').toLowerCase()).filter(Boolean))}. `;
+  if (res.length) p += `The lab looked at ${num(res.length, 'find', 'finds')}; what it made of ${res.length === 1 ? 'it' : 'them'} is under Log, Finds. `;
+  for (const e of big) p += `${e.title}: ${e.m} `;
+  if (small.length) p += `Also: ${list([...new Set(small.map(e => `“${e.title}”`))])}. `;
   if (p) P.push(p.trim());
   // and why it ended
   P.push(why ? `The skip stopped early, for “${why}”.` : 'Nothing needed you, so the skip ran its full length.');

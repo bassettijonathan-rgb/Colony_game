@@ -9,7 +9,7 @@ import { makeArchive, makePerson } from './founders.js';
 import { propsIn } from './world.js';
 import { think, mindTick, daily, remember } from './life.js';
 import { crewThink, seedTick, onArrive, onTimer, command, projectsThink, dropCarry, planCrews, refundOf, THAW_GAP } from './work.js';
-import { shelterProject, strength, powerCheck, capOf, byId, stockOf, built, PRECISE, SALVAGE, KIT, CARGO, LANDER_KW, FEED } from './build.js';
+import { shelterProject, strength, powerCheck, capOf, byId, stockOf, built, PRECISE, SALVAGE, KIT, CARGO, LANDER_KW, FEED, TYPES } from './build.js';
 import { drawLife, placeLife, newFood, labHour, fieldHour, spoil, cellarShare, mealsInStore, kitchenOnly, patchLeft, inSeason, cropPlan, daysToRipen, foodOf, CROPS, SEED_LAB, verdict, PROC_NAME } from './food.js';
 import { newHist, histHour, histDay, histRow } from './history.js';
 import { daylight, doyOf, seasonOf, dayWeather, tempAt, untilDeep, DEEP } from './year.js';
@@ -28,6 +28,7 @@ import { newSoc, socHour, socUI, migrateSoc } from './society.js';
 import { buildAdvice } from './advice.js';
 import { newNb, nbMorning, guestsThink, guestArrive, guestSnap, nbUI, migrateNb, trade, answerJoin } from './nb.js';
 import { raidMorning, raidThink, raidArrive, raidMode, setGuard, autoGuard, captives } from './raid.js';
+import { storyInit, storyLoad, storyHour, storyMorning, storyAct, storyUI, storyCard } from './story.js';
 
 export const CREW_NAMES = ['Basalt', 'Kestrel', 'Cedar', 'Drift', 'Ember', 'Fern', 'Gale', 'Heron', 'Iris', 'Juniper', 'Lichen', 'Moss', 'Nettle', 'Onyx', 'Pike', 'Quartz', 'Rowan', 'Sedge', 'Thistle', 'Umber', 'Vetch', 'Willow', 'Yarrow', 'Zinc', 'Alder', 'Bramble', 'Cobalt', 'Dune', 'Flint', 'Garnet', 'Hazel', 'Ivy', 'Jasper', 'Kelp', 'Larch', 'Marl'];
 export const STAKES = 10, FOOD_DAYS = 40, FIRST_BODIES = 6;
@@ -99,6 +100,7 @@ export class Sim {
       F: newFood(this.kinds.length), gen: newGen(), hist: newHist(), med: { ...MED_KIT }, care: { triage: 'worst', medics: 0, iso: false }, ill: newIll(), hz: newHz(), dir: newDir(), ctl: -1, soc: newSoc(),
     };
     this.S.nb = newNb(this);
+    if (mode === 'landfall') storyInit(this);
     this.S.F.sun = sunFactor(season); this.S.F.seasonSaid = season; this.S.F.temp = tempAt(W.seed, this.cal, 6);
     if (season === DEEP) { this.S.F.snow = .55; this.S.F.ice = .35; }   // landing into a winter already under way
     this.resetGround();
@@ -291,6 +293,7 @@ export class Sim {
     hzHour(this); flareHour(this);
     ctlHour(this);
     socHour(this);
+    storyHour(this);
     if (h === 18) feedPatients(this);
     if (h === 6) this.morning(d, doy, wx);
   }
@@ -301,6 +304,7 @@ export class Sim {
     dirMorning(this);
     raidMorning(this);
     nbMorning(this);
+    storyMorning(this);
     if (F.seasonSaid !== s && doy % 20 === 0) {
       F.seasonSaid = s; F.sun = sunFactor(s); for (const p of powerCheck(this)) if (p.type !== 'solar') this.log(p.powered ? `${p.name} has power again.` : `${p.name} went dark: the solar panels make less now.`, p.powered ? 'good' : 'bad', p.powered ? { pid: p.id } : { e: 'dark', lvl: 1, pid: p.id, title: 'Not enough power' });
       if (d > 1) this.log(SEASON_TEXT[s] + (s === DEEP ? ` ${this.foodNote()}` : ''), s === DEEP ? 'bad' : '', { e: 'season' + s, lvl: 2, title: SEASON_TITLE[s] });
@@ -485,6 +489,7 @@ export class Sim {
   }
   // the Society window: rules and who backs them, the council, the school, the library, the watch, the customs
   socUI() { return socUI(this); }
+  storyUI() { return storyUI(this); }
   // the clinic's records: everyone who ever lived here, what their days went on, and what their bodies came to
   recordsUI() {
     const S = this.S;
@@ -504,7 +509,7 @@ export class Sim {
       crews: S.crews.map(cr => ({ id: cr.id, name: cr.name, gone: cr.gone, lead: cr.lead, members: cr.members, work: cr.work, shift: cr.shift, rules: cr.rules, target: cr.target, dest: cr.dest, recalled: cr.recalled, proj: cr.proj })),
       seed: { feed: sd.feed, fb: sd.fb || 0, stored: S.archive.filter(p => p.woke == null).length, per: FEED.per, queue: sd.queue, printing: sd.printing && { fid: sd.printing.fid, rid: sd.printing.rid, name: sd.printing.rid != null ? S.cols[sd.printing.rid].name : S.archive[sd.printing.fid].name, left: sd.printing.left }, restore: sd.restore || [], stakes: sd.stakes, fab: S.fab.job && { k: S.fab.job.k, left: S.fab.job.left } },
       shelter: { stage: sh.stage, done: sh.done, beds: 12 },
-      projects: S.projects.filter(p => !p.gone).map(p => ({ crop: p.crop && { ...p.crop, plan: p.crop.st === 'bare' ? cropPlan(this, p) : null, eta: p.crop.st === 'grow' ? daysToRipen(this, p.crop.k, p.crop.g) : null }, id: p.id, type: p.type, name: p.name, x: p.x, y: p.y, w: p.w, h: p.h, side: p.side, door: p.door, stage: p.stage, need: p.need, got: p.got, done: p.done, powered: p.powered, paused: p.paused, wait: p.wait, stall: p.stall, mat: p.mat, cap: capOf(p), tanks: p.tanks, why: p.why, crews: S.crews.filter(cr => !cr.gone && cr.work === 'build' && cr.proj === p.id).map(cr => cr.name), out: p.out, fire: !!p.fire, burn: p.fire ? +(p.burn || 0).toFixed(2) : 0, shut: p.shut || '', dmg: p.dmg || '', wet: !!p.wetH, below: !!p.below, lvl: p.below ? p.lvl || 1 : 0, via: p.via, ug: p.ug && p.ug.name, ore: p.ug ? p.ug.ore : 0, seam: p.seam, rock: p.rock, rock0: p.rock0, back: refundOf(p) })),
+      projects: S.projects.filter(p => !p.gone).map(p => ({ crop: p.crop && { ...p.crop, plan: p.crop.st === 'bare' ? cropPlan(this, p) : null, eta: p.crop.st === 'grow' ? daysToRipen(this, p.crop.k, p.crop.g) : null }, id: p.id, type: p.type, name: p.name, x: p.x, y: p.y, w: p.w, h: p.h, side: p.side, door: p.door, stage: p.stage, need: p.need, got: p.got, done: p.done, powered: p.powered, paused: p.paused, wait: p.wait, stall: p.stall, mat: p.mat, cap: capOf(p), tanks: p.tanks, why: p.why, crews: S.crews.filter(cr => !cr.gone && cr.work === 'build' && cr.proj === p.id).map(cr => cr.name), out: p.out, fire: !!p.fire, burn: p.fire ? +(p.burn || 0).toFixed(2) : 0, shut: p.shut || '', dmg: p.dmg || '', wet: !!p.wetH, below: !!p.below, lvl: p.below ? p.lvl || 1 : 0, via: p.via, ug: p.ug && p.ug.name, ore: p.ug ? p.ug.ore : 0, seam: p.seam, rock: p.rock, rock0: p.rock0, back: refundOf(p), acts: TYPES[p.type] && TYPES[p.type].story ? storyCard(this, p) : null })),
       stores: { yard: S.stores.yard, cargo: S.stores.cargo, precise: Object.fromEntries(PRECISE.map(k => [k, stockOf(S, k)])) }, power: S.power, blueprints: S.blueprints,
       mat: { stone: { tested: S.mat.stone.tested, f: S.mat.stone.tested ? S.mat.stone.f : null }, timber: { tested: S.mat.timber.tested, f: S.mat.timber.tested ? S.mat.timber.f : null } },
       med: S.med, care: { triage: S.care.triage, medics: S.care.medics, iso: !!S.care.iso, ward: S.cols.filter(c => !c.dead && c.ward >= 0).map(c => [c.id, c.ward]) }, food: S.food, alive: S.cols.filter(c => !c.dead).length, year: this.yearUI(), F: this.foodUI(), known: S.knownN, stakes: S.stakes, auto: S.autoCrews, plan: !!S.crewPlan, shift: S.shift ?? 1, stats: S.stats, today: histRow(this, this.day), y0: S.y0 || 0, ill: illUI(S), hz: hzUI(S), ctl: S.ctl ?? -1, ord: S.ctl >= 0 && S.cols[S.ctl] ? S.cols[S.ctl].ord : null, emerg: emergency(this), gen: genUI(this), nb: nbUI(this), advice: S.mode === 'landfall' ? buildAdvice(this) : null,
@@ -546,6 +551,7 @@ export class Sim {
   }
   logSince(n) { return this.S.log.filter(e => e.n > n); }
   command(m) { if (m.op === 'trade') return trade(this, m); if (m.op === 'join') return answerJoin(this, !!m.yes);
+    if (m.op === 'story') return storyAct(this, m);
     if (m.op === 'raidMode') return raidMode(this, m.m); if (m.op === 'guard') return setGuard(this, m.id, m.on); if (m.op === 'guardAuto') return autoGuard(this); if (m.op === 'captives') return captives(this, !!m.treat);
     return command(this, m); }
 
@@ -575,6 +581,7 @@ export class Sim {
     migrateLives(this);
     migrateSoc(this);
     migrateNb(this);
+    if (this.S.mode === 'landfall') storyLoad(this);
     this.resetGround(); this.gnew = []; this.qnew = [];
     if (old) projectsThink(this); // give the migrated crews their project now, not at the next check
     this.wear.set(unrle(wear, MAP * MAP)); this.known.set(unrle(known, MAP * MAP)); this.dirty.clear(); this.kdirty.clear();

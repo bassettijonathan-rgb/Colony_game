@@ -19,6 +19,7 @@ import { flareNear } from './sky.js';
 import { seedBody } from './aging.js';
 import { stageAt } from './lives.js';
 import { planCrews, autoCrew } from './work.js';
+import { storyVisit, storyTrade } from './story.js';
 
 export const KINDS = (SEALED.nb && SEALED.nb.kinds) || [];
 // what can change hands, and what each is worth, in meals
@@ -152,10 +153,12 @@ export function trade(sim, m) {
   const up = v.gift ? Math.min(6, v.have / 4) : Math.min(1, v.have / 20) * (1 + Math.min(4, (v.have - v.need) / ask * 4)), room = Math.max(0, TRUST_VISIT - (P.tg || 0));
   P.tg = (P.tg || 0) + Math.min(room, up); N.trust = clamp(N.trust + Math.min(room, up), -100, 100);
   N.trades++; P.traded = 1; S.stats.trades = (S.stats.trades || 0) + 1;
+  N.gave = N.gave || {}; for (const k in give) N.gave[k] = (N.gave[k] || 0) + give[k];
   const words = o => Object.entries(o).filter(([k]) => GOODS[k]).map(([k, n]) => `${n} ${GOODS[k].name.toLowerCase()}`);
   const g = words(give), t = [...words(get), ...Object.keys(know).map(k => L.find(q => q.id === k).name.toLowerCase())];
   sim.log(v.gift ? `The colony gave the people from ${N.place} ${g.join(', ')}. ${lead ? lead.name : 'They'} thanked the Seed for it.` : `Traded with the people from ${N.place}: ${g.length ? g.join(', ') : 'nothing'} for ${t.join(', ')}.`, 'good');
   if (trustWord(before) !== trustWord(N.trust)) sim.log(`The people from ${N.place} are ${trustWord(N.trust)} now.`, 'good', { e: 'nbtrust', lvl: 1, title: N.place });
+  storyTrade(sim, i, give);
   S.rv++;
   return { ok: true };
 }
@@ -206,8 +209,9 @@ function startParty(sim, i, kind) {
   const n = kind === 'meet' ? 3 + Math.floor(r() * 2) : 3 + Math.floor(r() * 4), at = entry(sim, q.dir), used = new Set([...S.cols.map(c => c.name)]);
   N.g = [];
   for (let k = 0; k < n; k++) {
-    const t = k ? nearFree(sim, at, 3) : at, name = nameFor(sim, K, r, used); used.add(name);
-    N.g.push(newGuest(r, K, i, k, t, name, 20 + Math.floor(r() * 30)));
+    const sp = k === 0 && kind !== 'meet' && q.special, t = k ? nearFree(sim, at, 3) : at, name = sp ? sp.name : nameFor(sim, K, r, used); used.add(name);
+    const g = newGuest(r, K, i, k, t, name, sp ? sp.age : 20 + Math.floor(r() * 30)); if (sp) { g.special = sp.id; q.special = null; }
+    N.g.push(g);
   }
   const goods = {};
   if (kind === 'trade') for (const k in K.offers) { const [a, b] = K.offers[k], v = Math.round(a + r() * (b - a)); if (v > 0) goods[k] = v; }
@@ -265,6 +269,7 @@ function arrive(sim) {
     sim.log(`The people from ${q.place} saw the scanner and asked what it was for. When they were told, they went quiet, and ${lead.name} said they would not go near it.`, 'bad', { e: 'nbscan', lvl: 1, x: lead.x, y: lead.y, title: `${q.place} and the scanner` });
   }
   S.stats.visits = (S.stats.visits || 0) + 1;
+  storyVisit(sim, P.nb, P);
   S.rv++;
 }
 export const list = a => a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1];

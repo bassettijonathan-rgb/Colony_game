@@ -3,7 +3,7 @@
 // (stumps, logs, quarried rock). Everything is drawn on the dyn layer in tile units, with heights for the shadows.
 import { MAP, T } from '../core/consts.js';
 import { clamp, hash } from '../core/rng.js';
-import { CARGO } from '../core/build.js';
+import { CARGO, TYPES } from '../core/build.js';
 import { propAt } from '../core/world.js';
 
 // share of the current stage that is done
@@ -30,6 +30,7 @@ export function drawBuilding(g, hRect, p, E, t, inside = false) {
   if (p.type === 'solar') return drawSolar(g, hRect, p);
   if (p.type === 'field') return drawField(g, hRect, p, t || 0);
   if (p.type === 'pit') return drawPit(g, hRect, p);
+  if (p.done && TYPES[p.type] && TYPES[p.type].look) return drawDevice(g, hRect, p, E, t || 0, TYPES[p.type].look);
   const st = STYLE[p.type] || STYLE.dorm, stage = p.done ? 5 : p.stage, f = progress(p);
   const x = p.x, y = p.y, w = p.w, h = p.h, long = w >= h;
   const along = (fr, fn) => { const n = long ? w : h; for (let i = 0; i < n * fr; i++) fn(long ? x + i : x, long ? y : y + i, long ? 1 : w, long ? h : 1); };
@@ -234,6 +235,39 @@ function drawPit(g, hRect, p) {
   }
 }
 // a solar field: stone footings, timber racks, cable runs, then the panels, one every two tiles by two
+// the open-air devices: a post with samplers and a siren, a vent stack with its fan, a pump house on a shore,
+// a lattice mast with its dish. A light shows they have power, the siren light blinks after dark
+function drawDevice(g, hRect, p, E, t, look) {
+  const x = p.x, y = p.y, w = p.w, h = p.h, cx = x + w / 2, cy = y + h / 2, on = p.powered !== false, night = E && E.night > .3;
+  g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(x + .3, y + .35, w - .4, h - .4);
+  g.fillStyle = '#8a867e'; g.beginPath(); g.roundRect(x + .2, y + .2, w - .4, h - .4, .15); g.fill(); hRect(x + .2, y + .2, w - .4, h - .4, .12);
+  const lamp = (a, b, r, c) => { g.fillStyle = c; g.beginPath(); g.arc(a, b, r, 0, 6.3); g.fill(); };
+  if (look === 'post') {
+    g.fillStyle = '#5d666f'; g.fillRect(cx - .1, cy - .1, .2, .2); hRect(cx - .1, cy - .1, .2, .2, 3.2);
+    for (const [u, v, k] of [[-.32, -.05, 1.2], [.18, .1, 2.4]]) { g.fillStyle = '#c9ced3'; g.fillRect(cx + u, cy + v - .1, .16, .2); hRect(cx + u, cy + v - .1, .16, .2, k); }
+    lamp(cx, cy, .13, on ? (night && (t * 1.3) % 1 < .5 ? 'rgba(255,90,70,.95)' : '#b84a3c') : '#5a3a34');
+  } else if (look === 'stack') {
+    const r = Math.min(w, h) * .3;
+    lamp(cx, cy, r, '#6a7078'); hRect(cx - r * .8, cy - r * .8, r * 1.6, r * 1.6, 4.5);
+    lamp(cx, cy, r * .72, '#2c3036');
+    g.strokeStyle = on ? '#9aa3ab' : '#555b62'; g.lineWidth = .07; const a = on ? t * 6 : 0;
+    for (let i = 0; i < 4; i++) { const b = a + i * 1.571; g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx + Math.cos(b) * r * .65, cy + Math.sin(b) * r * .65); g.stroke(); }
+  } else if (look === 'pump') {
+    const long = w >= h, hw = long ? w * .45 : w - .8, hh = long ? h - .8 : h * .45;
+    g.fillStyle = '#7d8690'; g.fillRect(x + .4, y + .4, hw, hh); hRect(x + .4, y + .4, hw, hh, 1.6);
+    g.fillStyle = '#a7afb7'; g.fillRect(x + .4, y + .4, hw, hh * .35);
+    g.strokeStyle = '#4c5258'; g.lineWidth = .22; g.lineCap = 'round'; g.beginPath();
+    if (long) { g.moveTo(x + .4 + hw, cy); g.lineTo(x + w + .6, cy); } else { g.moveTo(cx, y + .4 + hh); g.lineTo(cx, y + h + .6); } g.stroke();
+    lamp(x + .7, y + .7, .1, on ? 'rgba(120,230,160,.9)' : '#3a4a40');
+  } else if (look === 'mast') {
+    const r = Math.min(w, h) * .38, pts = [0, 1, 2].map(i => [cx + Math.cos(i * 2.094 - 1.571) * r, cy + Math.sin(i * 2.094 - 1.571) * r]);
+    g.strokeStyle = '#59616a'; g.lineWidth = .09;
+    for (let i = 0; i < 3; i++) { const [a, b] = pts[i], [c, d] = pts[(i + 1) % 3]; g.beginPath(); g.moveTo(a, b); g.lineTo(c, d); g.moveTo(a, b); g.lineTo(cx, cy); g.stroke(); hRect(a - .08, b - .08, .16, .16, 7); }
+    hRect(cx - .15, cy - .15, .3, .3, 9);
+    g.fillStyle = '#d6dade'; g.beginPath(); g.ellipse(cx + .25, cy - .1, .55, .38, -.6, 0, 6.3); g.fill(); hRect(cx, cy - .3, .5, .4, 6);
+    lamp(cx, cy, .12, on ? (night && (t * .8) % 1 < .3 ? 'rgba(255,90,70,.95)' : '#b84a3c') : '#5a3a34');
+  }
+}
 function drawSolar(g, hRect, p) {
   const stage = p.done ? 5 : p.stage, f = progress(p), x = p.x, y = p.y, cols = Math.max(1, Math.floor(p.w / 2)), rows = Math.max(1, Math.floor(p.h / 2));
   const ox = x + (p.w - cols * 2) / 2, oy = y + (p.h - rows * 2) / 2, cells = [];
@@ -391,6 +425,7 @@ export function buildingLights(out, projects, on, mul3) {
   for (const p of projects) {
     if (p.type === 'test') continue;
     if (p.below) { if (p.via == null && p.door && (p.done ? p.powered : p.stage > 0 && !p.paused)) out.push({ x: p.door.x + .5, y: p.door.y + .5, z: .6, r: 3.2, c: mul3([1, .74, .45], 1.3 * on), g: .2 }); continue; }
+    if (p.done && TYPES[p.type] && TYPES[p.type].look) { if (p.powered) out.push({ x: p.x + p.w / 2, y: p.y + p.h / 2, z: 1.5, r: 2.5, c: mul3([1, .5, .4], .8 * on), g: .1 }); continue; }   // a device: only its own small lamp
     if (p.done && p.powered && p.type !== 'solar' && p.type !== 'field') {
       if (p.door) out.push({ x: p.door.x + .5, y: p.door.y + .5, z: 1.2, r: 5, c: mul3([1, .78, .5], 1.6 * on), g: .25 });
       const long = p.w >= p.h; for (const k of [.3, .7]) out.push({ x: long ? p.x + p.w * k : p.x - .6, y: long ? p.y - .6 : p.y + p.h * k, z: 1, r: 4, c: mul3([1, .8, .55], 1.1 * on), g: .1 }), out.push({ x: long ? p.x + p.w * k : p.x + p.w + .6, y: long ? p.y + p.h + .6 : p.y + p.h * k, z: 1, r: 4, c: mul3([1, .8, .55], 1.1 * on), g: .1 });

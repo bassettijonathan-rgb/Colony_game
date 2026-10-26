@@ -10,6 +10,12 @@ import { matName, LANDER_KW } from '../core/build.js';
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const pct = f => Math.round(f * 100) + '%';
 const SEAS = ['Thaw', 'Long light', 'Storm', 'Deep cold'];
+// what the analyser is busy with: a kind of local life by its number, or a find ('f' and its number)
+export function labItem(A, F, q) {
+  if (q == null || q === -1) return null;
+  if (typeof q === 'string') { const f = A.story && A.story.finds.find(x => 'f' + x.i === q); return f ? { name: f.name.charAt(0).toLowerCase() + f.name.slice(1), h: f.h || 8, find: true } : null; }
+  const l = F.life[q]; return l ? { name: l.name.toLowerCase(), h: TEST_H } : null;
+}
 const TREE = { oak: ['Broadleaf', 'A broad, spreading tree with heavy limbs.'], pine: ['Needle tree', 'A tall tree with dark needles, common on high ground.'], birch: ['Pale-bark tree', 'A slender tree with pale bark.'], bloom: ['Flowering tree', 'A low tree that flowers in the warm months and likes wet ground.'] };
 const SOURCE_R = 70;   // as in the simulation: how far from the Seed people go for stone and timber
 
@@ -62,14 +68,14 @@ export function thingCard(A, th) {
   switch (th.k) {
     case 'seed': {
       const sd = U.seed, arch = A.archive || [], stored = arch.filter(p => p.woke == null).length, names = new Map(arch.map(p => [p.fid, p.name]));
-      const lab = F && F.lab, cur = lab && lab.cur >= 0 ? F.life[lab.cur] : null;
+      const lab = F && F.lab, cur = lab && labItem(A, F, lab.cur);
       let h = note('The lander’s mind. It came down with the colony’s founders stored as minds in its archive, prints their bodies, and plans the work, the meals and the power.', 8);
       h += sec('Archive and fabricator') + row('Minds stored', stored) + row('Feedstock left', `${sd.feed} ${sd.feed === 1 ? 'body' : 'bodies'}`) + (U.projects.some(p => p.type === 'plant' && p.done) ? row('Next body’s feedstock', pct(sd.fb / sd.per)) : !sd.feed ? note('A feedstock plant (Build window, Plan) makes more from biomass and stone.', 0) : '');
       if (sd.printing) h += row(`${sd.printing.rid != null ? 'Waking' : 'Printing'} ${esc(sd.printing.name || '')}`, '');
       if (sd.queue.length) h += row('Next in line', sd.queue.length);
       if (sd.fab) h += row('Making from salvage', esc(matName(sd.fab.k, 1)));
       if (U.gen) { const G = U.gen, kids = U.p.filter(r => !(r[6] & 16) && r[8] < 2).length; h += sec('Growth tanks and nursery') + row('Children growing', `${G.womb.length} of ${G.tanks}`) + G.womb.map(e => row(`Child of ${esc(e.names[0].split(' ')[0])} and ${esc(e.names[1].split(' ')[0])}`, `${e.left} day${e.left === 1 ? '' : 's'}`)).join('') + (G.asks.length ? row('Couples waiting', G.asks.length) : '') + row('In the nursery', kids); }
-      if (F) { h += sec('Analyser'); h += cur ? row(`Testing ${esc(cur.name.toLowerCase())}`, pct(lab.work / TEST_H)) : note('Idle. Samples of local life go here to be tested before anyone eats them.', 0); if (lab.queue.length) h += row('Waiting to be tested', lab.queue.length); }
+      if (F) { h += sec('Analyser'); h += cur ? row(`${cur.find ? 'Looking at' : 'Testing'} ${esc(cur.name)}`, pct(lab.work / cur.h)) : note('Idle. Samples of local life go here to be tested before anyone eats them.', 0); if (lab.queue.length) h += row('Waiting to be tested', lab.queue.length); }
       if (U.med) { const M = U.med; h += sec('Medical supplies') + row('Dressings', M.dress) + row('Painkillers', M.pk) + row('Antibiotic courses', M.abx) + row('Blood substitute', `${M.blood} unit${M.blood === 1 ? '' : 's'}`) + note('The fabricator makes more from salvage when they run low.', 0); }
       h += sec('Supplies') + row('Lander power', `${LANDER_KW} kW`) + (U.mode === 'stress' ? '' : row('Lander rations', `${Math.floor(U.food)} meals`)) + row('Sensor stakes not yet planted', sd.stakes);
       return { name: 'The Seed', icon: 'seed', meta: 'The lander and its mind', job: sd.printing ? 'Printing a body' : cur ? 'Testing samples' : 'Watching over the colony', dot: 'ok', body: h, btn: { label: 'Open the archive', tab: 'archive' } };

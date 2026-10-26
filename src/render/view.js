@@ -4,7 +4,7 @@
 import { MAP, CH, ACT, hidden, inRoom } from '../core/consts.js';
 import { clamp, sstep, hash } from '../core/rng.js';
 import { drawBuilding, drawHatch, drawYard, drawCargo, drawMarks, buildingLights, progress, spotInside } from './buildings.js';
-import { stagesOf, TYPES } from '../core/build.js';
+import { stagesOf, TYPES, doorless } from '../core/build.js';
 import { createGL } from './gl.js';
 import { FS_H, FS_L, FS_C } from './shaders.js';
 import { Terrain } from './terrain.js';
@@ -156,6 +156,13 @@ export class View {
     const C = F.colony, site = this.W.site;
     if (C) {
       drawMarks(dc, hRect, this.W, vis);
+      // posts the Seed has asked for on the map: red-topped stakes, each casting a short shadow
+      if (this.marks) for (const [x, y] of this.marks) if (vis(x, y, 2)) {
+        dc.fillStyle = 'rgba(0,0,0,.3)'; dc.beginPath(); dc.ellipse(x + .6, y + .62, .22, .12, .5, 0, 6.3); dc.fill();
+        dc.fillStyle = '#d8d2c4'; dc.fillRect(x + .4, y + .4, .2, .2); hRect(x + .4, y + .4, .2, .2, 1.4);
+        dc.fillStyle = '#e0412c'; dc.beginPath(); dc.arc(x + .5, y + .5, .16, 0, 6.3); dc.fill();
+        dc.strokeStyle = 'rgba(255,240,230,.7)'; dc.lineWidth = .04; dc.stroke();
+      }
       this.drawLife(dc, hDisc, C, L, Tp, R, B, k, E, F.time);
       if (C.hz && C.hz.lv > .3) this.drawFlood(dc, C.hz.lv, F.time);
       for (const p of C.projects) if (p.below && p.via == null) { if (p.door && vis(p.door.x, p.door.y, 3)) drawHatch(dc, hRect, p, F.time); }
@@ -554,7 +561,7 @@ export class View {
     ui.fillStyle = ok ? 'rgba(127,211,143,.2)' : 'rgba(238,107,95,.2)'; ui.fillRect(X, Y, Wd, Hd);
     ui.strokeStyle = ok ? 'rgba(127,211,143,.95)' : 'rgba(238,107,95,.95)'; ui.lineWidth = 2; ui.setLineDash([6, 4]); ui.strokeRect(X, Y, Wd, Hd); ui.setLineDash([]);
     if (P.check && P.check.bad) { ui.fillStyle = 'rgba(238,107,95,.45)'; for (const t of P.check.bad) ui.fillRect(sx(t % MAP), sy(t / MAP | 0), z, z); }
-    if (!TYPES[P.type].open) {
+    if (!doorless(TYPES[P.type])) {
       const d = P.door; if (d) { const dx = sx(d.x + .5), dy = sy(d.y + .5), r = Math.max(5, z * .45); ui.fillStyle = '#ffd79a'; ui.beginPath(); ui.arc(dx, dy, r, 0, 6.3); ui.fill(); ui.fillStyle = '#1a1206'; ui.font = `800 ${Math.max(9, Math.min(12, z * .5))}px Manrope,system-ui,sans-serif`; ui.fillText(TYPES[P.type].below ? 'S' : 'D', dx, dy + .5); }
     }
     ui.font = '700 12px Manrope,system-ui,sans-serif'; const t = `${TYPES[P.type].name} · ${P.w} × ${P.h}`, tw = ui.measureText(t).width + 14;
@@ -577,6 +584,7 @@ export class View {
     if (this.fog) g.drawImage(this.mmFog, 0, 0, m.width, m.height);
     g.fillStyle = 'rgba(8,12,18,.18)'; g.fillRect(0, 0, m.width, m.height);
     if (F.orbit) F.orbit.sites.forEach((s, i) => { g.strokeStyle = i === F.orbit.sel ? '#8fe0ff' : 'rgba(255,255,255,.7)'; g.lineWidth = 1.5 * D; g.beginPath(); g.arc(s.x * k, s.y * k, 40 * k, 0, 6.3); g.stroke(); g.fillStyle = g.strokeStyle; g.font = `800 ${10 * D}px Manrope,system-ui,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(LETTERS[i], s.x * k, s.y * k); });
+    if (F.colony && this.marks) { g.fillStyle = '#ff5a40'; for (const [x, y] of this.marks) g.fillRect(x * k - D, y * k - D, 2 * D, 2 * D); }
     if (F.colony) for (const s of F.colony.stakes) { g.fillStyle = '#9ff0ff'; g.fillRect(s.x * k - 1.5 * D, s.y * k - 1.5 * D, 3 * D, 3 * D); }
     if (F.colony) for (const p of F.colony.projects) if (p.below) { if (p.door) { g.fillStyle = '#c9a26b'; g.fillRect(p.door.x * k - D, p.door.y * k - D, 2 * D, 2 * D); } } else if (p.type !== 'test') { g.fillStyle = p.done ? 'rgba(220,226,232,.95)' : 'rgba(243,182,92,.9)'; g.fillRect(p.x * k, p.y * k, Math.max(2 * D, p.w * k), Math.max(2 * D, p.h * k)); }
     if (F.colony && F.colony.hz) { g.fillStyle = '#ff7a2a'; for (const tl of F.colony.hz.fire) g.fillRect((tl % MAP) * k - D, (tl / MAP | 0) * k - D, 2 * D, 2 * D); }

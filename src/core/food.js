@@ -7,6 +7,7 @@ import { hash, vnoise, clamp } from './rng.js';
 import { SEALED } from '../sealed/texts.js';
 import { normalTemp, dayWeather, doyOf, seasonOf, DEEP } from './year.js';
 import { dietLoad } from './aging.js';
+import { findHours, findDone } from './story.js';
 
 export const POOL = SEALED.life || [];
 const TERR = { meadow: T.MEADOW, dirt: T.DIRT, sand: T.SAND, shallow: T.SHALLOW, marsh: T.MARSH, forest: T.FOREST, scree: T.SCREE };
@@ -127,6 +128,10 @@ export function labHour(sim, extra = 0) {
   const S = sim.S, F = S.F, lab = F.lab;
   if (lab.cur < 0) { if (!lab.queue.length) return; lab.cur = lab.queue.shift(); lab.work = 0; S.rv++; }
   lab.work += SEED_LAB + extra;
+  if (typeof lab.cur === 'string') {   // something the colony found, not a sample of local life
+    if (lab.work >= findHours(S, lab.cur)) { const q = lab.cur; lab.cur = -1; lab.work = 0; findDone(sim, q); }
+    return;
+  }
   if (lab.work >= TEST_H) {
     const o = lab.cur, k = sim.kinds[o], L = F.life[o];
     L.tested = true; L.queued = false; L.samples = 0; lab.cur = -1; lab.work = 0; S.rv++;

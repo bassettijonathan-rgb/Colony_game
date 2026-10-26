@@ -13,7 +13,7 @@ import { STOP, skipBlock, skipTarget, skipMark, chronicle } from '../core/chroni
 const now = () => performance.now();
 
 export function createSimCore(post) {
-  let W = null, P = null, sim = null, sites = null, speed = 1, last = 0, acc = 0, timer = null, lastWear = 0, lastState = 0, watch = -1, recs = false, recsAt = 0, soc = false, socAt = 0, skip = null, sentChron = 0, sentLog = 0, sentRv = -1, sentHist = 0;
+  let W = null, P = null, sim = null, sites = null, speed = 1, last = 0, acc = 0, timer = null, lastWear = 0, lastState = 0, watch = -1, recs = false, recsAt = 0, soc = false, socAt = 0, skip = null, sentChron = 0, sentLog = 0, sentRv = -1, sentHist = 0, sentStory = -1;
   const perf = { ticks: 0, tickMs: 0, tps: 0, window: now(), worst: 0 };
 
   function step() {
@@ -75,6 +75,7 @@ export function createSimCore(post) {
     if (recs && now() - recsAt > 2000) { recsAt = now(); m.recs = sim.recordsUI(); }   // only while the records are open
     if (soc && now() - socAt > 1000 && sim.S.soc) { socAt = now(); m.soc = sim.socUI(); }   // and the Society window
     if (S.chron && S.chron.length !== sentChron) { sentChron = S.chron.length; m.chron = S.chron; }
+    if (S.story && S.story.rv !== sentStory) { sentStory = S.story.rv; m.story = sim.storyUI(); }
     post(m);
   }
   function perfOut() {
@@ -87,11 +88,11 @@ export function createSimCore(post) {
     const patch = landAt(W, site); W.siteId = site.id;
     const t2 = now(); P = new Pathfinder(W); const t3 = now(); sim = new Sim(W, P); const t4 = now();
     if (save) sim.load(save); else sim.newGame(mode, count, season);
-    const S = sim.S; sentLog = 0; sentRv = S.rv; sentHist = S.hist.rows.length; sentChron = 0; skip = null;
+    const S = sim.S; sentLog = 0; sentRv = S.rv; sentHist = S.hist.rows.length; sentChron = 0; sentStory = S.story ? S.story.rv : -1; skip = null;
     post({
       t: 'ready', seed: W.seed, land: W.land, site: W.site, siteId: site.id, tag: sites && sites[site.id] ? sites[site.id].tag : '', patch, rock: W.rock, mode: S.mode,
       world: { type: W.type, elev: W.elev, moist: W.moist },
-      roster: sim.roster(), ui: sim.ui(-1), log: sim.logSince(0), gone: S.gone, quarry: S.quarry, hist: S.hist.rows,
+      roster: sim.roster(), ui: sim.ui(-1), story: sim.storyUI(), log: sim.logSince(0), gone: S.gone, quarry: S.quarry, hist: S.hist.rows,
       pos: sim.snapshot(new Float32Array(S.cols.length * 4)), gpos: guests(), clock: sim.clock(),
       timing: { world: t1 - t0, land: t2 - t1, graph: t3 - t2, field: t4 - t3, nodes: P.nodes.length }
     });

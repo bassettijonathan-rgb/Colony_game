@@ -65,8 +65,9 @@ function newSeason(sim, s) {
     day += 3 + Math.floor(rnd() * 5);
     const can = Object.entries(EVENTS).filter(([, e]) => e.seasons.includes(s) && e.cost <= left + .5);
     if (!can.length || day >= end) break;
-    let r = rnd() * can.reduce((a, [, e]) => a + e.w, 0), k = can[0][0];
-    for (const [key, e] of can) { r -= e.w; if (r <= 0) { k = key; break; } }
+    const wt = ([key, e]) => e.w * ((D.boost && D.boost[key]) || 1);   // the story can make some events likelier
+    let r = rnd() * can.reduce((a, q) => a + wt(q), 0), k = can[0][0];
+    for (const q of can) { r -= wt(q); if (r <= 0) { k = q[0]; break; } }
     D.plan.push({ d: day, k, tries: 0 }); left -= EVENTS[k].cost;
   }
   damp(sim);
@@ -96,6 +97,9 @@ function relief(sim) {
   if (!hard || rnd() > .25) return;
   if ((fdays < 6 && glut(sim)) || cache(sim)) D.relief = sim.day;
 }
+
+// something the story needs to happen now, outside the plan (it still costs what it costs)
+export function happen(sim, k) { if (!EVENTS[k] || !fire(sim, k)) return false; spend(sim, EVENTS[k].cost, k); return true; }
 
 // ---------- the events ----------
 const pick = a => a[Math.floor(rnd() * a.length)];

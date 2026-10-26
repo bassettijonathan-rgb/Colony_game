@@ -12,7 +12,7 @@ import { Stats } from './ui/stats.js';
 import { Music, moodFor } from './ui/music.js';
 import { SEASONS, MAP, NCH, ACT, DAY_TICKS, hidden } from './core/consts.js';
 import { WX } from './core/year.js';
-import { TYPES, facing, levelsOf } from './core/build.js';
+import { TYPES, facing, levelsOf, doorless } from './core/build.js';
 import { LAYERS } from './render/terrain.js';
 import { Store, initStorage, saveLocal, loadLocal, saveAccount, loadAccount, exportFile, importFile } from './ui/storage.js';
 
@@ -111,7 +111,7 @@ function onReady(m) {
   A.W = W; A.retype = []; A.mode = m.mode; A.tag = m.tag; A.timing = { ...(A.timing || {}), ...m.timing };
   if (landing) A.view.land(W, m.patch);
   else { resetPeople(); if (!ensureView(W)) return; }
-  setRoster(m.roster); A.ui = m.ui; A.log = m.log.slice(); A.hist = (m.hist || []).slice(); A.panels.logSeen = landing ? 0 : m.ui.logN;
+  setRoster(m.roster); A.ui = m.ui; A.story = m.story || null; A.view.marks = A.story ? A.story.marks : null; A.log = m.log.slice(); A.hist = (m.hist || []).slice(); A.panels.logSeen = landing ? 0 : m.ui.logN;
   A.cur = { pos: m.pos, t: performance.now() }; A.prev = null; A.pos = new Float32Array(m.pos.length); A.pos.set(m.pos); A.gcur = { pos: m.gpos || new Float32Array(0), t: A.cur.t }; A.gprev = null; guestArts();
   A.clock = m.clock; A.phase = 'colony';
   for (const [k, d] of A.pendingWear) A.view.terrain.setWear(k, d); for (const [k, d] of A.pendingKnown) A.view.setKnown(k, d); A.pendingWear = []; A.pendingKnown = [];
@@ -158,6 +158,7 @@ function onState(m) {
   A.ui = m.ui;
   if (m.hist) A.hist.push(...m.hist);
   if (m.chron) A.chron = m.chron;
+  if (m.story) { A.story = m.story; if (A.view) A.view.marks = m.story.marks; }
   // while a skip runs, its news waits: the chronicle tells it afterwards
   if (m.log.length) { A.log.push(...m.log); if (A.log.length > 300) A.log.splice(0, A.log.length - 300); if (A.skipping) A.held.push(...m.log.filter(e => e.lvl)); else A.news.add(m.log); }
   flushRetype(); recolour(); guestArts(); A.panels.update(); A.news.alerts(A.ui); A.guide.update(A.ui); A.stats.update();
@@ -330,7 +331,7 @@ function startPlace(type, w, h, name, lv0 = 0) {
     P.sug = r; P.w = r.w; P.h = r.h; A.panels.planCard(null);
     $('placeTxt').textContent = `The Seed suggests ${r.w} × ${r.h} tiles. ${r.why} Click to put it down, or drag to draw another size.`;
   });
-  $('placeTurn').hidden = !!TYPES[type].open; $('plTurn').hidden = !!TYPES[type].open;
+  $('placeTurn').hidden = doorless(TYPES[type]); $('plTurn').hidden = doorless(TYPES[type]);
   $('placeTurn').textContent = TYPES[type].below ? 'Turn stairs (R)' : 'Turn door (R)'; $('plTurn').textContent = TYPES[type].below ? 'Turn stairs' : 'Turn door';
   $('placeHint').hidden = false; app.classList.add('placing');
   $('plKeep').checked = false; $('plName2').value = name || ''; delete $('plName2').dataset.auto;
