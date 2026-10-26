@@ -27,7 +27,8 @@ const LOOT = ['salvage', 'ore', 'rare', 'timber'];
 const watchman = (S, c) => c.crew >= 0 && S.crews[c.crew] && !S.crews[c.crew].gone && S.crews[c.crew].work === 'watch';
 export const raidOn = S => { const P = S.nb && S.nb.party; return !!P && P.kind === 'raid' && (P.st === 'come' || P.st === 'loot'); };
 // someone who can stand in the way: a grown, able adult not under the player's orders
-export const fighter = c => !c.dead && c.life >= 4 && !c.retired && !c.down && c.carried < 0 && !(c.cap && laidUp(c)) && c.act !== ACT.WAKE && !c.ctl && !(c.alone > 0);
+// and not already busy with someone hurt, a fire, or a day locked in the watch house
+export const fighter = (c, tick) => !c.dead && c.life >= 4 && !c.retired && !c.down && c.carried < 0 && !(c.cap && laidUp(c)) && c.act !== ACT.WAKE && !c.ctl && !(c.alone > 0) && !c.care && !(c.fight > 0) && !(c.held > tick);
 const guardOf = S => S.cols.filter(c => !c.dead && (c.grd || watchman(S, c)));
 
 // ---------- each morning: does anyone have a reason to come, and does the world let them ----------
@@ -70,7 +71,7 @@ const WHY = {
 };
 export function startRaid(sim, i, why) {
   const S = sim.S, N = S.nb, q = N.list[i], K = KINDS[q.k], r = lcg(sim.W.seed * 13 + S.tick % 100019);
-  const fit = S.cols.filter(fighter).length, n = clamp(Math.round(2 + fit / 6 + r() * 2), 3, Math.max(3, Math.min(9, Math.floor(q.pop / 8))));
+  const fit = S.cols.filter(c => fighter(c, S.tick)).length, n = clamp(Math.round(2 + fit / 6 + r() * 2), 3, Math.max(3, Math.min(9, Math.floor(q.pop / 8))));
   const at = entry(sim, q.dir), used = new Set(S.cols.map(c => c.name)), tg = target(sim, why);
   N.g = [];
   for (let k = 0; k < n; k++) {
@@ -78,7 +79,7 @@ export function startRaid(sim, i, why) {
     Object.assign(g, { raider: true, hp: 1, load: 0, down: 0, eng: 0, spd: .15 + r() * .02, wait: k * 15 });
     N.g.push(g);
   }
-  const mode = guardOf(S).some(fighter) ? 'guard' : 'hide';
+  const mode = guardOf(S).some(c => fighter(c, S.tick)) ? 'guard' : 'hide';
   N.party = { nb: i, kind: 'raid', why, st: 'come', seq: ++N.seq, goods: {}, ask: -1, asked: 0, traded: 0, at: S.tick, until: -1, n, mode, tgt: tg.t, pid: tg.pid, tname: tg.name, took: {}, smash: 0, lootAt: -1, how: '', hurt: [], fought: 0, home: 0 };
   for (const g of N.g) { g.spot = nearFree(sim, tg.t, 2); sim.goTo(g, g.spot, ACT.GATHER); }
   q.raided = sim.day; q.raids = (q.raids || 0) + 1; S.stats.raids = (S.stats.raids || 0) + 1;
@@ -98,7 +99,7 @@ export function raidMode(sim, m) {
 export function setGuard(sim, id, on) { const c = sim.S.cols[id]; if (!c || c.dead) return { ok: false }; c.grd = !!on; sim.S.rv++; return { ok: true }; }
 // the Seed picks a guard: about one in six of the able adults, the fit and the bold first, never the anxious or the careful unless there's nobody else
 export function autoGuard(sim) {
-  const S = sim.S, ok = S.cols.filter(c => fighter(c) || (!c.dead && c.life >= 4 && !c.retired));
+  const S = sim.S, ok = S.cols.filter(c => fighter(c, S.tick) || (!c.dead && c.life >= 4 && !c.retired));
   for (const c of S.cols) c.grd = false;
   const want = clamp(Math.round(ok.length / 6), 2, 8);
   const score = c => (c.cap ? (c.cap.move + c.cap.manip) / 2 : 1) * 100 - (c.traits.includes('anxious') ? 40 : 0) - (c.traits.includes('careful') ? 25 : 0) + (c.traits.includes('reckless') ? 15 : 0) + (c.traits.includes('steady') ? 15 : 0) - c.fat / 5 - (c.bd.ill.length ? 30 : 0);
@@ -128,13 +129,23 @@ export function raidThink(sim) {
   if (P.st === 'held') { for (const g of G) if (g.down) { g.act = ACT.DOWN; g.mv = 0; } if (S.tick >= P.until) { sim.log('Nobody decided what to do with the hurt raiders. They got up when they could and limped home.'); goHome(sim, P, q, true); } return; }
   if (P.st === 'go') { for (const c of S.cols) c.def = -1; return; }
   assign(sim, P);
-  // blows: everyone standing next to a raider they were sent against
+  // defenders chase where their raider is now, not where it was when they set off
+  for (const c of S.cols) {
+    if (!(c.def >= 0) || c.def === MUSTER || c.plan !== 'defend' || !c.mv) continue;
+    const g = G.find(o => o.id === c.def); if (!g || g.down) continue;
+    if (Math.hypot((c.goal % MAP) + .5 - g.x, (c.goal / MAP | 0) + .5 - g.y) > 2) sim.goTo(c, g.tile, ACT.BRAWL, ACT.WALK);
+  }
+  // blows: everyone standing next to a raider they were sent against. A raider who sees someone coming for them
+  // stops to face them, so nobody runs past anybody between two looks
   const weak = hungry(sim, q) ? .85 : 1;
   for (const g of G) {
     if (g.down || g.out) continue;
-    const foes = S.cols.filter(c => c.def === g.id && !c.dead && !c.down && Math.hypot(c.x - g.x, c.y - g.y) < 1.7);
-    if (!foes.length) { if (g.eng && S.tick - g.eng > 60) { g.eng = 0; sim.goTo(g, g.spot, ACT.GATHER); } continue; }
-    if (!g.eng) { const c0 = foes[0]; if (!P.fought) sim.log(`${c0.name} and ${g.name} of ${q.place} came to blows${P.st === 'come' ? ' before the raiders reached ' + P.tname : ''}.`, 'bad', { who: c0.id }); P.fought = 1; }
+    const close = S.cols.filter(c => c.def === g.id && !c.dead && !c.down && Math.hypot(c.x - g.x, c.y - g.y) < 5);
+    if (!close.length) { if (g.eng && S.tick - g.eng > 60) { g.eng = 0; sim.goTo(g, g.spot, ACT.GATHER); } continue; }
+    if (g.mv) { g.mv = 0; g.wps = []; g.eng = g.eng || S.tick; g.act = ACT.IDLE; g.ang = Math.atan2(close[0].y - g.y, close[0].x - g.x); }
+    const foes = close.filter(c => Math.hypot(c.x - g.x, c.y - g.y) < 1.7);
+    if (!foes.length) { g.eng = S.tick; continue; }
+    if (!P.fought) { const c0 = foes[0]; sim.log(`${c0.name} and ${g.name} of ${q.place} came to blows${P.st === 'come' ? ' before the raiders reached ' + P.tname : ''}.`, 'bad', { who: c0.id }); P.fought = 1; }
     g.eng = S.tick; g.mv = 0; g.wps = []; g.act = ACT.BRAWL; g.ang = Math.atan2(foes[0].y - g.y, foes[0].x - g.x);
     for (const c of foes) {
       c.mv = 0; c.wps = []; c.act = ACT.BRAWL; c.ang = Math.atan2(g.y - c.y, g.x - c.x); c.timer = Math.max(c.timer, 30);
@@ -142,7 +153,7 @@ export function raidThink(sim) {
     }
     if (g.down) continue;
     const c = foes[Math.floor(rnd() * foes.length)];
-    if (rnd() < .26 * (K.raidPow ?? 1) * weak) hit(sim, c, g, q, P);
+    if (rnd() < .2 * (K.raidPow ?? 1) * weak) hit(sim, c, g, q, P);
   }
   const up = G.filter(g => !g.down && !g.out);
   if (!up.length) { finish(sim, P, q); return; }
@@ -173,7 +184,7 @@ export function raidThink(sim) {
 // who goes out to meet them, and which raider each takes on: the nearest, spread so nobody faces three alone
 function assign(sim, P) {
   const S = sim.S, up = S.nb.g.filter(g => !g.down && !g.out), F = sim.W.site.fire;
-  const D = P.mode === 'hide' ? [] : S.cols.filter(c => fighter(c) && (P.mode === 'all' || c.grd || watchman(S, c)) && Math.hypot(c.x - F.x, c.y - F.y) < 140);
+  const D = P.mode === 'hide' ? [] : S.cols.filter(c => fighter(c, S.tick) && (P.mode === 'all' || c.grd || watchman(S, c)) && Math.hypot(c.x - F.x, c.y - F.y) < 140);
   // they meet the raiders near the camp, not out on the plain: until then they wait by what the raiders came for
   const tx = P.tgt % MAP, ty = P.tgt / MAP | 0, close = up.filter(g => Math.hypot(g.x - F.x, g.y - F.y) < RANGE || Math.hypot(g.x - tx, g.y - ty) < RANGE);
   const on = new Set(D);
@@ -213,12 +224,11 @@ function fall(sim, P, q, g, c) {
 }
 function flee(sim, P, q, how) {
   const S = sim.S; P.st = 'go'; P.how = how;
-  const at = entry(sim, q.dir);
-  for (const g of S.nb.g) if (!g.down && !g.out) { g.eng = 0; g.spd = .16; sim.goTo(g, nearFree(sim, at, 3), ACT.IDLE, g.load ? ACT.SACK : ACT.WALK); }
+  const at = entry(sim, q.dir), took = tookText(P);
   for (const c of S.cols) c.def = -1;
-  const took = tookText(P);
   sim.log(how === 'beaten' ? `The raiders from ${q.place} broke and ran${took ? `, with ${took}` : ''}.` : P.why === 'scan' ? `The raiders from ${q.place} are leaving.` : `The raiders from ${q.place} are leaving with ${took || 'nothing'}.`, how === 'beaten' ? 'good' : 'bad');
   S.rv++;
+  for (const g of S.nb.g) if (!g.down && !g.out) { g.eng = 0; g.spd = .16; sim.goTo(g, nearFree(sim, at, 3), ACT.IDLE, g.load ? ACT.SACK : ACT.WALK); }
 }
 const tookText = P => list(Object.entries(P.took).filter(([, n]) => n > 0).map(([k, n]) => k === 'meals' ? `${Math.round(n)} meals` : `${Math.round(n)} loads of ${k === 'rare' ? 'rare earths' : k}`));
 // a raider got where they were going: the target, or the map's edge on the way home
