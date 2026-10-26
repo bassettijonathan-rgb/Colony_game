@@ -25,7 +25,6 @@ export function skipBlock(sim) {
   const S = sim.S, live = S.cols.filter(c => !c.dead);
   if (!S.projects[0] || !S.projects[0].done) return 'The shelter has to be finished first.';
   if (Object.keys(S.hz.fire).length) return 'Not while something is burning.';
-  if (S.hz.fl.lv > .3) return 'Not while the water is up.';
   if (live.some(c => c.down)) return 'Not while someone is down and needs carrying.';
   if (live.some(c => c.hungry)) return 'Not while people are hungry.';
   if (S.soc && S.soc.verdict) return 'The council’s answer is waiting in the Society window.';
@@ -93,7 +92,7 @@ export function chronicle(sim, M, why) {
   for (const e of of('illfound', 'heartattack')) p += e.m + ' ';
   if (p) P.push(p.trim());
   // and why it ended
-  P.push(why ? `The skip stopped early: ${why}` : 'Nothing needed you, so the skip ran its full length.');
+  P.push(why ? `The skip stopped early, for “${why}”.` : 'Nothing needed you, so the skip ran its full length.');
   const C = { d0: M.cal, d1: sim.cal, title: `${cap(dateOf(M.cal))} to ${dateOf(sim.cal)}`, text: P };
   S.chron = (S.chron || []).concat(C).slice(-MAX_KEPT); S.rv++;
   sim.log(P.join('\n\n'), '', { e: 'chronicle', lvl: 2, title: 'The chronicle' });

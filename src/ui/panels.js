@@ -46,6 +46,12 @@ const DOING = { [ACT.BED]: 'asleep', [ACT.INSIDE]: 'asleep', [ACT.WALK]: 'walkin
 const meterCol = (v, goodHigh) => { const x = goodHigh ? 100 - v : v; return x > 70 ? 'var(--bad)' : x > 45 ? 'var(--mid)' : 'var(--good)'; };
 // a row of buttons choosing a part of a window, and a numbered how-to for it
 const sub = (key, cur, items) => `<div class="seg sm sub">${items.map(([k, t]) => `<button data-act="sub" data-k="${key}" data-v="${k}" class="${cur === k ? 'on' : ''}">${t}</button>`).join('')}</div>`;
+// the council's votes, those with the same answer and reason together
+const voteText = votes => {
+  const g = new Map(); for (const x of votes) { const k = (x.yes ? 'for' : 'against') + (x.why ? `: ${x.why}` : ''); g.set(k, (g.get(k) || []).concat(x.name.split(' ')[0])); }
+  const and = a => a.length < 2 ? a[0] : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1];
+  return [...g].map(([k, n]) => `${esc(and(n))} ${esc(k)}.`).join(' ');
+};
 const how = steps => `<ol class="how">${steps.map(t => `<li>${t}</li>`).join('')}</ol>`;
 const topSkills = (sk, n = 3) => SKILLS.map(k => [k, sk[k]]).sort((a, b) => b[1] - a[1]).slice(0, n);
 
@@ -262,7 +268,7 @@ export class Panels {
           h += `<div class="sup"><div class="bar"><u style="width:${Math.round(r.for / r.n * 100)}%"></u></div><span>${r.for} of ${r.n} adults are content with this.${top ? ` ${n(against, 'would', 'would')} rather have <b>${esc(top[0].toLowerCase())}</b>${r.alt.length > 1 ? ' or something else' : ''}${r.why.length ? `: ${r.why.map(esc).join('; ')}` : ''}.` : ''}${r.opp ? ` It weighs on ${n(r.opp, 'person', 'people')}.` : ''}</span></div>`;
         }
         if (q) h += `<div class="note">The council meets tonight on whether it should be <b>${esc(q.opt.toLowerCase())}</b>, and answers in the morning.</div>`;
-        if (v) h += `<div class="note">The council on <b>${esc(v.opt.toLowerCase())}</b>: ${v.yes} of ${v.yes + v.no} for it. ${v.votes.map(x => `${esc(x.name.split(' ')[0])} ${x.yes ? 'for' : 'against'}${x.why ? ` (${esc(x.why)})` : ''}`).join(', ')}.</div><div class="row2"><button class="btn go" data-act="rset" data-k="${r.k}" data-v="${esc(JSON.stringify(v.v))}">Change it</button><button class="btn" data-act="rkeep">Leave it as it is</button></div>`;
+        if (v) h += `<div class="note">The council on <b>${esc(v.opt.toLowerCase())}</b>: ${v.yes} of ${v.yes + v.no} for it. ${voteText(v.votes)}</div><div class="row2"><button class="btn go" data-act="rset" data-k="${r.k}" data-v="${esc(JSON.stringify(v.v))}">Change it</button><button class="btn" data-act="rkeep">Leave it as it is</button></div>`;
         else if (p) h += `<div class="row2">${Q.council ? `<button class="btn go" data-act="rask" data-k="${r.k}" data-v="${esc(JSON.stringify(p.v))}">Ask the council first</button>` : ''}<button class="btn${Q.council ? '' : ' go'}" data-act="rset" data-k="${r.k}" data-v="${esc(JSON.stringify(p.v))}">Change it now</button><button class="btn" data-act="rcancel">Cancel</button></div>${Q.council ? '<div class="note">Changing a rule without asking the council costs a little of its members’ trust. Going against its answer costs more.</div>' : ''}`;
         h += `</div>`;
       }

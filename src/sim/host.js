@@ -46,7 +46,7 @@ export function createSimCore(post) {
     }
     if (t - lastWear > 1000) { lastWear = t; chunks('wear', sim.dirty, k => sim.wearChunk(k)); chunks('known', sim.kdirty, k => sim.knownChunk(k)); marks(); }
     if (t - lastState > 1000) { lastState = t; state(); }
-    if (S.tick >= K.until || K.stop) endSkip(K.stop ? `${K.stop.title || 'something happened'}.` : '');
+    if (S.tick >= K.until || K.stop) endSkip(K.stop ? K.stop.title || 'something that happened' : '');
   }
   function endSkip(why) {
     const K = skip; skip = null; sim.tap = null; speed = 0;
@@ -121,7 +121,7 @@ export function createSimCore(post) {
       sim.tap = e => { mark.ev.push(e); if (!skip.stop && STOP.has(e.e)) skip.stop = e; };
       post({ t: 'skip', from: skip.from, to: skip.until, at: skip.from });
     }
-    else if (m.t === 'skipStop') { if (skip) skip.stop = { title: 'you stopped it', n: 0 }; }
+    else if (m.t === 'skipStop') { if (skip) skip.stop = { title: 'Stopped by you', n: 0 }; }
     else if (m.t === 'stop') { clearTimeout(timer); }
   }
   return { handle };

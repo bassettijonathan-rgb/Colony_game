@@ -442,7 +442,7 @@ table.rt{width:100%;border-collapse:collapse;font-size:11px;margin:4px 0 8px}tab
 #skipMenu{top:calc(var(--tb) + var(--top) + 8px);left:50%;transform:translateX(-50%);width:320px;z-index:7}
 #skipMenu .in{padding:10px 12px 12px;display:flex;flex-direction:column;gap:6px}#skipMenu .pill{width:100%;justify-content:flex-start;height:34px}
 #skipping{left:50%;top:34%;transform:translate(-50%,-50%);width:360px;max-width:calc(100% - 32px);z-index:7;border-top:2px solid var(--seed)}
-#skipping .wt em{font:500 11px var(--f-num);color:var(--mut);font-style:normal;padding-right:8px}#skipping .in{padding:12px 14px 14px}
+#skDate{font:600 14px var(--f-hd);letter-spacing:.02em}#skipping .in{padding:12px 14px 14px}
 #skipping .bar{height:6px}#skipping .acts{display:flex;justify-content:flex-end;margin-top:10px}
 .chron h4{margin:12px 0 4px;font:700 13px var(--f-hd);letter-spacing:.02em;color:var(--txt)}.chron p{margin:0 0 6px;font-size:12.5px;line-height:1.5}
 #letter .why{font-size:12.5px;margin-top:12px}
@@ -694,12 +694,12 @@ table.rt{width:100%;border-collapse:collapse;font-size:11px;margin:4px 0 8px}tab
       <div class="in">
         <button class="pill" data-skip="season">To the next season</button>
         <button class="pill" data-skip="year">A whole year</button>
-        <div class="note">The colony lives on at full speed, with the Seed planning the crews as it would. The skip stops early for anything that needs you: a death, a fire, a flood, someone in a crisis, hunger, a council answer. Afterwards the chronicle says what happened.</div>
+        <div class="note">The colony lives on at full speed with its crews as they are. The skip stops early for anything that needs you: a death, a fire, a flood, a fight, hunger, a council answer. Afterwards the chronicle says what happened.</div>
       </div>
     </div>
     <div class="glass" id="skipping" role="status" hidden>
-      <div class="wt"><svg class="ic"><use href="#i-seed"/></svg><b>Skipping ahead</b><em id="skDate"></em></div>
-      <div class="in"><div class="bar"><u id="skBar"></u></div><div class="note" id="skNote">The colony lives on at full speed. It stops for anything that needs you.</div><div class="acts"><button class="pill" id="skStop">Stop here</button></div></div>
+      <div class="wt"><svg class="ic"><use href="#i-seed"/></svg><b>Skipping ahead</b></div>
+      <div class="in"><div id="skDate"></div><div class="bar"><u id="skBar"></u></div><div class="note" id="skNote">The colony lives on at full speed. It stops for anything that needs you.</div><div class="acts"><button class="pill" id="skStop">Stop here</button></div></div>
     </div>
     <div id="news"><div id="letters"></div><div id="alerts"></div></div><div id="lTip" hidden></div>
     <div class="glass info" id="letter" role="dialog" aria-labelledby="lTitle" hidden>
