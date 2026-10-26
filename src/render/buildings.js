@@ -21,6 +21,7 @@ const STYLE = {
   library: { slab: '#8a8680', joint: 'rgba(40,40,40,.3)', post: '#5f554b', beam: '#6c5f50', wall: '#a49c90', roof: ['#6e6a72', '#4c4850'], done: ['#7c7882', '#5f5b66', '#46424c'], seam: 'rgba(20,18,24,.35)' },
   watch: { slab: '#8a8680', joint: 'rgba(40,40,40,.3)', post: '#5a4a38', beam: '#6a5640', wall: '#968c7c', roof: ['#6f5a40', '#4f3f2c'], done: ['#7d6646', '#5f4c34', '#463826'], seam: 'rgba(30,22,14,.35)' },
   nursery: { slab: '#8f8b84', joint: 'rgba(50,48,44,.3)', post: '#5f554b', beam: '#6c5f50', wall: '#aab4b4', roof: ['#b9c6c8', '#86969a'], done: ['#cfd8d6', '#a5b6b2', '#7a8c88'], seam: 'rgba(40,56,60,.3)' },
+  shaft: { slab: '#7e7a74', joint: 'rgba(40,40,40,.35)', post: '#4f555c', beam: '#5c636b', wall: '#8a8f94', roof: ['#7a8088', '#545a62'], done: ['#8c929a', '#6a7078', '#4c5258'], seam: 'rgba(20,24,30,.5)' },
   clinic: { slab: '#8f8b84', joint: 'rgba(50,48,44,.3)', post: '#6f5a44', beam: '#7a6450', wall: '#b4b0a6', roof: ['#d2d8d8', '#a5b0b2'], done: ['#e4e9ea', '#c3cccd', '#9aa6a8'], seam: 'rgba(50,60,64,.35)' },
 };
 
@@ -69,7 +70,7 @@ export function drawBuilding(g, hRect, p, E, t, inside = false) {
     }
   }
   if (stage < 5) return;
-  if (inside && p.type !== 'solar') { drawInterior(g, hRect, p, E); crates(g, hRect, p); return; }
+  if (inside && p.type !== 'solar' && p.type !== 'shaft') { drawInterior(g, hRect, p, E); crates(g, hRect, p); return; }
   // finished: a roof, a door, windows lit after dark when the building has power
   const gr = g.createLinearGradient(x, y, x + w, y + h); gr.addColorStop(0, st.done[0]); gr.addColorStop(.6, st.done[1]); gr.addColorStop(1, st.done[2]);
   g.fillStyle = 'rgba(0,0,0,.3)'; g.fillRect(x + .12, y + .15, w, h);
@@ -99,6 +100,13 @@ export function drawBuilding(g, hRect, p, E, t, inside = false) {
   else if (p.type === 'watch') {   // a raised lookout with its lamp, lit all night
     const r = Math.min(w, h) * .28; g.fillStyle = '#3e3226'; g.fillRect(cx - r, cy - r, r * 2, r * 2); hRect(cx - r, cy - r, r * 2, r * 2, 3.4);
     g.fillStyle = E.night > .3 ? 'rgba(255,200,110,.95)' : '#6a5a40'; g.beginPath(); g.arc(cx, cy, r * .45, 0, 6.3); g.fill();
+  }
+  else if (p.type === 'shaft') {   // the headframe over the shaft: steel legs, and the winding wheel turning while the cage runs
+    const r = Math.min(w, h) * .36; g.strokeStyle = '#3a3f45'; g.lineWidth = .14;
+    g.beginPath(); g.moveTo(cx - r, cy - r); g.lineTo(cx + r, cy + r); g.moveTo(cx + r, cy - r); g.lineTo(cx - r, cy + r); g.stroke();
+    g.fillStyle = '#2c3036'; g.beginPath(); g.arc(cx, cy, r * .55, 0, 6.3); g.fill(); hRect(cx - r, cy - r, r * 2, r * 2, 4.2);
+    const a = p.powered ? (t || 0) * 1.4 : 0; g.strokeStyle = p.powered ? '#c9b48f' : '#6a6458'; g.lineWidth = .08;
+    for (let i = 0; i < 3; i++) { const b = a + i * 2.094; g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx + Math.cos(b) * r * .5, cy + Math.sin(b) * r * .5); g.stroke(); }
   }
   else if (p.type === 'nursery') {   // the tanks, glowing softly while a child grows in them
     const n2 = p.cap ? p.cap.tanks : 1;
@@ -382,7 +390,7 @@ export function drawHatch(g, hRect, p, t) {
 export function buildingLights(out, projects, on, mul3) {
   for (const p of projects) {
     if (p.type === 'test') continue;
-    if (p.below) { if (p.door && (p.done ? p.powered : p.stage > 0 && !p.paused)) out.push({ x: p.door.x + .5, y: p.door.y + .5, z: .6, r: 3.2, c: mul3([1, .74, .45], 1.3 * on), g: .2 }); continue; }
+    if (p.below) { if (p.via == null && p.door && (p.done ? p.powered : p.stage > 0 && !p.paused)) out.push({ x: p.door.x + .5, y: p.door.y + .5, z: .6, r: 3.2, c: mul3([1, .74, .45], 1.3 * on), g: .2 }); continue; }
     if (p.done && p.powered && p.type !== 'solar' && p.type !== 'field') {
       if (p.door) out.push({ x: p.door.x + .5, y: p.door.y + .5, z: 1.2, r: 5, c: mul3([1, .78, .5], 1.6 * on), g: .25 });
       const long = p.w >= p.h; for (const k of [.3, .7]) out.push({ x: long ? p.x + p.w * k : p.x - .6, y: long ? p.y - .6 : p.y + p.h * k, z: 1, r: 4, c: mul3([1, .8, .55], 1.1 * on), g: .1 }), out.push({ x: long ? p.x + p.w * k : p.x + p.w + .6, y: long ? p.y + p.h + .6 : p.y + p.h * k, z: 1, r: 4, c: mul3([1, .8, .55], 1.1 * on), g: .1 });

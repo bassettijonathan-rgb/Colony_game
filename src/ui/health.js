@@ -89,6 +89,7 @@ export function healthTab(B, name, dead) {
   const lasting = B.marks.filter(m => m.k !== 'age' && m.k !== 'chronic');
   if (lasting.length) h += `<div class="sec">Lasting marks</div>${lasting.map(m => `<div class="wd"><b>${esc(m.what)}</b><div class="sub">${esc(cap1(m.how || ''))}${m.how ? ', ' : ''}day ${m.d}.${m.loss ? ` It costs them ${Math.round(m.loss * 100)}% of the ${esc(PARTS[m.p].name)}.` : ''}${m.pain ? ' It still aches.' : ''}${m.k === 'printed' && L && L.adj > 0 ? ' Still settling in.' : ''}</div>${m.k === 'lost' && !dead ? repl(B, m.i, 'Print a replacement') : ''}</div>`).join('')}`;
   if (L) h += lifeSec(B, L, dead);
+  h += scanSec(B, dead);
   if (B.ex) h += `<div class="note" style="margin-top:10px">Last examined by ${esc(B.ex.by)}, ${when(B.ex.t)}. A medic that skilled would find a hidden injury about ${B.ex.conf}% of the time.</div>`;
   else if (B.w.length || ill.some(q => q.st < 3)) h += `<div class="note" style="margin-top:10px">Nobody has examined them yet.</div>`;
   if (B.hx && B.hx.length) h += `<div class="sec">Illnesses before</div>${B.hx.slice().reverse().map(x => `<div class="wd"><b>${esc(x.name || 'An illness nobody named')}</b><div class="sub">${x.name ? '' : esc(x.sym) + '. '}Day ${x.d} to day ${x.e}: ${x.out === 'died' ? 'it killed them' : 'got over it'}.</div></div>`).join('')}`;
@@ -100,7 +101,16 @@ export function healthTab(B, name, dead) {
 // a button to have the Seed print a replacement, or why it can't yet
 const repl = (B, i, label) => B.repl ? `<div class="sub" style="margin-top:4px">A printed replacement: ${esc(B.repl.toLowerCase())}.</div>` : `<button class="btn" data-repl="${i}" style="margin-top:6px" title="Uses a body's worth of feedstock from the fabricator">${label}</button>`;
 const SEV = s => s >= .85 ? ['b', 'Grave'] : s >= .6 ? ['b', 'Severe'] : s >= .3 ? ['m', 'Moderate'] : ['', 'Mild'];
-const SLOW = [['rad', 'Radiation dose', 'Time under this sun, more in storms; it raises the risk of growths'], ['diet', 'Diet load', 'What food the colony has not fully worked out leaves in the liver and kidneys'], ['joint', 'Wear on joints', 'Years of hauling, cutting and digging'], ['lung', 'Dust and smoke', 'Rock dust from quarrying and digging, smoke from cooking and fires'], ['sleep', 'Sleep debt', 'Short nights and nights on the ground; it weakens them against infection and slows healing']];
+const SLOW = [['rad', 'Radiation dose', 'Time out under this sun, about 12 mSv a year, and much more on flare days out in the open. The bar is full at 1000 mSv. It raises the risk of growths and of a weak heart, and a parent’s dose shows in their children’s genes'], ['diet', 'Diet load', 'What food the colony has not fully worked out leaves in the liver and kidneys'], ['joint', 'Wear on joints', 'Years of hauling, cutting and digging'], ['lung', 'Dust and smoke', 'Rock dust from quarrying and digging, smoke from cooking and fires'], ['sleep', 'Sleep debt', 'Short nights and nights on the ground; it weakens them against infection and slows healing']];
+// their scans, and for the dead, waking them again from the last one
+function scanSec(B, dead) {
+  const R = B.restore;
+  if (dead && R) return `<div class="sec">Scan</div><div class="note">Scanned on day ${B.scan}, ${R.lost} day${R.lost === 1 ? '' : 's'} before they died. The Seed can print a new body and wake them from it, for a body’s worth of feedstock; they would remember nothing after that night.</div>${R.ok ? '<button class="btn" data-restore="1" style="margin-top:6px">Wake them from the scan</button>' : `<div class="note" style="margin-top:4px">${esc(R.why)}</div>`}`;
+  if (dead) return '';
+  if (B.scan >= 0) return `<div class="sec">Scan</div><div class="note">Last scanned on day ${B.scan}.${B.restored ? ` They have been woken from a scan ${B.restored === 1 ? 'once' : `${B.restored} times`}.` : ''}</div>`;
+  if (B.noScan) return `<div class="sec">Scan</div><div class="note">They refuse to be scanned.</div>`;
+  return '';
+}
 // the long view: age, conditions, flaws from the print, and the totals as last measured
 function lifeSec(B, L, dead) {
   let h = '';
@@ -116,7 +126,7 @@ function lifeSec(B, L, dead) {
   }
   if (L.seen) {
     const S0 = L.seen.sl;
-    h += `<div class="sec">Measured at a check-up</div><div class="meters hm">${SLOW.map(([k, n, tip]) => { const v = k === 'sleep' ? S0[k] / 40 : S0[k]; return `<span title="${esc(tip)}">${n}</span><b><u style="width:${Math.round(Math.min(1, v) * 100)}%;background:${col(Math.min(1, v)) || 'var(--good)'}"></u></b><em>${k === 'sleep' ? Math.round(S0[k]) + ' h' : Math.round(v * 100)}</em>`; }).join('')}</div>`;
+    h += `<div class="sec">Measured at a check-up</div><div class="meters hm">${SLOW.map(([k, n, tip]) => { const v = k === 'sleep' ? S0[k] / 40 : S0[k]; return `<span title="${esc(tip)}">${n}</span><b><u style="width:${Math.round(Math.min(1, v) * 100)}%;background:${col(Math.min(1, v)) || 'var(--good)'}"></u></b><em>${k === 'sleep' ? Math.round(S0[k]) + ' h' : k === 'rad' ? Math.round(S0[k] * 1000) + ' mSv' : Math.round(v * 100)}</em>`; }).join('')}</div>`;
     h += `<div class="note" style="margin-top:4px">By ${esc(L.seen.by)} on day ${L.seen.d}. The totals only ever grow, except sleep debt, which good nights pay back. A medic that skilled finds a hidden condition about ${L.seen.conf}% of the time.</div>`;
   } else if (!dead) h += `<div class="note" style="margin-top:10px">No check-up yet. With a working clinic and someone in a clinic crew, the clinic calls everyone in every ${40} days.</div>`;
   return h;

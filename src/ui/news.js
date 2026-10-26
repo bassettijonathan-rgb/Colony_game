@@ -74,6 +74,12 @@ export const EXPLAIN = {
   ore: 'Ore waits in the yard until a workshop bench or the fabricator is free; then three loads smelt into two of salvage. Press U to see the ground below: the glinting seams are ore. A mine dug along a seam brings up far more than digging other rooms does.',
   nosalvage: 'Salvage is the metal from the lander and its descent stage, and every seal, pipe run, power unit and solar panel is made from it. Once it is gone, the only metal is the ore in the ground. A mine (Build window, below ground) dug over a seam lets a mine crew bring ore up, and workshop benches smelt it, three loads into two of salvage. Each mine holds only so much: when one is worked out, dig another.',
   smelted: 'From now on a workshop smelts ore whenever it has nothing else to make and the yard is low on salvage. Keep a mine crew working while there is ore in the seam.',
+  flarewarn: 'This sun throws off big flares now and then, and the planet’s magnetic field is too weak to turn the particles away. While a storm is overhead everyone shelters and work outside stops. Dose adds up over a lifetime (each person’s Health tab shows it after a check-up): it raises the risk of growths years later, and a parent’s dose shows in their children. A timber roof halves it, the lander’s hull keeps out more, rooms below ground nearly all of it, and a deep vault reached by a lift shaft all of it.',
+  flare: 'People shelter in the best cover there is room in: a deep vault first, then rooms below ground, then the shelter, then any building. Children in the Seed’s nursery are inside the hull already.',
+  rare: 'Rare earths are a handful of metals, scattered thin through some of the ore deep down. The miners bring them up apart from the rest, and the yard keeps them. A scanner (Build window) needs them for its imaging magnets: with it, the Seed can keep a scan of everyone who agrees, and wake them again if they die.',
+  scanned: 'A scan is kept for each person until the next one replaces it. If someone with a scan dies, the Health tab of their card (click them in Records, K) has a button to wake them from it: it costs a body’s worth of feedstock, and they lose everything since that night. The founders’ charter allows only one of anyone at a time, so only the dead can be woken.',
+  restored: 'Someone woken from a scan is the same person, in a new body, missing whatever happened after the scan. The people around them remember those days; they don’t.',
+  noscan: 'Nobody is scanned against their will. Those who refuse can’t be woken again if they die.',
   mineLow: 'A new mine takes days to dig, so plan it before the old one is empty. Press U to see the seams of ore below ground.',
   chronic: 'Years of work, the diet and the sun leave their mark slowly, and some of it turns into lasting trouble: worn joints, scarred lungs, a weak heart, failing kidneys, a growth. Each person’s Health tab shows what they feel; a check-up names it.',
   council: 'With fifty adults the colony chooses a council for itself, five people it trusts, and again every Thaw. Before changing a rule in the Society window (P) you can ask it first: it answers the next morning. It cannot stop the Seed, but going against it costs trust.',
@@ -117,6 +123,7 @@ const ALERTS = {
   fire: ['bad', '', 'Everyone who can is beating it out. Rain puts it out; a fire left alone spreads downwind.'],
   bfire: ['bad', '', 'It is out of use while it burns, and every minute of it means more repairs.'],
   flooded: ['warn', '', 'Out of use until the water goes down, then the build crews repair them.'],
+  flare: ['bad', '', 'Rooms below ground keep out nearly all of it, a deep vault all of it; a timber roof halves it.'],
   floodwarn: ['warn', 'The river is rising', 'The water will come over the low ground. Buildings there will be out of use until it goes down.'],
   sick: ['warn', '', 'The sick work slower, or rest until it passes. Their Health tab shows what is known about it.'],
   catching: ['warn', 'A catching illness', 'Someone has an illness that spreads, and nobody is kept apart. The clinic’s card has a rule to isolate the sick, at a cost to their strain and trust.'],
@@ -142,7 +149,7 @@ const ALERTS = {
   stalled: ['warn', '', ''],
   idle: ['info', 'Nothing to build', 'A build crew has nothing on the project list. Plan a building in the Build window (B), or give the crew other work.'],
 };
-const ORDER = ['fire', 'bfire', 'down', 'crisis', 'bleed', 'floodwarn', 'flooded', 'catching', 'hungry', 'behind', 'cold', 'food', 'deep', 'locked', 'nofarm', 'ripe', 'unwell', 'sick', 'samples', 'print', 'feedwait', 'alone', 'hurt', 'meds', 'nomedic', 'strain', 'tired', 'trust', 'nocrew', 'stalled', 'dark', 'idle'];
+const ORDER = ['fire', 'bfire', 'down', 'crisis', 'bleed', 'flare', 'floodwarn', 'flooded', 'catching', 'hungry', 'behind', 'cold', 'food', 'deep', 'locked', 'nofarm', 'ripe', 'unwell', 'sick', 'samples', 'print', 'feedwait', 'alone', 'hurt', 'meds', 'nomedic', 'strain', 'tired', 'trust', 'nocrew', 'stalled', 'dark', 'idle'];
 
 export class News {
   constructor(A, api) {
@@ -293,6 +300,7 @@ export class News {
       if (wet.length) add('flooded', wet.length === 1 ? `${wet[0].name} is under water` : `${wet.length} buildings are under water`, wet.map(p => ({ pid: p.id })));
       else if (H.lv > 1) add('floodwarn', 'The river is in flood', [], 'The water is over the low ground. Nothing the colony has built is in it.');
       else if (H.warn) add('floodwarn', ALERTS.floodwarn[1], []);
+      if (H.flare) add('flare', H.flare.on ? `Particle storm overhead, ${H.flare.left} h left` : `Particle storm in ${H.flare.in} h`, [], H.flare.on ? `About ${H.flare.rate} mSv an hour out in the open just now. Everyone is under cover until it passes.` : 'Everyone will go under cover just before it arrives; work outside stops while it lasts.');
     }
     const hurtN = people(p => p[6] & 4098).length, M = U.med;
     if (hurtN && U.care && !U.care.medics) add('nomedic', ALERTS.nomedic[1], []);

@@ -53,7 +53,8 @@ export function botBuild(sim) {
   // running low on metal with no mine left to work: a mine over the nearest seam goes in before anything else
   const Y = S.stores.yard, metal = Y.salvage + (Y.ore || 0) * 2 / 3, mines = S.projects.filter(p => !p.gone && p.type === 'mine' && p.seam > 20);
   if (metal < 40 && !mines.length && S.projects.some(p => p.type === 'workshop' && !p.gone)) {
-    const z = sizeFor(sim, 'mine'), spot = z && findPlot(sim, 'mine', z.w, z.h);
+    const z = sizeFor(sim, 'mine'); let spot = null;
+    for (const lv of [1, 2, 3]) if (z && !spot) spot = findPlot(sim, 'mine', z.w, z.h, lv);   // the shallow seams first, then down the shaft
     if (spot) { sim.command({ op: 'place', type: 'mine', ...spot }); const q = S.projects[S.projects.length - 1]; for (let k = 0; k < 20; k++) { const i = S.projects.indexOf(q), up = S.projects.slice(0, i).filter(r => !r.gone && !r.done); if (!up.length) break; sim.command({ op: 'projMove', id: q.id, d: -1 }); } }
   }
   // the loose stone near camp running out: a stone pit, before the builders are left with nothing to cut
@@ -66,25 +67,33 @@ export function botBuild(sim) {
   // once the opening is built, the bot keeps up with a growing colony: power, bunks, seats, fields, clinic beds, cool storage
   let spot = next && findPlot(sim, next[0], next[1], next[2]);
   // a growing colony's wants in order; one with no room left on the map doesn't hold up the rest
-  if (!next) for (const t of grow(sim)) { const z = sizeFor(sim, t); spot = z && findPlot(sim, t, z.w, z.h); if (spot) { next = [t, z.w, z.h]; break; } }
+  if (!next) for (const g of grow(sim)) { const [t, lv] = Array.isArray(g) ? g : [g], z = sizeFor(sim, t); spot = z && findPlot(sim, t, z.w, z.h, lv); if (spot) { next = [t, z.w, z.h]; break; } }
   if (spot) sim.command({ op: 'place', type: next[0], ...spot });
 }
 function grow(sim) {
   const out = [];
   const S = sim.S, mine = S.projects.filter(p => !p.gone && p.type !== 'test'), sum = (types, k) => mine.filter(p => types.includes(p.type)).reduce((a, p) => a + (capacity(p.type, p.w, p.h)[k] || 0), 0);
   const soon = S.cols.filter(c => !c.dead).length + (S.gen ? S.gen.womb.length : 0) + S.seedc.feed + S.seedc.queue.length + (S.seedc.printing ? 1 : 0);
-  const draw = mine.filter(p => p.type !== 'solar').reduce((a, p) => a + (capacity(p.type, p.w, p.h).kw || 0), 0), supply = LANDER_KW + sum(['solar'], 'supply') * DEEP_SUN;
-  if (draw > supply - 1) out.push('solar');
+  const draw = mine.filter(p => p.type !== 'solar').reduce((a, p) => a + (capacity(p.type, p.w, p.h).kw || 0), 0), supply = LANDER_KW + sum(['solar'], 'supply') * DEEP_SUN + sum(['geo'], 'supply');
+  const shaft = mine.some(p => p.type === 'shaft' && p.done), none = t => !mine.some(p => p.type === t);
+  // power: a heat tap in the deep once a shaft reaches it, as it runs through the winter; solar fields otherwise
+  if (draw > supply - 1) out.push(...(shaft && mine.filter(p => p.type === 'geo').length < 3 ? [['geo', 3], 'solar'] : ['solar']));
   if (sum(['shelter', 'dorm', 'burrow'], 'beds') < soon + 2) out.push('dorm');
   if (sum(['commons'], 'seats') < soon) out.push('commons');
   if (mine.filter(p => p.type === 'field').length < Math.ceil(soon / 3.5)) out.push('field');
   if (sum(['clinic'], 'beds') < Math.ceil(soon / 6)) out.push('clinic');
   if (sum(['cellar'], 'store') < soon * 4) out.push('cellar');
   // the institutions, as the colony grows into them
-  const none = t => !mine.some(p => p.type === t), kids = S.cols.filter(c => !c.dead && c.life >= 1 && c.life <= 2).length;
+  const kids = S.cols.filter(c => !c.dead && c.life >= 1 && c.life <= 2).length;
   if (none('school') && kids >= 3) out.push('school');
   if (none('watch') && (soon >= 30 || S.stats.fights)) out.push('watch');
   if (none('library') && soon >= 25) out.push('library');
+  // down the shaft: a lift shaft once the colony is large, then a deep vault to shelter in on flare days
+  if (none('shaft') && soon >= 30) out.push('shaft');
+  if (shaft && sum(['vault'], 'places') < soon) out.push(['vault', 2]);
+  // rare earths from a deep seam, then a scanner once there are enough for its magnets
+  if (shaft && !mine.some(p => p.type === 'mine' && p.lvl === 3 && p.seam > 0)) out.push(['mine', 3]);
+  if (none('scanner') && (S.stores.yard.rare || 0) >= 6) out.push('scanner');
   if (S.gen && S.gen.asks.length >= 3 && mine.filter(p => p.type === 'nursery').length < 2) out.push('nursery');
   return out;
 }
@@ -112,7 +121,7 @@ function botFood(sim) {
   if (sim.policy === 'lean') return;
   if (built(S).some(p => p.type === 'field')) want('farm', 'botany');
   if (built(S).some(p => p.type === 'plant')) want('quarry', 'building');
-  if (built(S).some(p => p.type === 'mine' && p.powered && p.seam > 0) && S.stores.yard.salvage < 30) want('mine', 'building');
+  if (built(S).some(p => p.type === 'mine' && p.powered && p.seam > 0) && (S.stores.yard.salvage < 30 || (S.stores.yard.rare || 0) < 10 && built(S).some(p => p.type === 'mine' && p.rare > 0))) want('mine', 'building');
   const tested = F.life.map((L, o) => L.tested && sim.kinds[o].food).filter(Boolean);
   // a cook for every ten or so people, more when food is waiting on the kitchen while people go hungry
   const eaters = S.cols.filter(c => !c.dead).length, behind = S.cols.some(c => !c.dead && c.hungry) && kitchenOnly(sim) > 4;
