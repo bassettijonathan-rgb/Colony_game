@@ -11,11 +11,14 @@ import { remember, die } from './life.js';
 import { mealsInStore, eat } from './food.js';
 import { planCrews, autoCrew } from './work.js';
 import { printBody, childBody, migrateAging, bodyYears, chronicDay, sleepDay, adjustDay, checkups } from './aging.js';
+import { built, capOf } from './build.js';
+import { lesson, shelf, deadName, namedFor, ofAge, socDay } from './society.js';
 
 // stages of a life: 0 in the nursery, 1 small, 2 a child, 3 an apprentice, 4 an adult, 5 an elder
 export const NURSERY = 2, SMALL = 6, APPRENTICE = 13, ADULT = 16, ELDER = 65, RETIRE = 72, COUPLE = 18;
 export const TANKS = 2, GROW_DAYS = 60;
-const stageAt = y => y < NURSERY ? 0 : y < SMALL ? 1 : y < APPRENTICE ? 2 : y < ADULT ? 3 : y < ELDER ? 4 : 5;
+// the colony's rule can keep children at school two more years before they join the crews
+const stageAt = (y, ap = APPRENTICE) => y < NURSERY ? 0 : y < SMALL ? 1 : y < ap ? 2 : y < ADULT ? 3 : y < ELDER ? 4 : 5;
 export const now = sim => sim.S.tick / DAY_TICKS;
 export const yearsOf = (sim, c) => (now(sim) - c.born) / YEAR_DAYS;
 export const mindAge = (sim, c) => c.age + (sim.day - c.bday) / YEAR_DAYS;
@@ -47,12 +50,12 @@ export function migrateLives(sim) {
 
 // ---------- once a day, at four in the morning ----------
 export function livesDay(sim) {
-  const S = sim.S, G = S.gen, live = S.cols.filter(c => !c.dead);
+  const S = sim.S, G = S.gen, live = S.cols.filter(c => !c.dead), R = S.soc.rules, rt = R.retire;
   for (const c of live) {
-    const y = yearsOf(sim, c), was = c.life, st = stageAt(y);
+    const y = yearsOf(sim, c), was = c.life, st = stageAt(y, R.appr);
     if (st !== was) { c.life = st; grewUp(sim, c, was, st, y); }
     if (c.dead) continue;
-    if (!c.retired && c.life >= 4 && y >= RETIRE) retire(sim, c);
+    if (!c.retired && c.life >= 4 && rt && y >= rt) retire(sim, c);
     // the body over a lifetime: last night's sleep, a printed part settling in, the years and what they have
     // earned (every ten days, a few people each day), and anything serious coming to a head
     sleepDay(c); adjustDay(sim, c);
@@ -66,10 +69,12 @@ export function livesDay(sim) {
   couples(sim, live.filter(c => !c.dead));
   tanks(sim);
   milestones(sim);
+  socDay(sim);
 }
 function grewUp(sim, c, was, st, y) {
   const S = sim.S;
   if (st === 1) sim.log(`${c.name} is two: out of the nursery, and running about the camp.`, 'good', { e: 'toddler', lvl: 0, who: c.id });
+  if (st === 2 && was === 3) { if (c.crew >= 0) sim.addTo(c, -1); c.bed = 20.5; remember(sim, c, 'Went back to school under the new rule on apprentices.'); }
   if (st === 3) {
     c.bed = 21.3 + rnd() * .9;   // a grown-up's bedtime from now on
     remember(sim, c, 'Joined the crews as an apprentice.');
@@ -80,6 +85,7 @@ function grewUp(sim, c, was, st, y) {
     remember(sim, c, 'Came of age.');
     const firstOne = !S.gen.firsts.adult; S.gen.firsts.adult = S.gen.firsts.adult || sim.day;
     sim.log(firstOne ? `${c.name} is sixteen: the first person born on this world to come of age.` : `${c.name} is sixteen and counts as an adult now.`, 'good', { e: firstOne ? 'firstadult' : 'adult', lvl: firstOne ? 2 : 1, who: c.id, title: firstOne ? 'The first native adult' : 'Of age' });
+    ofAge(sim, c);
   }
   if (st === 5) sim.log(`${c.name} is ${Math.floor(y)}: the body is starting to slow down.`, '', { who: c.id });
 }
@@ -87,7 +93,7 @@ function retire(sim, c) {
   c.retired = true;
   remember(sim, c, 'Stopped working in the crews.');
   if (c.crew >= 0) sim.addTo(c, -1);
-  sim.log(`${c.name} is ${RETIRE} and has stopped working in the crews. Put them back in one if the colony needs them.`, '', { e: 'retired', lvl: 1, who: c.id, title: 'Retired' });
+  sim.log(`${c.name} is ${Math.floor(yearsOf(sim, c))} and has stopped working in the crews, as the colony’s rule says. Put them back in one if the colony needs them.`, '', { e: 'retired', lvl: 1, who: c.id, title: 'Retired' });
 }
 
 // ---------- skills: practice keeps them, disuse fades them; children learn from their parents, apprentices from the best ----------
@@ -99,6 +105,8 @@ function skillsDay(sim, c) {
   for (const k of SKILLS) if (!(c.pr & BIT[k]) && c.skills[k] > 3) c.skills[k] = Math.round((c.skills[k] - .002) * 1000) / 1000;
   c.pr = 0;
   if (c.life === 1 || c.life === 2) {
+    // a day at school yesterday: toward what the teachers (and the library) can give, faster than at home
+    if (c.life === 2 && c.sch === sim.day - 1) { const L = lesson(sim); if (L.pace) for (const k of SKILLS) if (c.skills[k] < L.aim[k]) learn(c, k, L.pace * (L.aim[k] - c.skills[k]) / 2); }
     const ps = c.par.map(i => S.cols[i]).filter(p => p && !p.dead);
     if (!ps.length) return;
     const t = Math.max(...ps.map(p => p.skills.teaching)), pace = (c.life === 1 ? .002 : .005) * (1 + t / 10);
@@ -106,11 +114,11 @@ function skillsDay(sim, c) {
     for (const p of ps) if (rnd() < .3) { learn(p, 'teaching', .003); p.pr |= BIT.teaching; }
   } else if (c.life === 3 && c.crew >= 0) {
     const cr = S.crews[c.crew], mates = cr.members.map(i => S.cols[i]).filter(o => o !== c && !o.dead && o.life >= 4);
-    if (!mates.length) return;
     for (const k of SKILLS) {
       let best = null; for (const o of mates) if (!best || o.skills[k] > best.skills[k]) best = o;
-      const gap = best.skills[k] - c.skills[k];
+      const gap = best ? best.skills[k] - c.skills[k] : 0, book = shelf(S, k) - c.skills[k];
       if (gap > .5) { learn(c, k, .012 * (1 + best.skills.teaching / 10) * gap / 10); if (rnd() < .1) { learn(best, 'teaching', .002); best.pr |= BIT.teaching; } }
+      else if (book > .5) learn(c, k, .006 * book / 10);   // nobody in the crew knows more, but the library does
     }
   }
 }
@@ -188,13 +196,15 @@ function ruleNote(sim) {
   return 'The Seed grows the child in one of its tanks as soon as one is free and there is feedstock for a body.';
 }
 // ---------- the growth tanks ----------
+// the Seed's own two, and those in each growth-tank building with power
+export const tankCount = S => TANKS + built(S).filter(p => p.type === 'nursery' && p.powered && !p.shut).reduce((a, p) => a + capOf(p).tanks, 0);
 function tanks(sim) {
-  const S = sim.S, G = S.gen, sd = S.seedc;
+  const S = sim.S, G = S.gen, sd = S.seedc, nT = tankCount(S);
   for (const e of G.womb.slice()) if (--e.left <= 0) { G.womb.splice(G.womb.indexOf(e), 1); birth(sim, e); }
   // a couple that split up, or lost one of them, is no longer waiting
   G.asks = G.asks.filter(q => { const a = S.cols[q.a], b = S.cols[q.b]; return a && b && !a.dead && !b.dead && a.partner === b.id; });
   // founders the player chose come first; a body of feedstock nobody chose goes to the couple who asked first
-  while (G.asks.length && G.womb.length < TANKS && sd.feed > 0 && !sd.queue.length && ruleOk(sim)) {
+  while (G.asks.length && G.womb.length < nT && sd.feed > 0 && !sd.queue.length && ruleOk(sim)) {
     const q = G.asks.shift(), a = S.cols[q.a], b = S.cols[q.b];
     sd.feed--; G.womb.push({ k: q.k, a: a.id, b: b.id, left: GROW_DAYS, d: sim.day }); S.rv++;
     remember(sim, a, `The Seed started growing a child for us.`); remember(sim, b, `The Seed started growing a child for us.`);
@@ -204,11 +214,12 @@ function tanks(sim) {
 }
 // a name nobody living has, a temperament from both sides, a face from both sides
 const NEW_GIVEN = ['Arlo', 'Brin', 'Calla', 'Dov', 'Edda', 'Fen', 'Halo', 'Isa', 'Jori', 'Kai', 'Lumi', 'Miro', 'Nell', 'Oki', 'Pell', 'Rue', 'Sol', 'Tavi', 'Una', 'Vale', 'Wyn', 'Ziv', 'Ash', 'Bay', 'Cove', 'Dell', 'Elm', 'Fjord', 'Glen', 'Hollis'];
-function nameFor(S, a, b, n) {
-  const used = new Set(S.cols.filter(c => !c.dead).map(c => first(c.name))), fam = family((n % 2 ? b : a).name) || family(a.name);
+function nameFor(sim, a, b, n) {
+  const S = sim.S, used = new Set(S.cols.filter(c => !c.dead).map(c => first(c.name))), fam = family((n % 2 ? b : a).name) || family(a.name);
+  const dn = deadName(sim, a, b, used); if (dn) return [dn.g + ' ' + fam, dn];
   const pool = GIVEN.concat(NEW_GIVEN);
-  for (let k = 0; k < 40; k++) { const g = pool[Math.floor(rnd() * pool.length)]; if (!used.has(g) && g !== first(a.name) && g !== first(b.name)) return g + ' ' + fam; }
-  return pool[Math.floor(rnd() * pool.length)] + ' ' + fam;
+  for (let k = 0; k < 40; k++) { const g = pool[Math.floor(rnd() * pool.length)]; if (!used.has(g) && g !== first(a.name) && g !== first(b.name)) return [g + ' ' + fam, null]; }
+  return [pool[Math.floor(rnd() * pool.length)] + ' ' + fam, null];
 }
 function traitsFor(a, b) {
   const keys = Object.keys(TRAITS), out = [];
@@ -233,7 +244,8 @@ export function birth(sim, e) {
   const S = sim.S, G = S.gen, a = S.cols[e.a], b = S.cols[e.b];
   G.born++; S.stats.births = (S.stats.births || 0) + 1;
   const skills = Object.fromEntries(SKILLS.map(k => [k, 0]));
-  const p = { fid: -1, name: nameFor(S, a, b, G.born), age: 0, trade: 'Born here', skills, traits: traitsFor(a, b), mem: [], look: lookFor(a, b), knew: [] };
+  const [name, dn] = nameFor(sim, a, b, G.born);
+  const p = { fid: -1, name, age: 0, trade: 'Born here', skills, traits: traitsFor(a, b), mem: [], look: lookFor(a, b), knew: [] };
   const c = sim.spawn(p, sim.cargoTile, ACT.INDOORS);
   Object.assign(c, { fresh: 0, born: now(sim), life: 0, native: true, gen: Math.max(a.gen, b.gen) + 1, par: [a.id, b.id], kids: [], partner: -1, owe: 0, retired: false, pr: 0, bed: 19.5 + rnd() * .5, tru: 70, str: 0, fat: 0, plan: 'nursery', job: 'nursery' });
   c.mem = [{ d: sim.day, m: 'Born on this world.' }]; c.bd.marks = []; c.gap = 0; childBody(c, a, b);
@@ -243,6 +255,7 @@ export function birth(sim, e) {
     if (!q.dead) { remember(sim, q, `${first(c.name)} was born.`); q.str = Math.max(0, q.str - 15); }
   }
   const firstOne = G.born === 1;
+  if (dn) namedFor(sim, c, dn);
   sim.log(firstOne ? `${c.name} was born, the child of ${a.name} and ${b.name}: the first person born on this world.` : `${c.name} was born, the child of ${a.name} and ${b.name}.`, 'good', { e: firstOne ? 'firstborn' : 'born', lvl: firstOne ? 2 : 1, who: c.id, title: firstOne ? 'The first child born here' : 'A child is born' });
   S.rv++;
 }
@@ -297,5 +310,5 @@ export function lastFounder(sim, c) {
 // what the page shows of all this
 export function genUI(sim) {
   const S = sim.S, G = S.gen, nm = i => S.cols[i] ? S.cols[i].name : '';
-  return { rule: G.rule, womb: G.womb.map(e => ({ a: e.a, b: e.b, left: e.left, names: [nm(e.a), nm(e.b)] })), asks: G.asks.map(q => ({ a: q.a, b: q.b, names: [nm(q.a), nm(q.b)], d: q.d })), born: G.born, ok: ruleOk(sim), fedDays: FED_DAYS, tanks: TANKS };
+  return { rule: G.rule, womb: G.womb.map(e => ({ a: e.a, b: e.b, left: e.left, names: [nm(e.a), nm(e.b)] })), asks: G.asks.map(q => ({ a: q.a, b: q.b, names: [nm(q.a), nm(q.b)], d: q.d })), born: G.born, ok: ruleOk(sim), fedDays: FED_DAYS, tanks: tankCount(S) };
 }

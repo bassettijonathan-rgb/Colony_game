@@ -1,7 +1,7 @@
 // One frame: people, the Seed and the camp go onto a screen-sized layer (with their heights on another), then
 // the GPU composes the painted map, light, shadow, water and the ground not yet surveyed. Also the camera,
 // the view from orbit before the landing, the landing itself, and the minimap.
-import { MAP, CH, ACT, hidden } from '../core/consts.js';
+import { MAP, CH, ACT, hidden, inRoom } from '../core/consts.js';
 import { clamp, sstep, hash } from '../core/rng.js';
 import { drawBuilding, drawHatch, drawYard, drawCargo, drawMarks, buildingLights, progress, spotInside } from './buildings.js';
 import { stagesOf, TYPES } from '../core/build.js';
@@ -200,7 +200,7 @@ export class View {
       const doors = new Map(); for (const p of C.projects) if (p.done && !p.below && p.door && p.type !== 'solar' && p.type !== 'field') doors.set(p.door.y * MAP + p.door.x, p);
       const r = Math.max(.35, 2.2 / k);
       for (let i = 0; i < n; i++) {
-        const o = i * 4, act = pos[o + 3] >> 1; if (act !== ACT.INSIDE && act !== ACT.INDOORS && act !== ACT.BENCH) continue;
+        const o = i * 4, act = pos[o + 3] >> 1; if (!inRoom(act)) continue;
         const tx = Math.floor(pos[o]), ty = Math.floor(pos[o + 1]); let p = null;
         for (let dy = -1; dy <= 1 && !p; dy++) for (let dx = -1; dx <= 1 && !p; dx++) p = doors.get((ty + dy) * MAP + tx + dx) || null;
         if (!p || !vis(p.x + p.w / 2, p.y + p.h / 2, Math.max(p.w, p.h))) continue;

@@ -76,6 +76,15 @@ export const EXPLAIN = {
   smelted: 'From now on a workshop smelts ore whenever it has nothing else to make and the yard is low on salvage. Keep a mine crew working while there is ore in the seam.',
   mineLow: 'A new mine takes days to dig, so plan it before the old one is empty. Press U to see the seams of ore below ground.',
   chronic: 'Years of work, the diet and the sun leave their mark slowly, and some of it turns into lasting trouble: worn joints, scarred lungs, a weak heart, failing kidneys, a growth. Each person’s Health tab shows what they feel; a check-up names it.',
+  council: 'With fifty adults the colony chooses a council for itself, five people it trusts, and again every Thaw. Before changing a rule in the Society window (P) you can ask it first: it answers the next morning. It cannot stop the Seed, but going against it costs trust.',
+  verdict: 'The council has answered a question the Seed put to it. Open the Society window (P) to see who was for and against, and why, then change the rule or leave it.',
+  councilask: 'The council speaks up on its own when most of the colony would rather live under another rule. The Society window (P) shows each rule, how many are content with it, and why the rest are not.',
+  rule: 'Every rule has people for it and against it. Those who would rather have another carry it as a small weight of strain, and enough of them, strained enough, may stop work for a day.',
+  protest: 'When most of the colony is against a rule and strained, they stop work together for a day. The Society window (P) shows which rule and why: change it, or ease what is weighing on them.',
+  lost: 'Skills pass from person to person, and fade with whoever held them. A library with keepers writes down what the best people know, so that when they die, apprentices and the school can still learn it.',
+  firstfight: 'At the far end of strain, a breakdown can turn on a rival. A watch house with a watch crew means someone is there to step in. What the watch may do is a rule in the Society window (P).',
+  unseen: 'At night the camp sleeps, and a fire is only noticed once it is close. A watch house with a watch crew keeps one person up each night, by turns, to raise the alarm as soon as it starts.',
+  custom: 'The colony grows its own customs from what happens to it. They are kept in the Society window (P). On a custom’s day people gather at the fire in the evening, which eases strain and grief.',
   checkup: 'With a working clinic and someone in a clinic crew, the clinic calls everyone in every forty days. A skilled medic finds more, and a lab helps. A growth found while it is small can be cut out.',
   heartattack: 'A weak heart can fail without warning. A printed heart, once the colony has a clinic, a lab and a body’s worth of feedstock, replaces it: see their Health tab.',
   operated: 'A growth found early, at a check-up, can be cut out. The more skilled the medic and the smaller the growth, the better the odds.',
@@ -117,7 +126,7 @@ const ALERTS = {
   samples: ['info', '', 'Queue the test in the Life window (G).'],
   locked: ['warn', 'Food only a kitchen can prepare', 'Some of the larder needs leaching or fermenting before it is safe, and nobody is on kitchen work. Set up a kitchen crew in the Crews window (C).'],
   behind: ['bad', 'The kitchen can’t keep up', 'People are going hungry while food waits to be leached, fermented or cooked. One cook feeds about ten people: put more on kitchen work in the Crews window (C).'],
-  deep: ['bad', '', 'Nothing grows in Deep cold. Fill the larder before it comes: foragers, harvests, and food that keeps.'],
+  deep: ['bad', '', 'Nothing grows in Deep cold, and the first crops ripen weeks into Thaw. Fill the larder before it comes: foragers, harvests, more fields in Long light, and food that keeps.'],
   hungry: ['bad', '', 'They lose health every day without a meal, and die when it runs out.'],
   down: ['bad', '', 'They can’t get up. Someone nearby comes to give first aid and carry them to a bed.'],
   bleed: ['bad', '', 'First aid slows the bleeding; closing the wound stops it. Lost blood comes back slowly over days.'],
@@ -179,6 +188,8 @@ export class News {
     el.animate([{ transform: `translateY(${-drop}px)`, easing: 'cubic-bezier(.5,0,1,1)' }, { transform: 'translateY(0)', offset: .82, easing: 'ease-out' }, { transform: 'translateY(-5px)', offset: .92, easing: 'ease-in' }, { transform: 'none' }], { duration: 420 + drop * .45 });
     if (big && this.pause && this.A.speed > 0) { this.resume = this.A.speed; this.api.setSpeed(0); }
   }
+  // a letter that opens at once: the chronicle after a skip
+  show(e) { this.push(e); const k = this.stack.find(q => q.e === e); if (k) this.openLetter(k); }
   // take a letter off the stack; the ones above it slide down into the gap
   remove(k, fade = false) {
     const i = this.stack.indexOf(k); if (i < 0) return;
@@ -204,7 +215,7 @@ export class News {
     const t = $('lTip'); this.tipFor = k;
     if (!k) { t.hidden = true; return; }
     const r = k.el.getBoundingClientRect(), e = k.e;
-    t.innerHTML = `<div class="nh"><b>${esc(e.title || 'News')}</b><em>${this.api.when(e.t)}</em></div><p>${esc(e.m)}</p>${k.why ? `<div class="why"><i>New</i>${esc(k.why)}</div>` : ''}<small>Click to read${target(e) ? ' and look' : ''} · right-click to dismiss</small>`;
+    t.innerHTML = `<div class="nh"><b>${esc(e.title || 'News')}</b><em>${this.api.when(e.t)}</em></div><p>${esc(e.m.length > 320 ? e.m.slice(0, 300).replace(/\s+\S*$/, '') + '…' : e.m)}</p>${k.why ? `<div class="why"><i>New</i>${esc(k.why)}</div>` : ''}<small>Click to read${target(e) ? ' and look' : ''} · right-click to dismiss</small>`;
     t.hidden = false;
     t.style.right = Math.round(innerWidth - r.left + 10) + 'px';
     t.style.top = Math.round(Math.max(8, Math.min(r.top - 6, innerHeight - t.offsetHeight - 8))) + 'px';
@@ -219,7 +230,7 @@ export class News {
     $('lWhy').hidden = !k.why; $('lWhyT').textContent = k.why || '';
     $('lGo').hidden = !target(e);
     const more = this.stack.length - 1; $('lMore').textContent = more > 0 ? `${more} more on the right` : '';
-    $('letter').className = 'glass ' + tone(e); $('letter').hidden = false;
+    $('letter').className = 'glass ' + tone(e) + (e.e === 'chronicle' ? ' chron' : ''); $('letter').hidden = false;
     $('lPaused').hidden = !this.resume;
   }
   closeLetter() { if (this.cur) this.remove(this.cur); }
@@ -251,7 +262,8 @@ export class News {
     if (U.seed.feed > 0 && !U.seed.queue.length && !U.seed.printing && U.seed.stored > 0) add('print', ALERTS.print[1], [{ tab: 'archive' }]);
     const F = U.F, Y = U.year, usable = F ? F.usable : U.food, fdays = eaters ? usable / eaters : 99;
     if (eaters && fdays < 10) add('food', usable < 1 ? 'Nothing left to eat' : `Food for ${Math.max(1, Math.floor(fdays))} day${Math.floor(fdays) === 1 ? '' : 's'}`, [{ tab: 'life' }], usable < 1 ? 'Nobody has had a meal since the food ran out.' : U.food >= 1 ? `${Math.floor(U.food)} meals of it are the lander’s rations.` : '');
-    if (Y && eaters && Y.deepIn > 0 && Y.deepIn <= 15 && fdays < Y.deepIn + 20) add('deep', `Deep cold in ${Y.deepIn} day${Y.deepIn === 1 ? '' : 's'}, food for ${Math.floor(fdays)}`, [{ tab: 'life' }], `It lasts twenty days, so the colony needs about ${(Y.deepIn + 20) * eaters} meals and has ${Math.floor(usable)}.`);
+    // Deep cold, and the weeks of thaw after it before the first crops ripen
+    if (Y && eaters && Y.deepIn > 0 && Y.deepIn <= 25 && fdays < Y.deepIn + 40) add('deep', `Deep cold in ${Y.deepIn} day${Y.deepIn === 1 ? '' : 's'}, food for ${Math.floor(fdays)}`, [{ tab: 'life' }], `It lasts twenty days, and little can be found in the twenty days of Thaw after it, so the colony needs about ${(Y.deepIn + 40) * eaters} meals and has ${Math.floor(usable)}.`);
     if (F && F.locked > 0 && !U.crews.some(c => !c.gone && c.work === 'kitchen' && c.members.length)) add('locked', ALERTS.locked[1], [{ tab: 'crews' }], `${Math.floor(F.locked)} meals’ worth is waiting.`);
     const fields = U.projects.filter(p => p.type === 'field' && p.done);
     if (fields.length && !U.crews.some(c => !c.gone && c.work === 'farm' && c.members.length)) add('nofarm', ALERTS.nofarm[1], [{ tab: 'crews' }]);

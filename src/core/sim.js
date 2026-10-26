@@ -22,6 +22,7 @@ import { traumaUI } from './trauma.js';
 import { ctlHour, emergency } from './control.js';
 import { agingUI, canReplace } from './aging.js';
 import { printedBody, migrateLives, livesDay, minders, newGen, genUI, yearsOf, mindAge } from './lives.js';
+import { newSoc, socHour, socUI, migrateSoc } from './society.js';
 
 export const CREW_NAMES = ['Basalt', 'Kestrel', 'Cedar', 'Drift', 'Ember', 'Fern', 'Gale', 'Heron', 'Iris', 'Juniper', 'Lichen', 'Moss', 'Nettle', 'Onyx', 'Pike', 'Quartz', 'Rowan', 'Sedge', 'Thistle', 'Umber', 'Vetch', 'Willow', 'Yarrow', 'Zinc', 'Alder', 'Bramble', 'Cobalt', 'Dune', 'Flint', 'Garnet', 'Hazel', 'Ivy', 'Jasper', 'Kelp', 'Larch', 'Marl'];
 export const STAKES = 10, FOOD_DAYS = 40, FIRST_BODIES = 6;
@@ -90,7 +91,7 @@ export class Sim {
       stakes: [], food: mode === 'stress' ? 1e9 : FOOD_DAYS * FIRST_BODIES,
       log: [], logN: 0, chunkLast: new Array(NCH * NCH).fill(0), rr: 0, walked: 0, knownN: 0, rv: 1,
       stats: { breakdowns: 0, accidents: 0, fits: 0, trips: 0, darkReturns: 0, friends: 0, rivals: 0, deaths: 0, felled: 0, quarried: 0, made: 0, harvests: 0, meals: 0, cold: 0, fires: 0 },
-      F: newFood(this.kinds.length), gen: newGen(), hist: newHist(), med: { ...MED_KIT }, care: { triage: 'worst', medics: 0, iso: false }, ill: newIll(), hz: newHz(), dir: newDir(), ctl: -1,
+      F: newFood(this.kinds.length), gen: newGen(), hist: newHist(), med: { ...MED_KIT }, care: { triage: 'worst', medics: 0, iso: false }, ill: newIll(), hz: newHz(), dir: newDir(), ctl: -1, soc: newSoc(),
     };
     this.S.F.sun = sunFactor(season); this.S.F.seasonSaid = season; this.S.F.temp = tempAt(W.seed, this.cal, 6);
     if (season === DEEP) { this.S.F.snow = .55; this.S.F.ice = .35; }   // landing into a winter already under way
@@ -141,7 +142,11 @@ export class Sim {
   }
   // ev says what kind of news it is for the page: e (the kind), lvl (0 the log only, 1 a card, 2 a letter that
   // pauses the game), title, and where to look: who (a person), pid (a project) or x, y
-  log(m, k = '', ev) { const S = this.S; S.logN++; S.log.push(ev ? { n: S.logN, t: S.tick, m, k, ...ev } : { n: S.logN, t: S.tick, m, k }); if (S.log.length > 300) S.log.shift(); }
+  log(m, k = '', ev) {
+    const S = this.S, e = ev ? { n: ++S.logN, t: S.tick, m, k, ...ev } : { n: ++S.logN, t: S.tick, m, k };
+    S.log.push(e); if (S.log.length > 300) S.log.shift();
+    if (this.tap && ev && ev.e) this.tap(e);   // a skip collecting what happens, for its chronicle
+  }
 
   // bedrolls in rings around the lander, clear of the shelter's plot, the fire and the cargo door
   restSlot() {
@@ -278,6 +283,7 @@ export class Sim {
     illHour(this);
     hzHour(this);
     ctlHour(this);
+    socHour(this);
     if (h === 18) feedPatients(this);
     if (h === 6) this.morning(d, doy, wx);
   }
@@ -467,6 +473,8 @@ export class Sim {
       archive: S.archive.map(p => ({ fid: p.fid, name: p.name, age: p.age, trade: p.trade, skills: p.skills, traits: p.traits, mem: p.mem, knew: p.knew, woke: p.woke ?? null })),
     };
   }
+  // the Society window: rules and who backs them, the council, the school, the library, the watch, the customs
+  socUI() { return socUI(this); }
   // the clinic's records: everyone who ever lived here, what their days went on, and what their bodies came to
   recordsUI() {
     const S = this.S;
@@ -550,6 +558,7 @@ export class Sim {
     if (this.S.crewPlan == null) this.S.crewPlan = !!this.S.autoCrews;   // saves from before the Seed planned crews
     if (this.S.shift == null) this.S.shift = 1;
     migrateLives(this);
+    migrateSoc(this);
     this.resetGround(); this.gnew = []; this.qnew = [];
     if (old) projectsThink(this); // give the migrated crews their project now, not at the next check
     this.wear.set(unrle(wear, MAP * MAP)); this.known.set(unrle(known, MAP * MAP)); this.dirty.clear(); this.kdirty.clear();

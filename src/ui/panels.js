@@ -27,7 +27,7 @@ const SIDE = ['north', 'east', 'south', 'west'];
 const pct = f => Math.round(f * 100) + '%';
 const icon = (id, cls = 'ic') => `<svg class="${cls}"><use href="#i-${id}"/></svg>`;
 const WHY = { old: 'of old age', starved: 'of hunger', froze: 'of the cold', diet: 'of the diet', bled: 'of blood loss', shock: 'of shock', infection: 'of an infection', head: 'of a head injury', heart: 'of heart failure', kidney: 'of kidney failure', growth: 'of a growth', operation: 'in an operation' };
-const TICON = { shelter: 'seed', dorm: 'dorm', commons: 'commons', workshop: 'tool', clinic: 'clinic', solar: 'solar', test: 'test', field: 'field', lab: 'lab', plant: 'tank', cellar: 'cellar', burrow: 'below', mine: 'mine', pit: 'stone' };
+const TICON = { shelter: 'seed', dorm: 'dorm', commons: 'commons', workshop: 'tool', clinic: 'clinic', solar: 'solar', test: 'test', field: 'field', lab: 'lab', plant: 'tank', cellar: 'cellar', burrow: 'below', mine: 'mine', pit: 'stone', school: 'school', library: 'library', watch: 'watch', nursery: 'tank' };
 const KIN = { partner: 'Partner', parent: 'Parent', child: 'Child', sibling: 'Brother or sister' }, KIN_ORDER = ['partner', 'parent', 'child', 'sibling'];
 const GEN = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth'];
 // how old someone is: a founder's mind is older than the body the Seed printed for it
@@ -36,9 +36,9 @@ function ageLine(p, r) {
   if (p.native) return `${body} · born here, ${GEN[Math.max(0, p.gen - 1)] || p.gen + 'th'} generation${r[8] < 2 ? ' · in the nursery' : r[8] < 13 ? ' · a child' : r[8] < 16 ? ' · an apprentice' : ''}`;
   return `${mind}, in a body of ${body} · former ${p.trade.toLowerCase()}`;
 }
-const TAB = { records: ['Clinic records', 'clinic'], archive: ['Archive', 'archive'], crews: ['Crews', 'crews'], build: ['Build', 'build'], life: ['Food and local life', 'life'], log: ['Log', 'log'] };
+const TAB = { society: ['Society', 'society'], records: ['Clinic records', 'clinic'], archive: ['Archive', 'archive'], crews: ['Crews', 'crews'], build: ['Build', 'build'], life: ['Food and local life', 'life'], log: ['Log', 'log'] };
 // what a building holds, in a few words
-const holds = (type, c) => ({ shelter: `${c.beds} bunks`, dorm: `${c.beds} bunks`, commons: `seats for ${c.seats}`, workshop: `${c.benches} bench${c.benches > 1 ? 'es' : ''}`, clinic: `${c.beds} beds`, solar: `${c.panels} panels, ${c.supply} kW`, field: `${c.tiles} tiles of beds`, lab: `${c.benches} lab bench${c.benches > 1 ? 'es' : ''}`, plant: `${c.tanks} tank${c.tanks > 1 ? 's' : ''}`, cellar: `cool shelves for ${c.store} loads of food`, burrow: `${c.beds} bunks`, mine: `${c.faces} face${c.faces > 1 ? 's' : ''} to work`, pit: `${c.faces} face${c.faces > 1 ? 's' : ''} to cut` })[type] || '';
+const holds = (type, c) => ({ shelter: `${c.beds} bunks`, dorm: `${c.beds} bunks`, commons: `seats for ${c.seats}`, workshop: `${c.benches} bench${c.benches > 1 ? 'es' : ''}`, clinic: `${c.beds} beds`, solar: `${c.panels} panels, ${c.supply} kW`, field: `${c.tiles} tiles of beds`, lab: `${c.benches} lab bench${c.benches > 1 ? 'es' : ''}`, plant: `${c.tanks} tank${c.tanks > 1 ? 's' : ''}`, cellar: `cool shelves for ${c.store} loads of food`, burrow: `${c.beds} bunks`, mine: `${c.faces} face${c.faces > 1 ? 's' : ''} to work`, pit: `${c.faces} face${c.faces > 1 ? 's' : ''} to cut`, school: `${c.desks} desks`, library: `${c.shelves} shelves`, watch: 'a lamp and a post', nursery: `${c.tanks} growth tank${c.tanks > 1 ? 's' : ''}` })[type] || '';
 const UG_TXT = { soil: 'soft soil: quick to dig, but the walls need a lot of shoring', clay: 'clay: heavier digging, and it holds its shape', stone: 'stone: slow digging, little shoring, and the spoil gives stone for the yard', 'hard rock': 'hard rock: very slow digging, but it barely needs shoring and gives stone' };
 const loads = L => Object.entries(L).filter(([k, n]) => n > 0 && k !== 'mark' && k !== 'test').map(([k, n]) => matName(k, n)).join(', ');const SHIFT_TXT = SHIFTS.map(s => `${s.name} ${s.a}–${s.b}`);
 // what a crew's members are doing, in a word each
@@ -122,6 +122,7 @@ export class Panels {
   setTab(t) {
     const [w, part] = t.split(':'); t = w; if (part) this[t === 'build' ? 'btab' : 'ltab'] = part;   // 'life:local' opens a part of a window
     if ((t === 'records') !== (this.tab === 'records') || !this.recOn) { this.recOn = 1; this.api.wantRecs(t === 'records'); }
+    if ((t === 'society') !== (this.tab === 'society') || !this.socOn) { this.socOn = 1; this.api.wantSoc(t === 'society'); }
     this.tab = t; this.sig = '';
     $('sideTitle').textContent = TAB[t][0]; $('sideIc').innerHTML = `<use href="#i-${TAB[t][1]}"/>`;
     if (this.min) this.fold(false); else this.dock();
@@ -138,7 +139,7 @@ export class Panels {
     if (!this.busy && !this.min) {
       const body = $('sideBody'), focus = document.activeElement;
       const holding = focus && body.contains(focus) && focus.tagName === 'SELECT';
-      const [sig, html] = this.tab === 'records' ? this.records(U) : this.tab === 'archive' ? this.archive(U) : this.tab === 'crews' ? this.crews(U) : this.tab === 'build' ? this.build(U) : this.tab === 'life' ? this.life(U) : this.log(U);
+      const [sig, html] = this.tab === 'society' ? this.society(U) : this.tab === 'records' ? this.records(U) : this.tab === 'archive' ? this.archive(U) : this.tab === 'crews' ? this.crews(U) : this.tab === 'build' ? this.build(U) : this.tab === 'life' ? this.life(U) : this.log(U);
       if (sig !== this.sig && !holding) {
         const q = focus && focus.id === 'recQ' ? [focus.selectionStart, focus.selectionEnd] : null, top = body.scrollTop;
         body.innerHTML = html(); body.scrollTop = top; this.sig = sig;
@@ -243,6 +244,52 @@ export class Panels {
       return h;
     }];
   }
+  // ---------- society: the rules and who backs them, the council, the school, the library, the watch, the customs ----------
+  society(U) {
+    const Q = this.A.soc, pick = this.socPick;
+    if (!Q) return ['soc-wait', () => '<div class="note">Gathering what people think…</div>'];
+    return ['soc' + JSON.stringify(Q) + JSON.stringify(pick || 0), () => {
+      const n = (k, a, b) => `${k} ${k === 1 ? a : b}`;
+      let h = `<div class="note" style="margin-top:0">How the colony runs itself: the rules it lives by, who chooses to speak for it, and the places where it teaches, remembers and keeps watch. Every rule has people for it and people against it; those who would rather have another carry it as a weight.</div>`;
+      // the rules
+      h += `<div class="sec">Rules</div>`;
+      for (const r of Q.rules) {
+        if (!r.live) { h += `<div class="box rule off"><b>${esc(r.name)}</b><div class="note" style="margin:2px 0 0">Once the colony has ${r.need === 'school' ? 'a school' : 'a watch'}.</div></div>`; continue; }
+        const v = Q.verdict && Q.verdict.k === r.k ? Q.verdict : null, q = Q.q && Q.q.k === r.k ? Q.q : null, p = pick && pick.k === r.k ? pick : null;
+        h += `<div class="box rule"><b>${esc(r.name)}</b><div class="seg sm">${r.opts.map(([val, t]) => `<button data-act="rpick" data-k="${r.k}" data-v="${esc(JSON.stringify(val))}" class="${r.cur === val ? 'on' : ''}${p && p.v === val ? ' pk' : ''}">${esc(t)}</button>`).join('')}</div>`;
+        if (r.n) {
+          const against = r.n - r.for, top = r.alt[0];
+          h += `<div class="sup"><div class="bar"><u style="width:${Math.round(r.for / r.n * 100)}%"></u></div><span>${r.for} of ${r.n} adults are content with this.${top ? ` ${n(against, 'would', 'would')} rather have <b>${esc(top[0].toLowerCase())}</b>${r.alt.length > 1 ? ' or something else' : ''}${r.why.length ? `: ${r.why.map(esc).join('; ')}` : ''}.` : ''}${r.opp ? ` It weighs on ${n(r.opp, 'person', 'people')}.` : ''}</span></div>`;
+        }
+        if (q) h += `<div class="note">The council meets tonight on whether it should be <b>${esc(q.opt.toLowerCase())}</b>, and answers in the morning.</div>`;
+        if (v) h += `<div class="note">The council on <b>${esc(v.opt.toLowerCase())}</b>: ${v.yes} of ${v.yes + v.no} for it. ${v.votes.map(x => `${esc(x.name.split(' ')[0])} ${x.yes ? 'for' : 'against'}${x.why ? ` (${esc(x.why)})` : ''}`).join(', ')}.</div><div class="row2"><button class="btn go" data-act="rset" data-k="${r.k}" data-v="${esc(JSON.stringify(v.v))}">Change it</button><button class="btn" data-act="rkeep">Leave it as it is</button></div>`;
+        else if (p) h += `<div class="row2">${Q.council ? `<button class="btn go" data-act="rask" data-k="${r.k}" data-v="${esc(JSON.stringify(p.v))}">Ask the council first</button>` : ''}<button class="btn${Q.council ? '' : ' go'}" data-act="rset" data-k="${r.k}" data-v="${esc(JSON.stringify(p.v))}">Change it now</button><button class="btn" data-act="rcancel">Cancel</button></div>${Q.council ? '<div class="note">Changing a rule without asking the council costs a little of its members’ trust. Going against its answer costs more.</div>' : ''}`;
+        h += `</div>`;
+      }
+      // the council
+      h += `<div class="sec">Council</div>`;
+      if (Q.council) h += `<div class="box"><div class="chips">${Q.council.members.map(m => `<span class="chip${m.native ? ' g' : ''}" data-act="person" data-id="${m.id}" style="cursor:pointer">${esc(m.name)}${m.native ? ' · born here' : ''}</span>`).join('')}</div><div class="note">Chosen by the colony on day ${Q.council.chose}, and again every Thaw. It only advises: the Seed decides. Click a rule option above to ask it before changing anything.</div></div>`;
+      else h += `<div class="note">A council forms once the colony has ${Q.councilAt} adults. It has ${Q.adults} now.</div>`;
+      // the school
+      const S2 = Q.school; h += `<div class="sec">School</div>`;
+      if (S2.open) {
+        const aims = Object.entries(S2.aim).sort((a, b) => b[1] - a[1]).slice(0, 3).filter(([, v]) => v > .1);
+        h += `<div class="box"><div>${n(S2.pupils, 'child', 'children')} of school age, ${n(S2.teachers, 'teacher', 'teachers')}${S2.pupils > S2.teachers * 8 && S2.teachers ? ': too many for them, so each learns less' : ''}. ${S2.on ? 'The school is open today.' : S2.teachers ? 'The school is shut just now.' : 'Nobody teaches there yet.'}</div>${aims.length ? `<div class="note">After yesterday’s lessons a pupil can get as far as ${aims.map(([k, v]) => `${esc(SKILL_NAME[k].toLowerCase())} ${v.toFixed(1)}`).join(', ')}. The better the teachers, and the more the library holds, the further they get.</div>` : ''}</div>`;
+      } else h += how(['Plan a <b>school</b> in the Build window. Children aged six to twelve spend the mornings there instead of playing.', 'A school crew teaches them; the Seed adds one when it plans the crews, one teacher for every eight children.', 'Without a school, children learn only from their parents, and only half of what the parents know.']);
+      // the library
+      const L = Q.library; h += `<div class="sec">Library</div>`;
+      if (L.built) h += `<div class="box"><table class="rt"><tr><th></th><th>Written down</th><th>Best now</th></tr>${SKILLS.map(k => `<tr><td>${esc(SKILL_NAME[k])}</td><td>${L.rec[k].toFixed(1)}</td><td>${L.best[k][0].toFixed(1)} <small>${esc(L.best[k][1].split(' ')[0])}</small></td></tr>`).join('')}</table><div class="note">${n(L.keepers, 'keeper', 'keepers')} write down what the best people know, the biggest gap first. Apprentices with nobody better in their crew learn from it, and so does the school.</div></div>`;
+      else h += how(['Plan a <b>library</b> in the Build window.', 'A library crew writes down what the best people know, one skill at a time.', `When someone dies who knew far more than anyone else, whatever was not written down dies with them.${L.lost ? ` That has happened ${n(L.lost, 'time', 'times')} here.` : ''}`]);
+      // the watch
+      const W = Q.watch; h += `<div class="sec">Watch</div>`;
+      if (W.post) h += `<div class="box"><div>${n(W.crew, 'person', 'people')} in the watch.${W.night ? ` Tonight ${esc(W.night)} keeps watch.` : W.crew ? ' One of them stays up each night, by turns, and sleeps the next morning.' : ' Nobody is in it yet.'}</div><div class="note">The watch raises the alarm when a fire starts at night, and steps in when someone lashes out.${W.fights ? ` ${n(W.fights, 'fight', 'fights')} so far.` : ''}${W.fear ? ' People are a little afraid of it.' : ''}</div></div>`;
+      else h += how(['Plan a <b>watch house</b> at the edge of camp.', 'A watch crew of two or more keeps it: by turns, one stays up each night.', `Without one, a fire that starts at night burns until it is close enough to wake someone, and nobody steps in when a breakdown turns violent.${W.fights ? ` There ${W.fights === 1 ? 'has been one fight' : `have been ${W.fights} fights`} so far.` : ''}`]);
+      // the customs
+      h += `<div class="sec">Customs</div>`;
+      h += Q.customs.length ? Q.customs.map(c => `<div class="box"><b>${esc(c.name.replace(/^the /, 'The '))}</b><div class="note" style="margin:2px 0 0">${c.k === 'word' ? 'A word for a season, since day ' + c.d + '.' : `Kept ${esc(c.when)}, since day ${c.d}.`}${c.names.length ? ` For ${esc(c.names.join(', '))}.` : ''}</div></div>`).join('') : '<div class="note">None yet. Customs grow out of what happens to the colony: the deaths it remembers, the names it gives, the hard seasons it gets through.</div>';
+      return h;
+    }];
+  }
   // the Seed's growth tanks, the couples waiting, and the colony's rule on children
   tanksBox(U) {
     const G = U.gen; if (!G) return '';
@@ -305,6 +352,10 @@ export class Panels {
       farm: U.projects.some(p => p.type === 'field' && p.done) ? 'They sow, harvest and clear the fields. The Seed chooses each field’s crop unless you set one on its card.' : 'There is no finished field yet. Plan one in the Build window; a farm crew works it once it is made.',
       kitchen: 'They cook meals at the fire, leach and ferment the food that needs it in the vats, and empty the vats when the food is ready. Cooked food goes further than what people cook for themselves.',
       lab: U.projects.some(p => p.type === 'lab' && p.done && p.powered) ? 'They work the lab benches, testing samples much faster than the Seed’s own analyser.' : 'They need a finished lab with power. Until then the Seed’s own analyser tests samples on its own, slowly.',
+      teach: U.projects.some(p => p.type === 'school' && p.done) ? 'They teach the children aged six to twelve at the school, from eight in the morning until three. What they teach most of is a rule in the Society window (P).' : 'There is no finished school yet. Plan one in the Build window.',
+      keep: U.projects.some(p => p.type === 'library' && p.done) ? 'They write down what the best people know in the library, the biggest gap in its records first, so it outlives them. The Society window (P) shows what is written.' : 'There is no finished library yet. Plan one in the Build window.',
+      watch: U.projects.some(p => p.type === 'watch' && p.done) ? 'By day they walk the edge of camp. Each night one of them, by turns, stays up at the watch house to raise the alarm and step in when someone lashes out, and sleeps the next morning.' : 'There is no watch house yet. Plan one at the edge of camp in the Build window.',
+      care: 'They look after the small children by the fire, four each, so their parents can work.',
     }[cr.work];
     return t ? `<div class="note" style="margin-top:8px">${esc(t)}</div>` : '';
   }
@@ -468,8 +519,12 @@ export class Panels {
 
   // ---------- the log ----------
   log(U) {
-    const L = this.A.log;
-    return ['l' + U.logN + '|' + L.length, () => L.length ? L.slice().reverse().map(e => `<div class="lg ${e.k}"><em>${when(e.t)}</em><span>${esc(e.m)}</span></div>`).join('') : '<div class="note">Nothing has happened yet.</div>'];
+    const L = this.A.log, C = this.A.chron || [], v = this.logView === 'chron' ? 'chron' : 'log';
+    return ['l' + v + U.logN + '|' + L.length + '|' + C.length, () => {
+      let h = `<div class="seg sm" style="margin-bottom:8px"><button data-act="logView" data-v="log" class="${v === 'log' ? 'on' : ''}">Everything</button><button data-act="logView" data-v="chron" class="${v === 'chron' ? 'on' : ''}">Chronicle${C.length ? ' · ' + C.length : ''}</button></div>`;
+      if (v === 'chron') return h + (C.length ? `<div class="chron">${C.slice().reverse().map(c => `<h4>${esc(c.title)}</h4>${c.text.map(t => `<p>${esc(t)}</p>`).join('')}`).join('')}</div>` : '<div class="note">The chronicle is written when you skip ahead (N, or the button beside the speeds): what happened while the colony was left to itself.</div>');
+      return h + (L.length ? L.slice().reverse().map(e => `<div class="lg ${e.k}"><em>${when(e.t)}</em><span>${esc(e.e === 'chronicle' ? 'The chronicle was written: see the Chronicle above.' : e.m)}</span></div>`).join('') : '<div class="note">Nothing has happened yet.</div>');
+    }];
   }
 
   // ---------- input in the side panel ----------
@@ -490,6 +545,12 @@ export class Panels {
       case 'shift': this.api.cmd('crewSet', { crew, shift: +el.dataset.v }); break;
       case 'shiftAll': this.api.cmd('shiftAll', { shift: +el.dataset.v }); break;
       case 'brule': this.api.cmd('birthRule', { v: el.dataset.v }); break;
+      case 'rpick': { const k = el.dataset.k, v = JSON.parse(el.dataset.v), r = A.soc && A.soc.rules.find(q => q.k === k); if (!r || r.cur === v) { this.socPick = null; break; } this.socPick = { k, v }; break; }
+      case 'rset': this.api.cmd('rule', { k: el.dataset.k, v: JSON.parse(el.dataset.v) }); this.socPick = null; break;
+      case 'rask': this.api.cmd('ask', { k: el.dataset.k, v: JSON.parse(el.dataset.v) }); this.socPick = null; break;
+      case 'rcancel': this.socPick = null; break;
+      case 'logView': this.logView = el.dataset.v; break;
+      case 'rkeep': this.socPick = null; if (A.soc && A.soc.verdict) { A.soc.verdict = null; this.api.cmd('ruleKeep', {}); } break;
       case 'area': this.api.pickArea(crew); break;
       case 'areaClear': this.api.cmd('crewSet', { crew, target: -1 }); break;
       case 'person': this.api.select(+el.dataset.id, true); break;

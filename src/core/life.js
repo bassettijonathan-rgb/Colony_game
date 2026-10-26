@@ -15,8 +15,9 @@ import { scar, relive, traumaTick, traumaDay } from './trauma.js';
 import { ctlStart } from './control.js';
 import { close, FAMILY, BIT, playSpot, lastFounder, yearsOf } from './lives.js';
 import { exposeTick, sleepHit, ageHeal, ageTire } from './aging.js';
+import { lashOut, lostWith, noteDeath } from './society.js';
 
-const WORKING = a => a === ACT.BUILD || a === ACT.CARRY || a === ACT.SURVEY || a === ACT.PLANT || a === ACT.QUARRY || a === ACT.FELL || a === ACT.STONE || a === ACT.LOG || a === ACT.TEST || a === ACT.BENCH || a === ACT.GATHER || a === ACT.FARM || a === ACT.COOK || a === ACT.SAMPLE || a === ACT.SACK || a === ACT.FIGHT;
+const WORKING = a => a === ACT.TEACH || a === ACT.READ || a === ACT.WATCH || a === ACT.BUILD || a === ACT.CARRY || a === ACT.SURVEY || a === ACT.PLANT || a === ACT.QUARRY || a === ACT.FELL || a === ACT.STONE || a === ACT.LOG || a === ACT.TEST || a === ACT.BENCH || a === ACT.GATHER || a === ACT.FARM || a === ACT.COOK || a === ACT.SAMPLE || a === ACT.SACK || a === ACT.FIGHT;
 // a finished building with its lights on
 const usable = (S, id) => { const p = id >= 0 ? byId(S, id) : null; return p && p.done && p.powered ? p : null; };
 // a bunkhouse with no power is still a roof: a dark, cold one, but out of the wind (not while it burns or stands in water)
@@ -35,14 +36,18 @@ export function want(sim, c) {
   if (c.fight > 0) return 'fire';   // all hands to a fire near the camp
   if (c.act === ACT.WAKE && c.timer > 0) return 'wake';
   if (c.alone > 0) return 'alone';
+  if (c.held > S.tick) return 'held';                  // locked in the watch house for a day, after lashing out
+  if (c.nightEnd > S.tick) return 'watch';             // their turn to keep the night watch
+  if (c.sleepTill > S.tick) return 'sleep';            // and the morning after it, asleep
   // the clinic's rule: the sick with something catching stay apart until it has passed
   if (S.care && S.care.iso && toIsolate(c)) return 'ward';
   // the hurt rest in a clinic bed if there is one, or their own; so does anyone waiting to be treated
   if (c.cap && (laidUp(c) || (S.care && S.care.medics > 0 && needs(c, sim).some(n => TREAT.has(n.k))))) return 'ward';
   // children: the smallest in the Seed's nursery; the others play by the fire, eat early and go to bed early
-  if (c.life < 3) return c.life === 0 ? 'nursery' : h >= c.bed || h < 7 ? 'sleep' : h >= 17 ? 'eat' : 'play';
+  if (c.life < 3) return c.life === 0 ? 'nursery' : h >= c.bed || h < 7 ? 'sleep' : h >= 17 ? 'eat' : c.life === 2 && h >= 8 && h < 15 && S.soc && S.soc.sch >= 0 ? 'school' : 'play';
   if (h >= c.bed || h < sh.a - .7) return 'sleep';
   if (c.minding && h >= 7 && h < 17) return 'mind';   // nobody else is looking after their small child today
+  if (c.sit === sim.day && h < 17) return 'idle';      // sitting down at the fire with the others, over a rule
   if (cr && cr.work !== 'rest' && h >= sh.a && h < endOf(c, sh)) {
     const off = h >= 16.5 ? 'eat' : 'idle';
     if (c.fat >= 90 && cr.rules.rest) return off;
@@ -97,6 +102,12 @@ function start(sim, c, w) {
   else if (w === 'idle') idleAt(sim, c);
   else if (w === 'play' || w === 'mind') playAt(sim, c, w);
   else if (w === 'nursery') { c.job = 'nursery'; sim.goTo(c, sim.cargoTile, ACT.INDOORS); }
+  else if (w === 'school') { const p = byId(S, S.soc.sch); if (p) { c.job = 'school'; c.ws = p.id; sim.goTo(c, sim.doorOf(p), ACT.SCHOOL); } else playAt(sim, c, 'play'); }
+  else if (w === 'held' || w === 'watch') {
+    const p = S.projects.find(q => !q.gone && q.done && q.type === 'watch' && !q.shut);
+    if (!p) { if (w === 'watch') c.nightEnd = 0; else c.held = 0; idleAt(sim, c); return; }
+    c.job = w; c.ws = p.id; sim.goTo(c, sim.doorOf(p), w === 'held' ? ACT.INDOORS : ACT.WATCH);
+  }
   else if (w === 'alone') {
     const L = W.land;
     for (let k = 0; k < 30; k++) { const a = rnd() * 6.283, r = 14 + rnd() * 6, x = Math.floor(L.x + Math.cos(a) * r), y = Math.floor(L.y + Math.sin(a) * r), t = y * MAP + x; if (W.reach[t] && W.cost[t] && W.cost[t] < 15) { c.job = 'alone'; sim.goTo(c, t, ACT.ALONE); return; } }
@@ -193,8 +204,13 @@ export function mindTick(sim, c) {
   // breaking down: at the far end of strain, people stop and walk off to be alone for a while
   if (c.alone > 0) { c.alone -= 30; if (c.alone <= 0) { c.alone = 0; c.str = Math.max(0, c.str - 30); c.calm = DAY_TICKS; sim.log(`${c.name} came back to camp.`, '', { e: 'back', lvl: 1, who: c.id, title: 'Back from a breakdown' }); } }
   else if (c.str >= 85 - tt.brk && !(c.life <= 1) && !asleep && !(c.calm > 0) && rnd() < .15 * dt) {
-    c.alone = ri(4, 7) * HOUR; c.tru = Math.max(0, c.tru - 3); S.stats.breakdowns++;
-    sim.log(`${c.name} broke down and walked off to be alone.`, 'bad', { e: 'breakdown', lvl: 2, who: c.id, title: `${c.name} broke down` }); remember(sim, c, 'Broke down and walked away from everyone for a few hours.');
+    S.stats.breakdowns++;
+    const fit = S.soc ? lashOut(sim, c) : null;   // rarely, it turns on a rival: stopped by the watch, or not
+    if (fit === 'held' || fit === 'calmed') { c.calm = DAY_TICKS; c.str = Math.max(0, c.str - 25); }
+    else {
+      c.alone = ri(4, 7) * HOUR; c.tru = Math.max(0, c.tru - 3);
+      if (!fit) sim.log(`${c.name} broke down and walked off to be alone.`, 'bad', { e: 'breakdown', lvl: 2, who: c.id, title: `${c.name} broke down` }); remember(sim, c, 'Broke down and walked away from everyone for a few hours.');
+    }
   }
   // the body
   if (c.fresh > 0) { c.fresh -= 30; if (c.fresh <= 0) remember(sim, c, 'Stopped feeling like a stranger in this body.'); }
@@ -319,6 +335,7 @@ const DIED = { old: ' of old age', starved: ' of hunger', froze: ' of the cold',
 export function die(sim, c, why) {
   if (c.care) endCare(sim, c);
   c.dday = sim.day; c.dtick = sim.S.tick; c.why = why;   // for the clinic's records
+  lostWith(sim, c); noteDeath(sim, c, why);
   dropCarry(sim, c); c.dead = true; c.act = ACT.DEAD; c.mv = 0; c.home = c.mess = c.ward = -1; c.carried = -1; c.down = false; sim.S.stats.deaths++; spend(sim, 4, 'death');
   const ill = why.startsWith('ill:') && why.split(':');
   const yrs = Math.floor((sim.S.tick / DAY_TICKS - c.born) / YEAR_DAYS);

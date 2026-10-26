@@ -44,9 +44,13 @@ export const TYPES = {
   mine: { name: 'Mine', min: 4, max: 10, size: [5, 6], below: true, use: 'Galleries dug along a seam of metal ore. A mining crew brings the ore up, and the workshop smelts it into metal for parts. It is dug and shored with stone and timber alone, and needs a little power for its lamps, which it takes before any other building' },
   pit: { name: 'Stone pit', min: 4, max: 10, size: [6, 6], open: true, ground: true, use: 'An open pit cut down into stony ground. Once the boulders and outcrops near camp are used up, the quarry crew cuts stone here, for years' },
   burrow: { name: 'Dug quarters', min: 5, max: 12, size: [6, 8], below: true, use: 'Bunks dug into the ground: the earth keeps them warm in Deep cold, and fire and storms can’t reach them. A little power for light' },
+  school: { name: 'School', min: 5, max: 10, size: [6, 7], use: 'Desks where the children aged six to twelve learn from a school crew, instead of only from their parents. What they learn most of is a rule you set. Needs no power' },
+  library: { name: 'Library', min: 4, max: 9, size: [5, 6], use: 'Shelves and the Seed’s terminals, where a library crew writes down what the best people know, so it outlives them and apprentices can learn it. Needs no power' },
+  watch: { name: 'Watch house', min: 3, max: 5, size: [4, 4], use: 'A post at the edge of camp with a lamp: one of the watch crew stays up here each night, by turns, to raise the alarm and to step in when someone lashes out. Needs no power' },
+  nursery: { name: 'Growth tanks', min: 4, max: 9, size: [5, 6], use: 'More tanks like the Seed’s own two, where it grows children for the couples who ask, each from a body’s worth of feedstock. Needs power' },
   test: { name: 'Load test', fixed: true },
 };
-export const PLANNABLE = ['field', 'workshop', 'plant', 'commons', 'clinic', 'dorm', 'solar', 'lab', 'cellar', 'burrow', 'mine', 'pit'];
+export const PLANNABLE = ['field', 'workshop', 'plant', 'commons', 'clinic', 'dorm', 'solar', 'lab', 'cellar', 'burrow', 'mine', 'pit', 'school', 'library', 'watch', 'nursery'];
 const inner = (w, h) => Math.max(0, (w - 2) * (h - 2));
 // what a building of this size holds, and the power it draws (kW) or makes
 export function capacity(type, w, h) {
@@ -65,6 +69,10 @@ export function capacity(type, w, h) {
     case 'burrow': { const beds = Math.floor(a / 3); return { beds, kw: +(.2 + beds * .03).toFixed(1) }; }
     case 'mine': return { faces: clamp(Math.floor(a / 6), 1, 4), kw: .5 };
     case 'pit': return { faces: clamp(Math.floor(w * h / 9), 1, 4), kw: 0 };
+    case 'school': return { desks: Math.floor(a / 1.5), kw: 0 };
+    case 'library': return { shelves: clamp(Math.floor(a / 3), 1, 8), kw: 0 };
+    case 'watch': return { posts: 1, kw: 0 };
+    case 'nursery': { const tanks = clamp(Math.floor(a / 6), 1, 3); return { tanks, kw: 1 + tanks }; }
   }
   return { kw: 0 };
 }
@@ -130,7 +138,7 @@ export function stageLoads(S, type, w, h, st, mat, ground) {
     if (st === 4) add('panel', cap.panels);
     return L;
   }
-  const posts = loadCheck(S, type, w, h).posts, fixtures = (cap.beds || 0) / 4 + (cap.seats || 0) / 8 + (cap.benches || 0) + (cap.tanks || 0);
+  const posts = loadCheck(S, type, w, h).posts, fixtures = (cap.beds || 0) / 4 + (cap.seats || 0) / 8 + (cap.benches || 0) + (cap.tanks || 0) + (cap.desks || 0) / 8 + (cap.shelves || 0) / 2;
   if (st === 0) add('mark', per / 6);
   if (st === 1) { add('stone', a / 10 * ms); add('stone', posts); }
   if (st === 2) { add('timber', (per / 6 + a / 16) * mt); add('timber', posts); }

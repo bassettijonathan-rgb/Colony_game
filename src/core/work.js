@@ -18,7 +18,8 @@ import { eat, analyse, labHour, kitchenJob, cookMeals, foodOf, add, patchLeft, t
 import { dayWeather, untilDeep, doyOf, seasonOf } from './year.js';
 import { careArrive, careTimer, MED_KIT, MED_MADE, TRIAGE, MEDIC } from './care.js';
 import { capOf as bodyCap } from './body.js';
-import { worker, portion, playSpot } from './lives.js';
+import { worker, portion, playSpot, BIT } from './lives.js';
+import { keepHour, libraryWork, pupilsOf, PUPILS, setRule, askCouncil, giveWay, RULES } from './society.js';
 
 export const PRINT_TICKS = 4 * HOUR;
 const MEDS_SALVAGE = 2, MEDS_H = 3;   // a batch of medical supplies: salvage, and hours at a workshop's pace
@@ -130,8 +131,9 @@ const FIT = {
   forage: s => .55 + s.fieldcraft * .04 + s.botany * .02, farm: s => .5 + s.botany * .05 + s.fieldcraft * .01,
   kitchen: s => .5 + s.cooking * .05, workshop: s => .4 + s.engineering * .07, lab: s => .4 + s.botany * .045 + s.medicine * .03,
   clinic: s => .3 + s.medicine * .08, care: s => .5 + s.teaching * .05 + s.medicine * .02, mine: s => .55 + s.building * .04 + s.engineering * .02,
+  teach: s => .35 + s.teaching * .07 + s.leadership * .01, keep: s => .4 + s.teaching * .04 + s.engineering * .03, watch: s => .5 + s.fieldcraft * .03 + s.leadership * .03,
 };
-const CAPOF = { survey: 'forage', quarry: 'cut', timber: 'cut', kitchen: 'cook', workshop: 'bench', clinic: 'lab', care: 'lab', mine: 'cut' };
+const CAPOF = { survey: 'forage', quarry: 'cut', timber: 'cut', kitchen: 'cook', workshop: 'bench', clinic: 'lab', care: 'lab', mine: 'cut', teach: 'lab', keep: 'lab', watch: 'forage' };
 function fitFor(c, w) {
   let e = FIT[w](c.skills) * (c.life === 3 ? .7 : c.life === 5 ? .85 : 1);   // an apprentice is still learning; an elder is slowing
   if (c.cap) { const q = CAPW[CAPOF[w] || w] || CAPW.build; let f = 0; for (const k in q) f += q[k] * bodyCap(c, k); e *= f; }
@@ -169,6 +171,12 @@ export function crewNeeds(sim) {
   if (has('workshop').length && (Y.salvage >= 1 || (Y.ore || 0) >= SMELT.ore)) add('workshop', n >= 15 ? 2 : 1);
   if (mines.length && metal < METAL_WANT) add('mine', 1);
   if (has('clinic').length && n >= 12 && people.some(c => c.skills.medicine >= MEDIC)) add('clinic', 1);
+  // the institutions: teachers for the children at school, keepers for the library, and two for the watch at least,
+  // so the nights go by turns
+  const pupils = pupilsOf(S).length, any = t => B.some(p => p.type === t && !p.shut);
+  if (any('school') && pupils) add('teach', Math.ceil(pupils / PUPILS));
+  if (any('watch') && n >= 8) add('watch', n >= 40 ? 3 : 2);
+  if (any('library') && n >= 10 && libraryWork(S)) add('keep', n >= 40 ? 2 : 1);
   return { need, n };
 }
 // everything that has gone into a project so far, the loads being fitted now included: all of it comes back
@@ -246,6 +254,9 @@ export function workNext(sim, c) {
     case 'kitchen': return kitchenNext(sim, c);
     case 'lab': return labNext(sim, c);
     case 'clinic': return clinicNext(sim, c);
+    case 'teach': return roomNext(sim, c, 'school', 'teach', ACT.TEACH, () => pupilsOf(sim.S).length > 0);
+    case 'keep': return roomNext(sim, c, 'library', 'keep', ACT.READ, () => libraryWork(sim.S));
+    case 'watch': return patrolNext(sim, c);
     case 'care': if (playSpot(sim) < 0) return false; playAt(sim, c, 'mind'); return true;   // indoors with the children in hard cold
   }
   return false;
@@ -418,6 +429,23 @@ function clinicNext(sim, c) {
   c.job = 'tend'; c.ws = p.id; sim.goTo(c, sim.doorOf(p), ACT.INDOORS); return true;
 }
 
+// ---------- the school and the library: an hour's work at a time, indoors ----------
+function roomNext(sim, c, type, job, act, wanted) {
+  const p = built(sim.S).find(q => q.type === type && !q.shut);
+  if (!p || !wanted()) return false;
+  c.job = job; c.ws = p.id; sim.goTo(c, sim.doorOf(p), act); return true;
+}
+// ---------- the watch by day: walking the edge of camp ----------
+function patrolNext(sim, c) {
+  const W = sim.W, L = W.land;
+  if (!built(sim.S).some(p => p.type === 'watch' && !p.shut)) return false;
+  for (let k = 0; k < 20; k++) {
+    const a = rnd() * 6.283, r = 14 + rnd() * 16, x = Math.floor(L.x + Math.cos(a) * r), y = Math.floor(L.y + Math.sin(a) * r), t = y * MAP + x;
+    if (W.reach[t] && W.cost[t] && W.cost[t] < 15) { c.job = 'patrol'; sim.goTo(c, t, ACT.WATCH); return true; }
+  }
+  return false;
+}
+
 // ---------- the mine: a load of ore cut at a face, carried up and piled in the yard ----------
 export const DEEP_SUN = .55;   // what panels make in Deep cold, against a summer day
 export const SMELT = { ore: 3, out: 2, h: 2 }, METAL_WANT = 30, MINE_H = 1.5;
@@ -508,7 +536,9 @@ function finish(sim, p) {
     sim.log(`${p.name} is ready: ${cap.tiles} tiles of made soil.${k ? ` The Seed would sow ${CROPS[k].name.toLowerCase()}.` : ' Nothing in the seed bank could ripen before Deep cold now, so it stays bare until Thaw.'}${farmers ? '' : ' It needs a farm crew to sow and harvest it.'}`, 'good', { e: 'field', lvl: 1, pid: p.id, title: 'A field of made soil' });
     trustAll(sim, 2, `Watched ${p.name} being made out of bare local ground.`);
   } else {
-    const what = { cellar: `cool storage for ${cap.store} loads of food`, burrow: `${cap.beds} bunks, warm under the ground`, dorm: `${cap.beds} bunks`, commons: `seats for ${cap.seats}`, workshop: `${cap.benches} bench${cap.benches > 1 ? 'es' : ''}`, clinic: `${cap.beds} beds`, solar: `${cap.panels} panels making ${cap.supply} kW`, lab: `${cap.benches} bench${cap.benches > 1 ? 'es' : ''}` }[p.type];
+    const what = { cellar: `cool storage for ${cap.store} loads of food`, burrow: `${cap.beds} bunks, warm under the ground`, dorm: `${cap.beds} bunks`, commons: `seats for ${cap.seats}`, workshop: `${cap.benches} bench${cap.benches > 1 ? 'es' : ''}`, clinic: `${cap.beds} beds`, solar: `${cap.panels} panels making ${cap.supply} kW`, lab: `${cap.benches} bench${cap.benches > 1 ? 'es' : ''}`,
+      school: `desks for ${cap.desks} children`, library: `${cap.shelves} shel${cap.shelves > 1 ? 'ves' : 'f'} for the colony's records`, watch: 'a post with a lamp, for whoever keeps the night watch',
+      nursery: `${cap.tanks} more growth tank${cap.tanks > 1 ? 's' : ''}` }[p.type] || 'ready for use';
     sim.log(`${p.name} is finished: ${what}.${p.type !== 'solar' && !p.powered ? ` It stays dark until the colony has ${shortOf(S, p)} kW more power.` : ''}`, 'good', { e: 'built', lvl: 1, pid: p.id, title: 'Finished' });
     trustAll(sim, 2, `Watched ${p.name} go up.`);
   }
@@ -694,6 +724,10 @@ export function onArrive(sim, c) {
     case 'vat': c.timer = Math.round(.5 * HOUR / eff(sim, c, 'cook')); break;
     case 'unvat': c.timer = Math.round(.4 * HOUR); break;
     case 'lab': c.where = c.ws; c.timer = HOUR; break;
+    case 'teach': case 'keep': c.where = c.ws; c.timer = HOUR; break;
+    case 'school': c.where = c.ws; c.sch = sim.day; break;
+    case 'held': c.where = c.ws; break;
+    case 'patrol': c.timer = Math.round(HOUR * (.6 + rnd() * .8)); break;
     case 'salv': c.job = 'salvpick'; c.act = ACT.IDLE; c.timer = PICK; break;
     case 'bench': c.where = c.ws; c.timer = Math.round((c.make === 'smelt' ? SMELT.h : RECIPE[c.make].h) * HOUR / eff(sim, c, 'bench')); break;
     case 'mine': { const p = byId(S, c.ws); if (p) c.where = p.id; c.timer = Math.round(MINE_H * HOUR / eff(sim, c, 'cut')); break; }
@@ -704,6 +738,7 @@ export function onArrive(sim, c) {
     case 'eat':
       if (c.act === ACT.INDOORS) c.where = c.mess;
       if (c.ate !== sim.day && c.life < 3 && (c.owe = (c.owe || 0) + portion(c)) < 1) { c.ate = sim.day; c.hungry = false; break; }   // a child's share is smaller
+      if (c.ate !== sim.day && giveWay(sim, c)) { c.ate = sim.day; c.hungry = true; c.meal = ''; if (c.life < 3) c.owe -= 1; if (!(sim.day - (c.gaveD ?? -99) < 10)) remember(sim, c, 'Went without supper so the others could eat, as the rule says.'); c.gaveD = sim.day; break; }   // the rule on short food puts others first
       if (c.ate !== sim.day) {
         if (c.life < 3) c.owe -= 1;
         c.ate = sim.day;
@@ -856,6 +891,9 @@ export function onTimer(sim, c) {
     case 'lab': labHour(sim, eff(sim, c, 'lab')); c.job = ''; c.where = -1; c.ws = -1; c.act = ACT.IDLE; break;
     case 'aid': case 'treat': careTimer(sim, c); break;
     case 'tend': c.job = ''; c.where = -1; c.ws = -1; break;
+    case 'teach': c.taught = sim.day; if (rnd() < .3) { c.skills.teaching = Math.min(10, Math.round((c.skills.teaching + .01) * 1000) / 1000); c.pr |= BIT.teaching; } c.job = ''; c.where = -1; c.ws = -1; break;
+    case 'keep': keepHour(sim, c); c.job = ''; c.where = -1; c.ws = -1; break;
+    case 'patrol': c.job = ''; break;
     case 'fire': beat(sim, c); c.job = ''; if (!(c.fight > 0)) c.plan = ''; break;
     case 'ctl': c.job = ''; break;
     case 'mind': c.job = ''; break;
@@ -905,6 +943,10 @@ export function sizeFor(sim, type) {
     case 'lab': { r = fit(1, 'benches'); why = 'One bench, which tests samples far faster than the Seed’s own analyser'; break; }
     case 'mine': { r = fit(2, 'faces'); why = 'Two faces for the miners to work. Draw it over a seam of ore: the view below ground shows where they run'; break; }
     case 'pit': { r = fit(4, 'faces'); why = `${n(r.v, 'face', 'faces')} for the quarry crew to cut, about ${PIT_ROCK * r.w * r.h} loads of stone. Draw it where stone lies under shallow soil: the view below ground shows where`; break; }
+    case 'school': { const kids = S.cols.filter(c => !c.dead && c.life >= 1 && c.life <= 2).length; r = fit(Math.max(8, kids + 4), 'desks'); why = `${n(r.v, 'desk', 'desks')}: room for the ${n(kids, 'child', 'children')} aged two to twelve now, as they reach school age, and a few more`; break; }
+    case 'library': { r = fit(4, 'shelves'); why = `${n(r.v, 'shelf', 'shelves')} and a terminal: room to write down the best of what everyone knows`; break; }
+    case 'watch': { r = fit(1, 'posts'); why = 'One post with a lamp, for whoever keeps the watch at night'; break; }
+    case 'nursery': { r = fit(2, 'tanks'); why = `${n(r.v, 'tank', 'tanks')} more for children, beside the Seed’s own two`; break; }
     case 'plant': { r = fit(2, 'tanks'); why = `${n(r.v, 'tank', 'tanks')}: a new body about every ${Math.round(FEED.per * FEED.h / 24 / r.v)} days, with biomass and stone to feed it`; break; }
     case 'solar': {
       // sized for the short days of Deep cold, when panels make about half what they do in summer
@@ -939,8 +981,11 @@ export function command(sim, m) {
     case 'suggest': return suggestFirst(S.archive, Math.max(1, S.seedc.feed));
     case 'crewPlan': S.autoCrews = false; S.crewPlan = m.keep !== false; planCrews(sim, 'asked'); S.rv++; break;
     case 'crewKeep': S.crewPlan = !!m.on; S.rv++; break;
-    case 'birthRule': if (['yes', 'fed', 'no'].includes(m.v)) { S.gen.rule = m.v; S.rv++; sim.log(`The colony's rule on children is now: ${m.v === 'yes' ? 'every couple who asks may have one' : m.v === 'fed' ? 'children only while food is plentiful' : 'no children for now'}.`); } break;
-    case 'shiftAll': S.shift = clamp(m.shift | 0, 0, SHIFTS.length - 1); for (const k of S.crews) if (!k.gone) k.shift = S.shift; S.rv++; break;
+    case 'birthRule': return setRule(sim, 'children', m.v);
+    case 'shiftAll': return setRule(sim, 'hours', clamp(m.shift | 0, 0, SHIFTS.length - 1));
+    case 'rule': return RULES[m.k] ? setRule(sim, m.k, m.v) : false;
+    case 'ask': return RULES[m.k] ? askCouncil(sim, m.k, m.v) : false;
+    case 'ruleKeep': if (S.soc.verdict) { S.soc.verdict = null; S.rv++; } return true;
     case 'crewNew': { handsOn(sim); const k = sim.newCrew(m.work && WORKS[m.work] ? m.work : 'rest'); S.crews.push(k); S.autoCrews = false; S.rv++; return k.id; }
     case 'crewDel': if (cr) { handsOn(sim); for (const i of cr.members.slice()) sim.addTo(S.cols[i], -1); cr.gone = true; cr.members = []; cr.lead = -1; S.autoCrews = false; S.rv++; } break;
     case 'crewSet':

@@ -64,21 +64,29 @@ export function botBuild(sim) {
   if (S.projects.filter(p => !p.gone && !p.done && p.type !== 'test').length >= 2) return;
   const n = {}; let next = PLAN.find(([t]) => { n[t] = (n[t] || 0) + 1; return S.projects.filter(p => !p.gone && p.type === t).length < n[t]; });
   // once the opening is built, the bot keeps up with a growing colony: power, bunks, seats, fields, clinic beds, cool storage
-  if (!next) { const t = grow(sim), z = t && sizeFor(sim, t); if (z) next = [t, z.w, z.h]; }
-  const spot = next && findPlot(sim, next[0], next[1], next[2]);
+  let spot = next && findPlot(sim, next[0], next[1], next[2]);
+  // a growing colony's wants in order; one with no room left on the map doesn't hold up the rest
+  if (!next) for (const t of grow(sim)) { const z = sizeFor(sim, t); spot = z && findPlot(sim, t, z.w, z.h); if (spot) { next = [t, z.w, z.h]; break; } }
   if (spot) sim.command({ op: 'place', type: next[0], ...spot });
 }
 function grow(sim) {
+  const out = [];
   const S = sim.S, mine = S.projects.filter(p => !p.gone && p.type !== 'test'), sum = (types, k) => mine.filter(p => types.includes(p.type)).reduce((a, p) => a + (capacity(p.type, p.w, p.h)[k] || 0), 0);
   const soon = S.cols.filter(c => !c.dead).length + (S.gen ? S.gen.womb.length : 0) + S.seedc.feed + S.seedc.queue.length + (S.seedc.printing ? 1 : 0);
   const draw = mine.filter(p => p.type !== 'solar').reduce((a, p) => a + (capacity(p.type, p.w, p.h).kw || 0), 0), supply = LANDER_KW + sum(['solar'], 'supply') * DEEP_SUN;
-  if (draw > supply - 1) return 'solar';
-  if (sum(['shelter', 'dorm', 'burrow'], 'beds') < soon + 2) return 'dorm';
-  if (sum(['commons'], 'seats') < soon) return 'commons';
-  if (mine.filter(p => p.type === 'field').length < Math.ceil(soon / 6)) return 'field';
-  if (sum(['clinic'], 'beds') < Math.ceil(soon / 6)) return 'clinic';
-  if (sum(['cellar'], 'store') < soon * 4) return 'cellar';
-  return null;
+  if (draw > supply - 1) out.push('solar');
+  if (sum(['shelter', 'dorm', 'burrow'], 'beds') < soon + 2) out.push('dorm');
+  if (sum(['commons'], 'seats') < soon) out.push('commons');
+  if (mine.filter(p => p.type === 'field').length < Math.ceil(soon / 3.5)) out.push('field');
+  if (sum(['clinic'], 'beds') < Math.ceil(soon / 6)) out.push('clinic');
+  if (sum(['cellar'], 'store') < soon * 4) out.push('cellar');
+  // the institutions, as the colony grows into them
+  const none = t => !mine.some(p => p.type === t), kids = S.cols.filter(c => !c.dead && c.life >= 1 && c.life <= 2).length;
+  if (none('school') && kids >= 3) out.push('school');
+  if (none('watch') && (soon >= 30 || S.stats.fights)) out.push('watch');
+  if (none('library') && soon >= 25) out.push('library');
+  if (S.gen && S.gen.asks.length >= 3 && mine.filter(p => p.type === 'nursery').length < 2) out.push('nursery');
+  return out;
 }
 // crews for food, and the tests: one person at a time moved out of the build crew, the best suited first
 function botFood(sim) {

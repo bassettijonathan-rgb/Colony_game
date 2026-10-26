@@ -180,6 +180,7 @@ const HURT = {
   cook: [['hand_', 'burn', 3], ['arm_', 'burn', 1.5], ['hand_', 'cut', 1.5]],
   gather: [['hand_', 'punct', 3], ['hand_', 'cut', 2], ['leg_', 'punct', 1]],
   farm: [['hand_', 'cut', 2], ['leg_', 'cut', 1], ['hand_', 'punct', 1.5], ['spine', 'crush', .4]],
+  fight: [['head', 'crush', 2], ['torso', 'crush', 1.2], ['arm_', 'crush', 1], ['hand_', 'frac', .5], ['leg_', 'crush', .6]],
   fall: [['arm_', 'frac', 2], ['hand_', 'frac', 1.2], ['head', 'crush', 1.2], ['leg_', 'frac', 1], ['spine', 'crush', 1], ['hand_', 'cut', 1]],
   frost: [['hand_', 'frost', 3], ['skin', 'frost', 1.5]],
   lightning: [['skin', 'burn', 3], ['chest', 'crush', 1]],
