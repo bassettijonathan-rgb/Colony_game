@@ -16,7 +16,7 @@ import { FIRE_STEP, beat } from './hazards.js';
 import { take, order, release } from './control.js';
 import { restoreStart, restoreDone, queueRestore } from './scan.js';
 import { storyPlot, storyBuilt } from './story.js';
-import { eat, analyse, labHour, kitchenJob, cookMeals, foodOf, add, patchLeft, takePatch, inSeason, cropPlan, sowUnits, harvestLoads, keyOf, isCrop, mealsInStore, kitchenOnly, hasKitchen, SAMPLES, PROC_DAYS, CROPS, CROP_KEYS } from './food.js';
+import { eat, analyse, labHour, kitchenJob, cookMeals, foodOf, add, patchLeft, takePatch, inSeason, cropPlan, sowUnits, harvestLoads, keyOf, isCrop, mealsInStore, kitchenOnly, hasKitchen, vatLimit, SAMPLES, PROC_DAYS, CROPS, CROP_KEYS } from './food.js';
 import { dayWeather, untilDeep, doyOf, seasonOf } from './year.js';
 import { careArrive, careTimer, MED_KIT, MED_MADE, TRIAGE, MEDIC } from './care.js';
 import { capOf as bodyCap } from './body.js';
@@ -366,12 +366,15 @@ function patchJob(sim, c, job) {
   for (const o of S.cols) if (!o.dead && o.src >= 0 && (o.job === 'forage' || o.job === 'sample' || o.job === 'bio')) claimed.add(o.src);
   let best = -1, bd = 1e9;
   const list = sim.life.list, kitchen = hasKitchen(sim);
+  // food that has to wait for the vats isn't worth gathering while more of it waits than they can get through
+  const wait = { leach: 0, ferment: 0 }; for (const k in F.larder.raw) { const f = foodOf(sim, k); if (f && wait[f.proc] != null) wait[f.proc] += F.larder.raw[k]; }
+  const full = { leach: wait.leach >= vatLimit(S, 'leach'), ferment: wait.ferment >= vatLimit(S, 'ferment') };
   for (let i = 0; i < list.length; i++) {
     const p = list[i], k = sim.kinds[p.o], Lf = F.life[p.o];
     if (!Lf.seen || claimed.has(i) || !W.reach[p.t] || !W.cost[p.t]) continue;
     if (Math.abs(p.x - L.x) > FORAGE_R || Math.abs(p.y - L.y) > FORAGE_R) continue;
     if (job === 'sample') { if (Lf.tested || Lf.queued || Lf.samples >= SAMPLES || F.sampled[i]) continue; }
-    else if (job === 'forage') { if (!Lf.tested || !k.food || (!kitchen && k.food.proc !== 'cook') || !inSeason(sim, k) || patchLeft(sim, i) <= 0) continue; }
+    else if (job === 'forage') { if (!Lf.tested || !k.food || (!kitchen && k.food.proc !== 'cook') || full[k.food.proc] || !inSeason(sim, k) || patchLeft(sim, i) <= 0) continue; }
     else if (!Lf.tested || k.bio < 2 || k.food || patchLeft(sim, i) <= 0) continue;
     const d = Math.hypot(p.x - c.x, p.y - c.y) + Math.hypot(p.x - L.x, p.y - L.y) * .5;
     if (d < bd) { bd = d; best = i; }
@@ -620,9 +623,9 @@ function powerNote(sim, p) {
   if (p.powered) sim.log(`${p.name} has power.`, 'good', { pid: p.id }); else sim.log(`${p.name} went dark: the colony needs ${shortOf(sim.S, p)} kW more power.`, 'bad', { e: 'dark', lvl: 1, pid: p.id, title: 'Not enough power' });
 }
 // bunks in the shelter and the dormitories, and seats in the commons, for everyone they hold
-const HOMES = ['shelter', 'dorm', 'burrow'];
+export const HOMES = ['shelter', 'dorm', 'burrow'];
 export function assignHomes(sim) {
-  const S = sim.S, live = S.cols.filter(c => !c.dead), on = built(S).filter(p => p.powered || (!p.shut && HOMES.includes(p.type)));   // a dark bunkhouse still has its bunks
+  const S = sim.S, live = S.cols.filter(c => !c.dead), on = built(S).filter(p => (p.powered || (!p.shut && HOMES.includes(p.type))) && !(p.closed && HOMES.includes(p.type)));   // a dark bunkhouse still has its bunks; a closed one has none
   const fill = (types, key, capKey) => {
     const left = new Map(on.filter(p => types.includes(p.type)).map(p => [p.id, capOf(p)[capKey]]));
     const moved = [];
@@ -1042,6 +1045,13 @@ export function command(sim, m) {
       L[i] = L[j]; L[j] = p; S.rv++;
       for (const q of powerCheck(sim)) powerNote(sim, q);
       assignHomes(sim); projectsThink(sim); break;
+    }
+    case 'projBunks': {   // close a bunkhouse, or open it again: closed bunks stand empty
+      if (!p || !HOMES.includes(p.type)) return false;
+      p.closed = !!m.closed; S.rv++;
+      const out = S.cols.filter(c => !c.dead && c.home === p.id).length;
+      sim.log(p.closed ? `Closed the bunks in ${p.name}.${out ? ` ${out === 1 ? 'The one person' : `The ${out} people`} who slept there will find bunks elsewhere if there are any free.` : ''}` : `Opened the bunks in ${p.name} again.`);
+      assignHomes(sim); return true;
     }
     case 'projPause': if (p && !p.done) { p.paused = !!m.on; S.rv++; sim.log(`${p.name} ${p.paused ? 'is paused' : 'is back on the list'}.`); projectsThink(sim); } break;
     case 'projCancel': {

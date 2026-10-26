@@ -98,8 +98,8 @@ export function thingCard(A, th) {
     }
     case 'vats': {
       const vats = F ? F.vats : [], ks = crewsOn(U, 'kitchen'), DT = 12 * 60 * 30;
-      let h = note('Four vats for food that cannot be eaten as it is: soaked and rinsed to leach out what does harm, or left to ferment. The kitchen crew fills and empties them.');
-      h += sec(`In use · ${vats.length} of 4`);
+      let h = note(`${F ? F.vatN : 4} vats for food that cannot be eaten as it is: soaked and rinsed to leach out what does harm, or left to ferment. The kitchen crew fills and empties them, and makes another vat for every four people past twelve, up to twelve.`);
+      h += sec(`In use · ${vats.length} of ${F ? F.vatN : 4}`);
       h += vats.length ? vats.map(v => row(`${esc(F.names[v.src] || 'Food')}, ${v.proc === 'leach' ? 'leaching' : 'fermenting'}`, v.left <= 0 ? 'ready' : Math.ceil(v.left / DT * 24) + ' h left')).join('') : note('All empty.', 0);
       if (!ks.length) h += note('No kitchen crew to work them.');
       return { name: 'Vats', icon: 'food', meta: 'The kitchen', job: vats.length ? `${vats.length} in use` : 'Empty', dot: vats.length ? 'ok' : 'off', body: h, btn: { label: 'The larder', tab: 'life' } };

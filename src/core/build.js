@@ -288,9 +288,9 @@ export function groundOf(W, x, y, w, h, lvl = 1) {
   return { dig: +(dig / k).toFixed(2), shore: +(shore / k).toFixed(2), kind: main, name: U_NAME[main], ore: +(ore / k).toFixed(2), rare: +(rare / k).toFixed(2), stone: +((n[2] + n[3]) / k).toFixed(2), lvl };
 }
 // the nearest good place for a building of this size, facing the camp: for the bot, and for the Seed's own suggestions
-export function findPlot(sim, type, w, h, lvl) {
-  const L = sim.W.land;
-  for (const wet of [false, true]) for (let r = 9; r <= 48; r += 1.5) {
+export function findPlot(sim, type, w, h, lvl, at) {
+  const L = at || sim.W.land;   // around the camp, or around a spot asked for
+  for (const wet of [false, true]) for (let r = at ? 0 : 9; r <= (at ? 30 : 48); r += 1.5) {
     const n = Math.max(8, Math.floor(r * 2.2));
     for (let k = 0; k < n; k++) {
       const a = k / n * 6.2832 + r * .37;

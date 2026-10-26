@@ -6,17 +6,20 @@
 // person to person: at shared meals, and between people who sleep or work in the same room. A new printed body
 // has no resistance at all and catches everything in its first season.
 import { HOUR, ACT, T, hidden } from './consts.js';
-import { rnd, clamp } from './rng.js';
+import { rnd, clamp, hash } from './rng.js';
 import { SEALED } from '../sealed/texts.js';
 import { doyOf, seasonOf, dayWeather } from './year.js';
 import { spend } from './director.js';
+import { foodOf, poolOf } from './food.js';
 import { YEAR_DAYS, DAY_TICKS } from './consts.js';
 const bodyYears = (sim, c) => c.born == null ? 30 : (sim.S.tick / DAY_TICKS - c.born) / YEAR_DAYS;   // the body's age, not the mind's
 
-// Each kind: what it is called, the symptoms anyone can see, how new cases start (src) and how it spreads from
-// the sick (spread, chances per hour of company or per shared meal), hours of incubation, sickness and crisis,
-// how bad it can get and how bad a case has to be to reach a crisis, which capacities it takes, the fever, the
-// chance an untreated crisis kills, whether antibiotics work, and what it leaves (immune, sensitise or none).
+// Each kind: what it is called, the symptoms anyone can see, how new cases start (src: in the cold, when exhausted,
+// at a meal, from local food made safe a given way (eat), or outdoors at given work, on given ground, in given
+// seasons and weather, some only at night or in the rain), how it spreads from the sick (spread, chances per hour
+// of company or per shared meal), hours of incubation, sickness and crisis, how bad it can get and how bad a case
+// has to be to reach a crisis, which capacities it takes, the fever, the chance an untreated crisis kills, whether
+// antibiotics work, and what it leaves (immune, sensitise or none).
 export const BROUGHT = [
   {
     id: 'gut', name: 'Gut fever', brought: true, sym: 'Cramps, vomiting and a fever',
@@ -33,6 +36,15 @@ export const BROUGHT = [
 ];
 export const ILLS = [...BROUGHT, ...(SEALED.ill || [])];
 export const ILL = Object.fromEntries(ILLS.map(k => [k.id, k]));
+// the land's own illnesses on this world: three or four of the pool, from the world's seed (worlds saved before the
+// pool was replaced keep all of the old ones). What came down with the colonists is everywhere.
+export function worldIlls(seed, legacy = false) {
+  const left = poolOf(SEALED.ill || [], legacy);
+  if (legacy) return [...BROUGHT, ...left];
+  let n = 0; const r = () => hash(seed, n++, 91), out = [], want = 3 + (r() < .5 ? 1 : 0);
+  while (out.length < want && left.length) out.push(left.splice(Math.floor(r() * left.length), 1)[0]);
+  return [...BROUGHT, ...out];
+}
 const STM = [0, 1, 1.6, .25];                  // how much each stage shows: incubating, sick, crisis, recovering
 const TERR = Object.fromEntries(Object.entries(T).map(([k, v]) => [v, k.toLowerCase()]));
 const ACTS = { [ACT.GATHER]: 'gather', [ACT.SAMPLE]: 'gather', [ACT.FARM]: 'farm', [ACT.QUARRY]: 'quarry', [ACT.FELL]: 'fell', [ACT.BUILD]: 'build', [ACT.SURVEY]: 'survey', [ACT.PLANT]: 'survey', [ACT.WALK]: 'walk', [ACT.HOME]: 'walk', [ACT.CARRY]: 'walk', [ACT.STONE]: 'walk', [ACT.LOG]: 'walk', [ACT.SACK]: 'walk' };
@@ -190,13 +202,13 @@ export function illHour(sim) {
       for (const [o, qs] of here) if (o !== c) for (const q of qs) tryCatch(sim, c, ILL[q.k], ILL[q.k].spread.air * f, o.id);
     }
     // new cases from the world: the cold and exhaustion let in what the body already carries, and the land has its own
-    for (const K of ILLS) {
+    for (const K of sim.ills) {
       const s = K.src;
       if (s.chill && c.chill > 50) tryCatch(sim, c, K, s.chill, -1);
       if (s.tired && c.fat > 85) tryCatch(sim, c, K, s.tired, -1);
       if (s.out && !hidden(c.act) && c.act !== ACT.BED) {
         const o = s.out, a = ACTS[c.act];
-        if (!o.season[season] || (o.act && !o.act.includes(a)) || (o.terr && !o.terr.includes(TERR[sim.W.type[c.tile]])) || (o.dry && (wx.rain > .3 || wx.snow > .3))) continue;
+        if (!o.season[season] || (o.act && !o.act.includes(a)) || (o.terr && !o.terr.includes(TERR[sim.W.type[c.tile]])) || (o.dry && (wx.rain > .3 || wx.snow > .3)) || (o.night && sim.hour > sim.dawn && sim.hour < sim.dusk) || (o.wet && wx.rain < .3)) continue;
         tryCatch(sim, c, K, o.p * (o.wind ? .5 + wx.wind : 1), -1);
       }
     }
@@ -214,7 +226,11 @@ export function illMeal(sim, c, place, got) {
   if (got === 'ration' || !got) return;   // the lander's rations are sealed packs
   if (M.d !== sim.day) { M.d = sim.day; M.at = {}; }
   const list = M.at[place] || (M.at[place] = []);
-  for (const K of ILLS) if (K.src.meal) tryCatch(sim, c, K, K.src.meal * (place[0] === 'm' ? .5 : 1), -1);
+  const f = got[0] === 'L' ? foodOf(sim, got) : null;   // local food: some of what lives here disagrees with some bodies
+  for (const K of sim.ills) {
+    if (K.src.meal) tryCatch(sim, c, K, K.src.meal * (place[0] === 'm' ? .5 : 1), -1);
+    if (K.src.eat && f && K.src.eat.proc.includes(f.proc)) tryCatch(sim, c, K, K.src.eat.p, -1);
+  }
   for (const id of list) for (const q of S.cols[id].bd.ill) if (catching(q) && ILL[q.k].spread.meal) tryCatch(sim, c, ILL[q.k], ILL[q.k].spread.meal, id);
   for (const [id, k] of S.ill.cook) if (id !== c.id) tryCatch(sim, c, ILL[k], ILL[k].spread.meal * .6, id);
   if (c.bd.ill.some(q => catching(q) && ILL[q.k].spread.meal)) list.push(c.id);

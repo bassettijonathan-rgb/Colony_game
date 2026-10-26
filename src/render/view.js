@@ -176,7 +176,7 @@ export class View {
       drawCargo(dc, hRect, site, C.stores);
       drawYard(dc, hRect, site.yard, C.stores, C.projects.filter(p => p.type === 'test'), F.time);
       this.drawFire(dc, hDisc, site.fire, F.hour, F.time);
-      drawKitchen(dc, hRect, C.spots, C.F && C.F.vats, F.time);
+      drawKitchen(dc, hRect, C.spots, C.F && C.F.vats, F.time, C.F && C.F.vatN);
     }
     if (C) for (const s of C.stakes) if (vis(s.x, s.y, 2)) {
       dc.fillStyle = 'rgba(0,0,0,.35)'; dc.beginPath(); dc.ellipse(s.x + .12, s.y + .1, .2, .14, 0, 0, 6.3); dc.fill();

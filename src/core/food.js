@@ -26,9 +26,11 @@ export const CROPS = {
 export const CROP_KEYS = Object.keys(CROPS);
 
 // ---------- which life this world has, and where ----------
-// one kind for each role first, then three more, all from the world's seed
-export function drawLife(seed) {
-  let n = 0; const r = () => hash(seed, n++, 77), out = [], left = POOL.slice();
+// one kind for each role first, then three more, all from the world's seed. The pool has been replaced once: kinds
+// marked old are drawn only for worlds saved before that (legacy), so those worlds keep the life they had.
+export const poolOf = (list, legacy) => { const o = list.filter(k => !!k.old === !!legacy); return o.length ? o : list.filter(k => !k.old); };
+export function drawLife(seed, legacy = false) {
+  let n = 0; const r = () => hash(seed, n++, 77), out = [], left = poolOf(POOL, legacy);
   const take = k => { const i = left.indexOf(k); if (i >= 0) { left.splice(i, 1); out.push(k); } };
   for (const role of ['staple', 'leach', 'ferment', 'compost']) { const c = left.filter(k => k.role === role); if (c.length) take(c[Math.floor(r() * c.length)]); }
   for (let n = 0; n < 3 && left.length; n++) take(left[Math.floor(r() * left.length)]);
@@ -200,11 +202,17 @@ export const add = (o, k, n) => { o[k] = (o[k] || 0) + n; };
 const sum = o => { let n = 0; for (const k in o) n += o[k]; return n; };
 // everything that can be eaten, in meals: cooked and fermented meals, leached loads waiting to be cooked,
 // raw loads, what is in the vats, and the rations
-// (with `usable`, raw food that needs leaching or fermenting only counts while there is a kitchen crew to do it)
+// (with `usable`, raw food that needs leaching or fermenting only counts while there is a kitchen crew to do it,
+// and only as much as the vats can get through in about eight days)
 export function mealsInStore(sim, usable = false) {
   const S = sim.S, Ld = S.F.larder, cook = !usable || hasKitchen(sim); let n = sum(Ld.meals) + S.food;
   for (const k in Ld.prep) { const f = foodOf(sim, k); if (f) n += Ld.prep[k] * f.meals; }
-  for (const k in Ld.raw) { const f = foodOf(sim, k); if (f && (cook || f.proc === 'cook')) n += Ld.raw[k] * f.meals; }
+  const left = usable ? { leach: vatLimit(S, 'leach'), ferment: vatLimit(S, 'ferment') } : null;   // what the vats can get through soon
+  for (const k in Ld.raw) {
+    const f = foodOf(sim, k); if (!f || !(cook || f.proc === 'cook')) continue;
+    let q = Ld.raw[k]; if (left && f.proc !== 'cook') { q = Math.min(q, left[f.proc]); left[f.proc] -= q; }
+    n += q * f.meals;
+  }
   for (const v of S.F.vats) { const f = foodOf(sim, v.src); if (f) n += v.n * f.meals; }
   return n;
 }
@@ -230,6 +238,10 @@ export function cellarShare(S) {
   return n ? Math.min(1, room / n) : 1;
 }
 export const hasKitchen = sim => sim.S.crews.some(c => !c.gone && c.work === 'kitchen' && c.members.length);
+// the kitchen makes more vats as the colony grows: four to start with, one more for every four people past twelve
+export const vatsFor = S => Math.min(12, VATS + Math.floor(Math.max(0, S.cols.filter(c => !c.dead).length - 12) / 4));
+// loads of raw food the vats can work through in about eight days: more than that waits, and some of it spoils first
+export const vatLimit = (S, proc) => vatsFor(S) * 4 * 8 / PROC_DAYS[proc];
 // what the kitchen should do next: empty a finished vat, cook if few meals are ready, or start a vat
 export function kitchenJob(sim, eaters) {
   const S = sim.S, F = S.F, Ld = F.larder;
@@ -243,7 +255,7 @@ export function kitchenJob(sim, eaters) {
     if (!best) for (const k in Ld.raw) { const f = foodOf(sim, k); if (f && f.proc === 'cook' && Ld.raw[k] >= 1 && f.keep < bk) { bk = f.keep; best = { k: 'cook', src: k, from: 'raw' }; } }
     if (best) return best;
   }
-  if (F.vats.length < VATS) for (const k in Ld.raw) { const f = foodOf(sim, k); if (f && (f.proc === 'leach' || f.proc === 'ferment') && Ld.raw[k] >= 1) return { k: 'vat', src: k }; }
+  if (F.vats.length < vatsFor(S)) for (const k in Ld.raw) { const f = foodOf(sim, k); if (f && (f.proc === 'leach' || f.proc === 'ferment') && Ld.raw[k] >= 1) return { k: 'vat', src: k }; }
   return null;
 }
 // a cook's meals from a load: better with skill, and a little worse when everyone just cooks their own

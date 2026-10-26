@@ -74,12 +74,40 @@ export function drawPatch(g, hDisc, k, p, bare, dormant, night, t) {
         g.fillStyle = glow ? css(mixc(A, [255, 255, 255], .6)) : css(A); g.beginPath(); g.arc(cx, cy, r, 0, 6.3); g.fill(); hDisc(cx, cy, r, .35); }
       break;
     }
+    case 'spire': {   // a stand of stiff spikes, each lit on one side
+      for (let i = 0; i < 5; i++) { const a = rot + i * 1.26, r = i ? s * .2 : 0, cx = x + Math.cos(a) * r, cy = y + Math.sin(a) * r, w = s * (i ? .07 : .1), h = s * (i ? .34 : .46);
+        g.fillStyle = css(B); g.beginPath(); g.moveTo(cx - w, cy); g.lineTo(cx, cy - h); g.lineTo(cx + w, cy); g.closePath(); g.fill();
+        g.fillStyle = css(A); g.beginPath(); g.moveTo(cx - w, cy); g.lineTo(cx, cy - h); g.lineTo(cx - w * .1, cy); g.closePath(); g.fill(); hDisc(cx, cy - h * .4, w, .5); }
+      break;
+    }
+    case 'fan': {   // flat ribbed fans standing in a ring
+      for (let i = 0; i < 4; i++) { const a = rot + i * 1.57, cx = x + Math.cos(a) * s * .12, cy = y + Math.sin(a) * s * .12, r = s * (.28 + hash(i, 6, v * 30 | 0) * .1), sway = Math.sin(t * .9 + x + i) * .05;
+        g.fillStyle = css(i % 2 ? A : mixc(A, B, .45), .92); g.beginPath(); g.moveTo(cx, cy); g.arc(cx, cy, r, a - .55 + sway, a + .55 + sway); g.closePath(); g.fill();
+        g.strokeStyle = css(B, .8); g.lineWidth = .012; g.beginPath(); for (let j = -2; j <= 2; j++) { const b = a + sway + j * .22; g.moveTo(cx, cy); g.lineTo(cx + Math.cos(b) * r, cy + Math.sin(b) * r); } g.stroke(); }
+      hDisc(x, y, s * .35, .2); break;
+    }
+    case 'pod': {   // long pods lying in a bunch from one stalk
+      for (let i = 0; i < 4; i++) { const a = rot + i * .5 - .75, cx = x + Math.cos(a) * s * .22, cy = y + Math.sin(a) * s * .22;
+        g.fillStyle = css(B); g.beginPath(); g.ellipse(cx + .02, cy + .02, s * .2, s * .07, a, 0, 6.3); g.fill();
+        g.fillStyle = css(A); g.beginPath(); g.ellipse(cx, cy, s * .18, s * .055, a, 0, 6.3); g.fill(); hDisc(cx, cy, s * .1, .1); }
+      g.fillStyle = css(mixc(B, [0, 0, 0], .3)); g.beginPath(); g.arc(x, y, s * .05, 0, 6.3); g.fill(); break;
+    }
+    case 'coil': {   // a flat spiral, tightly wound
+      g.lineCap = 'round'; g.strokeStyle = css(A); g.lineWidth = s * .09; g.beginPath();
+      for (let j = 0; j <= 40; j++) { const q = j / 40, a = rot + q * 13, r = s * .05 + q * s * .38; j ? g.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r * .85) : g.moveTo(x + Math.cos(a) * r, y + Math.sin(a) * r * .85); }
+      g.stroke(); g.strokeStyle = css(B, .7); g.lineWidth = s * .025; g.stroke(); hDisc(x, y, s * .4, .12); break;
+    }
+    case 'bead': {   // strings of small round beads lying over the ground
+      for (let i = 0; i < 3; i++) { const a = rot + i * 2.1; for (let j = 0; j < 5; j++) { const l = s * (.06 + j * .1), cx = x + Math.cos(a + j * .25) * l, cy = y + Math.sin(a + j * .25) * l, r = s * (.075 - j * .008);
+        g.fillStyle = css(B); g.beginPath(); g.arc(cx + r * .2, cy + r * .25, r, 0, 6.3); g.fill(); g.fillStyle = css(j % 2 ? A : mixc(A, [255, 255, 255], .2)); g.beginPath(); g.arc(cx, cy, r * .85, 0, 6.3); g.fill(); hDisc(cx, cy, r, .05); } }
+      break;
+    }
     default: g.fillStyle = css(A); g.beginPath(); g.arc(x, y, s * .3, 0, 6.3); g.fill();
   }
 }
 
-// the cooking spot by the fire, a pot on a stand, and the vats in a row, full ones capped and labelled by colour
-export function drawKitchen(g, hRect, spots, vats, t) {
+// the cooking spot by the fire, a pot on a stand, and the vats in rows, full ones capped and labelled by colour
+export function drawKitchen(g, hRect, spots, vats, t, n = 4) {
   if (!spots) return;
   const c = spots.cook, vt = spots.vat;
   if (c != null) {
@@ -89,9 +117,9 @@ export function drawKitchen(g, hRect, spots, vats, t) {
     g.fillStyle = 'rgba(230,230,230,.18)'; for (let i = 0; i < 3; i++) { const k = (t * .4 + i / 3) % 1; g.beginPath(); g.arc(x + Math.sin(t + i) * .1, y - k * .6, .08 + k * .12, 0, 6.3); g.fill(); }
   }
   if (vt != null) {
-    const x = vt % MAP + .5, y = (vt / MAP | 0) + .5;
-    for (let i = 0; i < 4; i++) {
-      const vx = x - .75 + i * .5, full = vats && vats[i];
+    const x = vt % MAP + .5, y0 = (vt / MAP | 0) + .5;
+    for (let i = 0; i < Math.max(4, n || 4); i++) {   // in rows of four
+      const vx = x - .75 + (i % 4) * .5, y = y0 + Math.floor(i / 4) * .5, full = vats && vats[i];
       g.fillStyle = 'rgba(0,0,0,.28)'; g.beginPath(); g.arc(vx + .05, y + .06, .2, 0, 6.3); g.fill();
       g.fillStyle = '#7a5c40'; g.beginPath(); g.arc(vx, y, .2, 0, 6.3); g.fill();
       g.fillStyle = full ? (full.proc === 'leach' ? '#4f7a86' : '#8a6a3c') : '#2c241c'; g.beginPath(); g.arc(vx, y, .15, 0, 6.3); g.fill();

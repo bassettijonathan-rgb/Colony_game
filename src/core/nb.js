@@ -13,7 +13,7 @@ import { PRECISE, stockOf, built } from './build.js';
 import { makePerson } from './founders.js';
 import { remember } from './life.js';
 import { seasonOf, doyOf, DEEP, dayWeather } from './year.js';
-import { ILL, ILLS } from './illness.js';
+import { ILL } from './illness.js';
 import { add } from './food.js';
 import { flareNear } from './sky.js';
 import { seedBody } from './aging.js';
@@ -50,7 +50,7 @@ export function newNb(sim) {
   const r = lcg(sim.W.seed * 41 + 23), n = KINDS.length ? Math.min(KINDS.length, r() < .5 ? 2 : 3) : 0, ks = KINDS.map((_, i) => i);
   for (let i = ks.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [ks[i], ks[j]] = [ks[j], ks[i]]; }
   const dirs = [0, 1, 2, 3, 4, 5, 6, 7]; for (let i = 7; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [dirs[i], dirs[j]] = [dirs[j], dirs[i]]; }
-  const local = ILLS.filter(K => !K.brought).map(K => K.id);
+  const local = sim.ills.filter(K => !K.brought).map(K => K.id);
   const list = ks.slice(0, n).map((k, i) => {
     const K = KINDS[k], span = ([a, b]) => Math.round(a + r() * (b - a));
     return {
