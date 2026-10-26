@@ -29,10 +29,12 @@ export const GOODS = {
   power: { name: 'Power units', unit: '', v: 10 }, panel: { name: 'Solar panels', unit: '', v: 12 }, dress: { name: 'Dressings', unit: '', v: 2 }, abx: { name: 'Antibiotics', unit: 'courses', v: 6 },
 };
 export const GOOD_KEYS = Object.keys(GOODS);
+// a settlement can only want or bring goods the colony knows how to count
+for (const K of KINDS) for (const o of ['offers', 'wants']) for (const k in K[o] || {}) if (!GOODS[k]) delete K[o][k];
 const YARD = ['stone', 'timber', 'biomass', 'ore', 'rare', 'salvage'], MED = ['dress', 'abx'];
 export const KNOW_V = { life: 14, unseen: 18, ill: 12 };
 export const DIRS = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'];
-const FIRST = [16, 30], GAP = [14, 24], STAY = { meet: 10, trade: 18 };
+const TRUST_VISIT = 6, FIRST = [16, 30], GAP = [14, 24], STAY = { meet: 10, trade: 18 };
 const pick = (r, a) => a[Math.floor(r() * a.length)];
 
 // ---------- the world's neighbours, drawn once ----------
@@ -68,7 +70,7 @@ function take(sim, k, n) {
   const S = sim.S;
   if (k === 'meals') {
     const M = S.F.larder.meals;
-    for (const s of Object.keys(M)) { const q = Math.min(n, Math.floor(M[s])); M[s] -= q; n -= q; if (M[s] < .05) delete M[s]; if (!n) return; }
+    for (const s of Object.keys(M)) { const q = Math.min(n, M[s]); M[s] -= q; n -= q; if (M[s] < .05) delete M[s]; if (n < 1e-6) return; }
     S.food = Math.max(0, S.food - n); return;
   }
   if (YARD.includes(k)) { S.stores.yard[k] -= n; return; }
@@ -138,7 +140,9 @@ export function trade(sim, m) {
   const lead = S.nb.g.find(g => g.lead), who = S.cols.find(c => !c.dead && c.life >= 4 && Math.hypot(c.x - S.nb.g[0].x, c.y - S.nb.g[0].y) < 20);
   for (const k in know) teach(sim, i, k, who && who.name);
   const before = N.trust, ask = v.need || 1;
-  N.trust = clamp(N.trust + (v.gift ? Math.min(6, v.have / 4) : 1 + Math.min(4, (v.have - v.need) / ask * 4)), -100, 100);
+  // trust grows with what the deal is worth to them, and only so far in one visit: twenty small swaps buy no more than one good one
+  const up = v.gift ? Math.min(6, v.have / 4) : Math.min(1, v.have / 20) * (1 + Math.min(4, (v.have - v.need) / ask * 4)), room = Math.max(0, TRUST_VISIT - (P.tg || 0));
+  P.tg = (P.tg || 0) + Math.min(room, up); N.trust = clamp(N.trust + Math.min(room, up), -100, 100);
   N.trades++; P.traded = 1; S.stats.trades = (S.stats.trades || 0) + 1;
   const words = o => Object.entries(o).filter(([k]) => GOODS[k]).map(([k, n]) => `${n} ${GOODS[k].name.toLowerCase()}`);
   const g = words(give), t = [...words(get), ...Object.keys(know).map(k => L.find(q => q.id === k).name.toLowerCase())];
@@ -196,11 +200,11 @@ function startParty(sim, i, kind) {
   const goods = {};
   if (kind === 'trade') for (const k in K.offers) { const [a, b] = K.offers[k], v = Math.round(a + r() * (b - a)); if (v > 0) goods[k] = v; }
   N.party = { nb: i, kind, st: 'come', seq: ++N.seq, goods, ask: -1, asked: 0, traded: 0, at: -1, until: -1 };
-  for (const g of N.g) { g.spot = campSpot(sim, g.id); sim.goTo(g, g.spot, ACT.IDLE); }
   const x = at % MAP + .5, y = (at / MAP | 0) + .5;
   const known = N.list.filter(o => o.met).map(o => o.place);
   if (kind === 'meet') sim.log(`The Seed’s sensors have picked up ${n} people walking in from the ${DIRS[q.dir]}, toward the camp. ${known.length ? `They are not from the colony, and they don’t come from the direction of ${list(known)}.` : 'They are not from the colony. The Seed has no record of anyone else on this world, and the orbital survey saw no settlement within reach.'}`, 'bad', { e: 'nbsight', lvl: 2, x, y, title: 'People on the map' });
   else sim.log(`People from ${q.place} are walking in from the ${DIRS[q.dir]}, ${n} of them, with packs.`, '', { e: 'nbcome', lvl: 1, x, y, title: `A caravan from ${q.place}` });
+  for (const g of N.g) { g.spot = campSpot(sim, g.id); sim.goTo(g, g.spot, ACT.IDLE); }
   S.rv++;
 }
 function nearFree(sim, t, r0) {
@@ -223,7 +227,7 @@ export function guestArrive(sim, g) {
   if (P.st === 'go') { g.out = 1; g.act = ACT.IDLE; if (S.nb.g.every(q => q.out)) endParty(sim); return; }
   g.act = ACT.IDLE; g.timer = 0;
   // no way through from where they stood: they find their own way in, as walkers do
-  const F = sim.W.site.fire; if (P.st === 'come' && Math.hypot(g.x - F.x, g.y - F.y) > 25) { g.x = g.spot % MAP + .5; g.y = (g.spot / MAP | 0) + .5; g.tile = g.spot; }
+  const F = sim.W.site.fire; if (Math.hypot(g.x - F.x, g.y - F.y) > 25) { g.x = g.spot % MAP + .5; g.y = (g.spot / MAP | 0) + .5; g.tile = g.spot; }
   if (P.st === 'come') arrive(sim);
 }
 function arrive(sim) {

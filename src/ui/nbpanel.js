@@ -15,7 +15,13 @@ export class NbPanel {
   render(U) {
     const N = U.nb; if (!N) return ['nb-none', () => '<div class="note">Nobody else is known on this world.</div>'];
     const P = N.party, D = this.table(P);
-    return ['nb' + JSON.stringify([N.list, P, N.have, D, this.msg]), () => {
+    // keep the bargain to what is still on the table: a lesson learned another way, goods they or the colony no longer have
+    if (P) {
+      const L = new Set(P.lessons.map(l => l.id));
+      for (const k in D.get) { const n = GOODS[k] ? Math.min(D.get[k], P.goods[k] || 0) : L.has(k) ? 1 : 0; if (n) D.get[k] = n; else delete D.get[k]; }
+      for (const k in D.give) { const n = Math.min(D.give[k], N.have[k] || 0); if (n) D.give[k] = n; else delete D.give[k]; }
+    }
+    return ['nb' + JSON.stringify([N.list, P, N.have, D, this.msg, this.busy]), () => {
       let h = '';
       if (!N.list.length && !P) return '<div class="note" style="margin-top:0">Nobody else is known on this world. The orbital survey saw no settlement within reach of the landing, but it only covered the ground around it.</div>';
       if (P) h += this.party(U, N, P, D);
@@ -46,7 +52,7 @@ export class NbPanel {
     const asked = Object.keys(D.get).length, gave = Object.keys(D.give).length, short = Math.max(0, v.need - v.have);
     const verdict = !asked && !gave ? 'Put together a bargain: what you want from them, and what the colony gives.' : v.gift ? 'A gift: nothing asked back. They will remember it.' : v.ok ? `They would take this.${v.have > v.need * 1.4 ? ' The colony is giving a lot more than it needs to.' : ''}` : `They want more: about ${Math.ceil(short)} meals’ worth.`;
     h += `<div class="deal"><div class="bar"><u style="width:${Math.min(100, v.need ? v.have / v.need * 100 : v.have ? 100 : 0)}%" class="${v.ok ? 'ok' : ''}"></u></div><div class="note" style="margin:4px 0 6px">${esc(verdict)}${this.msg ? ` <b>${esc(this.msg)}</b>` : ''}</div>
-      <div class="row2"><button class="btn go" data-act="nboffer"${!asked && !gave ? ' disabled' : ''}>${v.gift ? 'Give it' : 'Offer it'}</button><button class="btn" data-act="nbclear">Clear</button></div>
+      <div class="row2"><button class="btn go" data-act="nboffer"${(!asked && !gave) || this.busy ? ' disabled' : ''}>${v.gift ? 'Give it' : 'Offer it'}</button><button class="btn" data-act="nbclear">Clear</button></div>
       <div class="note">Goods are valued in meals. The more they trust the colony, the less extra they ask for, and goods they want are worth more to them.</div></div>`;
     return h;
   }
@@ -66,7 +72,7 @@ export class NbPanel {
     }
     if (act === 'nbk') { const k = el.dataset.k; if (el.checked) D.get[k] = 1; else delete D.get[k]; this.msg = ''; return true; }
     if (act === 'nbclear') { D.give = {}; D.get = {}; this.msg = ''; return true; }
-    if (act === 'nboffer') { this.api.cmd('trade', { give: D.give, get: D.get }).then(r => { if (r && r.ok) { D.give = {}; D.get = {}; this.msg = ''; this.api.toast('They took it.'); } else this.msg = r && r.why || 'They said no.'; this.api.refresh(); }); return true; }
+    if (act === 'nboffer') { if (this.busy) return true; this.busy = true; this.api.cmd('trade', { give: D.give, get: D.get }).then(r => { if (r && r.ok) { D.give = {}; D.get = {}; this.msg = ''; this.api.toast('They took it.'); } else this.msg = r && r.why || 'They said no.'; this.busy = false; this.api.refresh(); }, () => { this.busy = false; this.api.refresh(); }); this.api.refresh(); return true; }
     if (act === 'nbjoin') { this.api.cmd('join', { yes: el.dataset.v === '1' }); return true; }
     return false;
   }

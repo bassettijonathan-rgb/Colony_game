@@ -1,7 +1,9 @@
 // What the Seed would build next, and why: the colony's most pressing shortfalls, one building each, worst first.
 // It only advises. The Build window shows the first few, each with a button that starts planning it at the size
 // the Seed suggests (sizeFor in work.js). A building already planned and not yet finished counts as on its way.
-import { capacity, LANDER_KW, built } from './build.js';
+import { capacity, LANDER_KW, built, SHAFT_REACH } from './build.js';
+import { underOf, UG, LEVELS } from './world.js';
+import { MAP } from './consts.js';
 import { DEEP_SUN, stoneLeft } from './work.js';
 import { mealsInStore } from './food.js';
 
@@ -11,15 +13,15 @@ export function buildAdvice(sim) {
   if (!S.projects[0].done) return { note: 'The shelter comes first: everything else waits until the lander is a place to sleep.', list: [] };
   const mine = S.projects.filter(p => !p.gone && p.type !== 'test'), sum = (types, k) => mine.filter(p => types.includes(p.type)).reduce((a, p) => a + (capacity(p.type, p.w, p.h)[k] || 0), 0);
   const count = t => mine.filter(p => p.type === t).length, none = t => !count(t), open = t => mine.some(p => p.type === t && !p.done);
-  const alive = S.cols.filter(c => !c.dead).length, soon = alive + (S.gen ? S.gen.womb.length : 0) + S.seedc.feed + S.seedc.queue.length + (S.seedc.printing ? 1 : 0);
+  const alive = S.cols.filter(c => !c.dead).length, soon = alive + (S.gen ? S.gen.womb.length : 0) + Math.max(S.seedc.feed, S.seedc.queue.length) + (S.seedc.printing ? 1 : 0);
   const add = (type, why, lvl = 0) => { if (!open(type) && !out.some(o => o.type === type)) out.push({ type, why, lvl }); };
-  const shaft = mine.some(p => p.type === 'shaft' && p.done), Y = S.stores.yard;
+  const shafts = mine.filter(p => p.type === 'shaft' && p.done && !p.shut), shaft = shafts.length > 0, Y = S.stores.yard;
   // power first: a dark building does nothing
   const draw = mine.filter(p => p.type !== 'solar').reduce((a, p) => a + (capacity(p.type, p.w, p.h).kw || 0), 0), supply = LANDER_KW + sum(['solar'], 'supply') * DEEP_SUN + sum(['geo'], 'supply');
   const dark = built(S).filter(p => p.type !== 'solar' && !p.powered && !p.shut).length;
   if (draw > supply - 1) {
     const why = `${dark ? `${n(dark, 'building is', 'buildings are')} dark now. ` : ''}What is built and planned would draw ${draw.toFixed(1)} kW, and the colony can count on ${supply.toFixed(1)} kW through Deep cold.`;
-    if (shaft && count('geo') < 3) add('geo', why + ' A heat tap in the deep runs day and night, in any season.', 3); else add('solar', why);
+    if (count('geo') < 3 && hotNear(sim, shafts)) add('geo', why + ' A heat tap in the deep runs day and night, in any season.', 3); else add('solar', why);
   }
   // food
   const eaters = Math.max(1, soon), days = mealsInStore(sim, true) / eaters, fields = count('field');
@@ -48,7 +50,21 @@ export function buildAdvice(sim) {
   if (S.gen && S.gen.asks.length >= 3 && count('nursery') < 2) add('nursery', `${n(S.gen.asks.length, 'couple is', 'couples are')} waiting for one of the Seed’s two growth tanks.`);
   if (none('shaft') && soon >= 30) add('shaft', 'The middle and the deep levels hold heat, rare earths, and shelter from anything on the surface. A lift shaft reaches them.');
   if (shaft && sum(['vault'], 'places') < soon) add('vault', 'On a flare day, the rooms near the surface still let some of it through. A deep vault keeps out everything.', 2);
-  if (shaft && !mine.some(p => p.type === 'mine' && p.lvl === 3 && p.seam > 0)) add('mine', 'Rare earths only come from seams on the deep level. The scanner’s magnets need them.', 3);
+  if (shaft && none('scanner') && !mine.some(p => p.type === 'mine' && p.lvl === 3 && p.rare > 0)) add('mine', 'Rare earths only come from seams on the deep level. The scanner’s magnets need them.', 3);
   if (none('scanner') && (Y.rare || 0) >= 6) add('scanner', `There are ${Math.floor(Y.rare)} loads of rare earths in the yard, enough for a scanner. With it, the dead can be woken again from their last scan.`);
   return { note: '', list: out };
+}
+// is there hot rock on the deep level within reach of a working lift shaft, enough for a heat tap?
+function hotNear(sim, shafts) {
+  if (!shafts.length || LEVELS < 3) return false;
+  const U = underOf(sim.W, 3);
+  for (const p of shafts) {
+    const cx = p.x + p.w / 2, cy = p.y + p.h / 2, R = SHAFT_REACH - 3;
+    for (let y = Math.max(0, Math.floor(cy - R)); y < Math.min(MAP, cy + R); y += 2) for (let x = Math.max(0, Math.floor(cx - R)); x < Math.min(MAP, cx + R); x += 2) {
+      if ((U[y * MAP + x] & 7) !== UG.HOT || Math.hypot(x - cx, y - cy) > R) continue;
+      let n = 0; for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++) if ((U[(y + j) * MAP + x + i] & 7) === UG.HOT) n++;
+      if (n >= 8) return true;
+    }
+  }
+  return false;
 }
