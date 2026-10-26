@@ -20,6 +20,7 @@ import { newHz, hzHour, hzMorning, fireStep, hzUI, FIRE_STEP } from './hazards.j
 import { newDir, dirMorning } from './director.js';
 import { traumaUI } from './trauma.js';
 import { ctlHour, emergency } from './control.js';
+import { agingUI, canReplace } from './aging.js';
 import { printedBody, migrateLives, livesDay, minders, newGen, genUI, yearsOf, mindAge } from './lives.js';
 
 export const CREW_NAMES = ['Basalt', 'Kestrel', 'Cedar', 'Drift', 'Ember', 'Fern', 'Gale', 'Heron', 'Iris', 'Juniper', 'Lichen', 'Moss', 'Nettle', 'Onyx', 'Pike', 'Quartz', 'Rowan', 'Sedge', 'Thistle', 'Umber', 'Vetch', 'Willow', 'Yarrow', 'Zinc', 'Alder', 'Bramble', 'Cobalt', 'Dune', 'Flint', 'Garnet', 'Hazel', 'Ivy', 'Jasper', 'Kelp', 'Larch', 'Marl'];
@@ -466,6 +467,15 @@ export class Sim {
       archive: S.archive.map(p => ({ fid: p.fid, name: p.name, age: p.age, trade: p.trade, skills: p.skills, traits: p.traits, mem: p.mem, knew: p.knew, woke: p.woke ?? null })),
     };
   }
+  // the clinic's records: everyone who ever lived here, what their days went on, and what their bodies came to
+  recordsUI() {
+    const S = this.S;
+    return S.cols.map(c => {
+      const b = c.bd, wk = c.wk ? Object.entries(c.wk).sort((x, y) => y[1] - x[1]).slice(0, 2).map(([k, d]) => [k, Math.round(d / YEAR_DAYS * 10) / 10]) : [];
+      const ch = b.marks.filter(m => m.k === 'chronic' && !m.sub && m.kn).map(m => m.ck);
+      return { id: c.id, age: Math.floor(((c.dead && c.dtick != null ? c.dtick : S.tick) / DAY_TICKS - c.born) / YEAR_DAYS), dead: !!c.dead, dday: c.dday || 0, why: c.why || '', wk, ch, hurt: b.marks.filter(m => m.k === 'lost' || m.k === 'crooked' || m.k === 'tight').length, ill: (b.hx || []).length, fam: c.name.split(' ').slice(1).join(' '), gen: c.gen || 0 };
+    });
+  }
   ui(watch) {
     const S = this.S, sd = S.seedc, sh = S.projects[0];
     const c = watch >= 0 ? S.cols[watch] : null;
@@ -493,9 +503,10 @@ export class Sim {
       w: kn.map(w => ({ id: w.id, p: w.p, k: w.k, s: r2(w.s), text: woundText(w), heal: r2(w.heal), bl: w.bl > .005, closed: w.closed, set: w.set, inf: w.inf > .3 ? r2(w.inf) : 0, how: w.how, d: w.d })),
       inner: b.w.filter(w => w.ib && w.ikn).map(w => ({ id: w.id, p: w.p, text: woundText(w, true) })),
       unexplained: b.bleed > .01 && !b.w.some(w => (w.kn && w.bl > .005) || (w.ikn && w.ib)),
-      marks: b.marks, ex: b.ex, by: who(c.medBy) || who(c.aidBy) || who(c.carried), down: c.down, laid: c.plan === 'ward', iso: c.iso, nu: b.nu > 0,
+      marks: b.marks.map((m, i) => ({ ...m, i })).filter(m => m.k !== 'chronic' || m.kn || m.felt), ex: b.ex, by: who(c.medBy) || who(c.aidBy) || who(c.carried), down: c.down, laid: c.plan === 'ward', iso: c.iso, nu: b.nu > 0,
       ill: b.ill.filter(q => q.st >= 1).map(q => { const K = ILL[q.k]; return { name: q.kn ? K.name : '', sym: K.sym, st: q.st, d: q.d1, kn: q.kn, catching: q.kn && !!K.spread, abx: q.kn ? K.abx : null, tried: q.tried }; }),
       hx: b.hx.map(h => ({ name: h.kn || (S.ill.k[h.k] && S.ill.k[h.k].id && S.ill.k[h.k].named) ? ILL[h.k].name : '', sym: ILL[h.k].sym, d: h.d, e: h.e, out: h.out })),
+      life: agingUI(this, c), repl: c.dead ? '' : canReplace(this),
       imm: Object.entries(b.imm).filter(([k, v]) => v && S.ill.k[k] && S.ill.k[k].named).map(([k, v]) => ({ name: ILL[k].name, v: Math.round(v * 100) / 100 })),
     };
   }

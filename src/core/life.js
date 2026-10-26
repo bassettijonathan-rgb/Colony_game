@@ -13,7 +13,8 @@ import { toIsolate, illDay, ILL } from './illness.js';
 import { fightSpot } from './hazards.js';
 import { scar, relive, traumaTick, traumaDay } from './trauma.js';
 import { ctlStart } from './control.js';
-import { close, FAMILY, BIT, playSpot, lastFounder } from './lives.js';
+import { close, FAMILY, BIT, playSpot, lastFounder, yearsOf } from './lives.js';
+import { exposeTick, sleepHit, ageHeal, ageTire } from './aging.js';
 
 const WORKING = a => a === ACT.BUILD || a === ACT.CARRY || a === ACT.SURVEY || a === ACT.PLANT || a === ACT.QUARRY || a === ACT.FELL || a === ACT.STONE || a === ACT.LOG || a === ACT.TEST || a === ACT.BENCH || a === ACT.GATHER || a === ACT.FARM || a === ACT.COOK || a === ACT.SAMPLE || a === ACT.SACK || a === ACT.FIGHT;
 // a finished building with its lights on
@@ -159,12 +160,12 @@ export function mindTick(sim, c) {
   if (c.life === 0) f = -4;   // an infant in the nursery sleeps most of the day
   const tt = traumaTick(c);
   if (f < 0 && asleep) f *= tt.sleep;   // nightmares: what they carry follows them into sleep
-  if (f > 0) { if (c.fresh > 0) f *= 1.6; if (has('patient')) f *= .9; if (c.bd.pain > .2) f *= 1 + c.bd.pain * .4; if (c.hungry) f += 1; if (c.chill > 35) f += 1; if (c.unwell) f += .7; }
+  if (f > 0) { f *= ageTire(yearsOf(sim, c)); if (c.fresh > 0) f *= 1.6; if (has('patient')) f *= .9; if (c.bd.pain > .2) f *= 1 + c.bd.pain * .4; if (c.hungry) f += 1; if (c.chill > 35) f += 1; if (c.unwell) f += .7; }
   c.fat = clamp(c.fat + f * dt, 0, 100);
   // strain: gains and reliefs per hour
   let g = 0, rel = .15;
   if (a === ACT.BED) g += 1.7;                                  // a bedroll on open ground, on a strange world
-  if (c.fresh > 0 && !asleep) g += .35;                          // a body that doesn't feel like theirs yet
+  if (c.fresh > 0 && !asleep) g += .35 * (1 + Math.abs(c.gap || 0) / 30);   // a body that doesn't feel like theirs yet, worse the further from the mind's own age
   if (a === ACT.INSIDE) rel += .6;
   if (a === ACT.INDOORS && at) {
     if (at.type === 'commons') { const n = countNear(S, c, 1); rel += n >= 2 ? (has('sociable') ? 3.2 : has('solitary') ? 1.4 : 2.4) : 1; }   // a meal at a table, out of the wind
@@ -197,14 +198,15 @@ export function mindTick(sim, c) {
   }
   // the body
   if (c.fresh > 0) { c.fresh -= 30; if (c.fresh <= 0) remember(sim, c, 'Stopped feeling like a stranger in this body.'); }
+  if (land) exposeTick(sim, c, a, dt, wx.k === 'storm');
   if (ailing(c.bd)) {
-    const rest = asleep || ward || a === ACT.DOWN || c.plan === 'ward';
-    const heal = (rest ? 1.5 : working ? .6 : 1) * (ward ? 1.25 : 1) * (c.hungry ? .4 : 1) * (c.chill > 35 ? .7 : 1) * (c.unwell ? .7 : 1) * (c.fat > 80 ? .8 : 1);
-    const weak = (c.fat > 80 ? 1.3 : 1) * (c.unwell ? 1.25 : 1) * (c.hungry ? 1.3 : 1) * (c.fresh > 0 ? 1.3 : 1);   // a new body has no resistance to anything
+    const rest = asleep || ward || a === ACT.DOWN || c.plan === 'ward', sl = sleepHit(c), fl = c.bd.fl && c.bd.fl.some(q => q.k === 'immune') ? 1.2 : 1;
+    const heal = (rest ? 1.5 : working ? .6 : 1) * (ward ? 1.25 : 1) * (c.hungry ? .4 : 1) * (c.chill > 35 ? .7 : 1) * (c.unwell ? .7 : 1) * (c.fat > 80 ? .8 : 1) * sl.heal * ageHeal(yearsOf(sim, c));
+    const weak = (c.fat > 80 ? 1.3 : 1) * (c.unwell ? 1.25 : 1) * (c.hungry ? 1.3 : 1) * (c.fresh > 0 ? 1.3 : 1) * sl.weak * fl;   // a new body has no resistance to anything
     const why = bodyTick(sim, c, dt, { heal, weak, lying: rest, hungry: c.hungry, chill: c.chill, ward });
     c.hurt = c.bd.w.length ? 1 : 0;
     if (why) return die(sim, c, why);
-    if (!c.hurt && c.ward >= 0 && !c.cap) { c.ward = -1; if (c.plan === 'ward') c.plan = ''; }
+    if (!c.hurt && c.ward >= 0 && !(c.cap && laidUp(c))) { c.ward = -1; if (c.plan === 'ward') c.plan = ''; }
   }
   if (c.hungry) { c.hp -= 3 / 24 * dt; if (c.hp <= 0) return die(sim, c, 'starved'); }
   if (c.chill >= 65) { c.hp -= (c.chill >= 99 ? 6 : 1.5) * dt; if (c.hp <= 0) return die(sim, c, 'froze'); }
@@ -266,8 +268,10 @@ function bonds(sim, c, dt, working) {
   let near = null;
   if (working && c.crew >= 0) near = S.crews[c.crew].members.map(i => S.cols[i]).filter(o => o !== c && !o.dead && Math.hypot(o.x - c.x, o.y - c.y) < 6);
   else if (c.act === ACT.EAT) { near = []; for (const o of S.cols) if (o !== c && o.act === ACT.EAT && Math.hypot(o.x - c.x, o.y - c.y) < 4) near.push(o); }
+  // a meal at a table in the commons, or an evening in the same room: the people nearest them in it
+  else if (c.act === ACT.INDOORS && c.where >= 0) { near = []; for (const o of S.cols) if (o !== c && !o.dead && o.act === ACT.INDOORS && o.where === c.where && Math.hypot(o.x - c.x, o.y - c.y) < 3) near.push(o); }
   if (!near || !near.length) return;
-  const rate = working ? 1 : .6;
+  const rate = working ? 1 : c.act === ACT.INDOORS ? .5 : .6;
   for (const o of near) {
     const t = c.ties[o.id] || (c.ties[o.id] = { f: 0, a: 0, k: null });
     t.f = Math.min(100, t.f + rate * dt);
@@ -311,13 +315,14 @@ export function daily(sim, c) {
 export function trustAll(sim, v, why) {
   for (const c of sim.S.cols) if (!c.dead) { c.tru = clamp(c.tru + v * (c.traits.includes('stubborn') ? .6 : 1), 0, 100); if (why) remember(sim, c, why); }
 }
-const DIED = { old: ' of old age', starved: ' of hunger', froze: ' of the cold', diet: ' after a long sickness from what they ate', bled: ': they lost too much blood', shock: ' of shock from their injuries', infection: ' of an infection that got into their wounds', head: ' of a head injury' };
+const DIED = { old: ' of old age', starved: ' of hunger', froze: ' of the cold', diet: ' after a long sickness from what they ate', bled: ': they lost too much blood', shock: ' of shock from their injuries', infection: ' of an infection that got into their wounds', head: ' of a head injury', heart: ': their heart failed', kidney: ' when their kidneys failed', growth: ' of a growth the clinic could not stop', operation: ' on the operating table' };
 export function die(sim, c, why) {
   if (c.care) endCare(sim, c);
+  c.dday = sim.day; c.dtick = sim.S.tick; c.why = why;   // for the clinic's records
   dropCarry(sim, c); c.dead = true; c.act = ACT.DEAD; c.mv = 0; c.home = c.mess = c.ward = -1; c.carried = -1; c.down = false; sim.S.stats.deaths++; spend(sim, 4, 'death');
   const ill = why.startsWith('ill:') && why.split(':');
   const yrs = Math.floor((sim.S.tick / DAY_TICKS - c.born) / YEAR_DAYS);
-  sim.log(`${c.name} died${ill ? (ill[2] === '1' ? ` of ${ILL[ill[1]].name.toLowerCase()}` : ' of an illness nobody had named') : DIED[why] || ''}${why === 'old' || c.life < 4 ? `, at ${yrs}` : ''}.`, 'bad', { e: why === 'old' ? 'oldage' : 'death', lvl: 2, who: c.id, title: `${c.name} died` });
+  sim.log(`${c.name} died${ill ? (ill[2] === '1' ? ` of ${ILL[ill[1]].name.toLowerCase()}` : ' of an illness nobody had named') : DIED[why] || ''}${why === 'old' || why === 'heart' || why === 'kidney' || why === 'growth' || c.life < 4 ? `, at ${yrs}` : ''}.`, 'bad', { e: why === 'old' ? 'oldage' : 'death', lvl: 2, who: c.id, title: `${c.name} died` });
   relive(sim, ['grief', 'death']);
   for (const o of sim.S.cols) if (!o.dead) {
     const t = o.ties[c.id], saw = !hidden(o.act) && o.act !== ACT.BED && Math.hypot(o.x - c.x, o.y - c.y) < 10;

@@ -10,6 +10,7 @@ import {
   TYPES, RAW, PRECISE, RECIPE, FIT_H, FAB_SLOW, STAGE_NAMES, matName, stageLoads, loadsOf, billOf, loadCheck, capacity, checkPlot, addProject,
   active, built, byId, capOf, powerCheck, shortOf, stockOf, sources, takeFrom, putBack, nextOrder, rawWanted, clearPlot, LANDER_KW, PANEL_KW, LABOUR, stagesOf, FEED, plantStop, PIT_ROCK,
 } from './build.js';
+import { replacePart } from './aging.js';
 import { illMeal } from './illness.js';
 import { FIRE_STEP, beat } from './hazards.js';
 import { take, order, release } from './control.js';
@@ -1006,6 +1007,7 @@ export function command(sim, m) {
     case 'analyse': return analyse(sim, m.o);
     case 'unanalyse': { const F = S.F, L = F.life[m.o]; if (L && L.queued && F.lab.cur !== m.o) { F.lab.queue = F.lab.queue.filter(o => o !== m.o); L.queued = false; S.rv++; } break; }
     case 'triage': if (TRIAGE[m.v]) { S.care.triage = m.v; S.rv++; } break;
+    case 'replacePart': { const c = S.cols[m.id]; return !!c && !c.dead && replacePart(sim, c, m.m); }
     // ---- direct orders in an emergency ----
     case 'ctlTake': return take(sim, m.person);
     case 'ctlOrder': return order(sim, m.person, { k: m.k, t: m.t, who: m.who });

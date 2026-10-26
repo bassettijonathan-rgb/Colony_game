@@ -313,6 +313,9 @@ select{font:600 12px var(--f-ui);color:var(--txt);background:rgba(0,0,0,.35);bor
 .hrow{display:flex;gap:10px;align-items:center}.hrow .fig{width:74px;flex:none;margin-top:8px}.hrow .fig *{transition:fill .3s}.hrow .meters{flex:1;grid-template-columns:62px 1fr 40px}
 .skills.caps div.low{color:var(--acc2)}
 .wd{padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px}.wd b{color:#e9edf3;font-weight:600}.wd .sub{color:var(--mut);font-size:11px;margin:2px 0 4px}.wd .chips{margin-top:3px}
+.rec{padding:7px 4px;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px;cursor:pointer;border-radius:6px}.rec:hover{background:rgba(255,255,255,.05)}.rec b{color:#e9edf3;font-weight:600}.rec small{color:var(--mut);font-size:11px}.rec .sub{color:var(--mut);font-size:11px;margin:2px 0 3px}.rec.dead b{color:#aab2bf}.rec.dead b::after{content:' †';color:var(--dim)}
+.srch{width:100%;box-sizing:border-box;margin:8px 0 6px;padding:7px 9px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(0,0,0,.25);color:#e9edf3;font:12px var(--f-ui, inherit)}
+table.rt{width:100%;border-collapse:collapse;font-size:11px;margin:4px 0 8px}table.rt th{font-weight:600;color:var(--mut);text-align:right;padding:3px 4px}table.rt th:first-child,table.rt td:first-child{text-align:left}table.rt td{padding:3px 4px;text-align:right;border-top:1px solid rgba(255,255,255,.06);color:#d7dde6;font-family:var(--f-num)}table.rt td small{color:var(--dim)}
 .mm2{font-size:11.5px;color:#c9d0db;line-height:1.45;margin:3px 0}
 .mm2 em{font:500 10px var(--f-num);font-style:normal;color:var(--dim);margin-right:6px}
 .stg{display:grid;gap:4px;margin-top:8px}
@@ -651,6 +654,7 @@ select{font:600 12px var(--f-ui);color:var(--txt);background:rgba(0,0,0,.35);bor
       <button data-tab="crews" title="Crews (C)"><kbd>C</kbd><svg class="ic"><use href="#i-crews"/></svg>Crews</button>
       <button data-tab="build" title="Build (B)"><kbd>B</kbd><svg class="ic"><use href="#i-build"/></svg>Build</button>
       <button data-tab="life" title="Food and local life (G)"><kbd>G</kbd><svg class="ic"><use href="#i-life"/></svg>Life</button>
+      <button data-tab="records" title="Clinic records (K)"><kbd>K</kbd><svg class="ic"><use href="#i-clinic"/></svg>Records</button>
       <button id="bStats" title="Colony record and charts (T)"><kbd>T</kbd><svg class="ic"><use href="#i-chart"/></svg>Stats</button>
       <button data-tab="log" title="Log (L)"><kbd>L</kbd><svg class="ic"><use href="#i-log"/></svg>Log<span class="badge" id="logNew" hidden></span></button>
     </nav>

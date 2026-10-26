@@ -11,7 +11,7 @@ import { TPS, SPEEDS } from '../core/consts.js';
 const now = () => performance.now();
 
 export function createSimCore(post) {
-  let W = null, P = null, sim = null, sites = null, speed = 1, last = 0, acc = 0, timer = null, lastWear = 0, lastState = 0, watch = -1, sentLog = 0, sentRv = -1, sentHist = 0;
+  let W = null, P = null, sim = null, sites = null, speed = 1, last = 0, acc = 0, timer = null, lastWear = 0, lastState = 0, watch = -1, recs = false, recsAt = 0, sentLog = 0, sentRv = -1, sentHist = 0;
   const perf = { ticks: 0, tickMs: 0, tps: 0, window: now(), worst: 0 };
 
   function step() {
@@ -44,6 +44,7 @@ export function createSimCore(post) {
     sentLog = S.logN;
     if (S.hist.rows.length !== sentHist) { m.hist = S.hist.rows.slice(sentHist); sentHist = S.hist.rows.length; }
     if (S.rv !== sentRv) { sentRv = S.rv; m.roster = sim.roster(); }
+    if (recs && now() - recsAt > 2000) { recsAt = now(); m.recs = sim.recordsUI(); }   // only while the records are open
     post(m);
   }
   function perfOut() {
@@ -81,6 +82,7 @@ export function createSimCore(post) {
     else if (m.t === 'speed') { speed = m.v; }
     else if (m.t === 'save') { post({ t: 'saved', rq: m.rq, data: sim ? sim.serialize() : null }); }
     else if (m.t === 'watch') { watch = m.id; if (sim) { lastState = 0; } }
+    else if (m.t === 'recs') { recs = !!m.on; recsAt = 0; }
     else if (m.t === 'cmd') { if (!sim) return; const r = sim.command(m); if (m.rq) post({ t: 'cmd', rq: m.rq, r }); lastState = 0; }
     else if (m.t === 'stop') { clearTimeout(timer); }
   }

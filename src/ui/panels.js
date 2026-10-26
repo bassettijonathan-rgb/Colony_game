@@ -15,6 +15,7 @@ import { healthTab } from './health.js';
 import { TRIAGE } from '../core/care.js';
 import { EM_TXT } from '../core/control.js';
 import { TR_NAME } from '../core/trauma.js';
+import { COND } from '../core/aging.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -25,6 +26,7 @@ const cap1 = s => s.charAt(0).toUpperCase() + s.slice(1);
 const SIDE = ['north', 'east', 'south', 'west'];
 const pct = f => Math.round(f * 100) + '%';
 const icon = (id, cls = 'ic') => `<svg class="${cls}"><use href="#i-${id}"/></svg>`;
+const WHY = { old: 'of old age', starved: 'of hunger', froze: 'of the cold', diet: 'of the diet', bled: 'of blood loss', shock: 'of shock', infection: 'of an infection', head: 'of a head injury', heart: 'of heart failure', kidney: 'of kidney failure', growth: 'of a growth', operation: 'in an operation' };
 const TICON = { shelter: 'seed', dorm: 'dorm', commons: 'commons', workshop: 'tool', clinic: 'clinic', solar: 'solar', test: 'test', field: 'field', lab: 'lab', plant: 'tank', cellar: 'cellar', burrow: 'below', mine: 'mine', pit: 'stone' };
 const KIN = { partner: 'Partner', parent: 'Parent', child: 'Child', sibling: 'Brother or sister' }, KIN_ORDER = ['partner', 'parent', 'child', 'sibling'];
 const GEN = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth'];
@@ -34,7 +36,7 @@ function ageLine(p, r) {
   if (p.native) return `${body} · born here, ${GEN[Math.max(0, p.gen - 1)] || p.gen + 'th'} generation${r[8] < 2 ? ' · in the nursery' : r[8] < 13 ? ' · a child' : r[8] < 16 ? ' · an apprentice' : ''}`;
   return `${mind}, in a body of ${body} · former ${p.trade.toLowerCase()}`;
 }
-const TAB = { archive: ['Archive', 'archive'], crews: ['Crews', 'crews'], build: ['Build', 'build'], life: ['Food and local life', 'life'], log: ['Log', 'log'] };
+const TAB = { records: ['Clinic records', 'clinic'], archive: ['Archive', 'archive'], crews: ['Crews', 'crews'], build: ['Build', 'build'], life: ['Food and local life', 'life'], log: ['Log', 'log'] };
 // what a building holds, in a few words
 const holds = (type, c) => ({ shelter: `${c.beds} bunks`, dorm: `${c.beds} bunks`, commons: `seats for ${c.seats}`, workshop: `${c.benches} bench${c.benches > 1 ? 'es' : ''}`, clinic: `${c.beds} beds`, solar: `${c.panels} panels, ${c.supply} kW`, field: `${c.tiles} tiles of beds`, lab: `${c.benches} lab bench${c.benches > 1 ? 'es' : ''}`, plant: `${c.tanks} tank${c.tanks > 1 ? 's' : ''}`, cellar: `cool shelves for ${c.store} loads of food`, burrow: `${c.beds} bunks`, mine: `${c.faces} face${c.faces > 1 ? 's' : ''} to work`, pit: `${c.faces} face${c.faces > 1 ? 's' : ''} to cut` })[type] || '';
 const UG_TXT = { soil: 'soft soil: quick to dig, but the walls need a lot of shoring', clay: 'clay: heavier digging, and it holds its shape', stone: 'stone: slow digging, little shoring, and the spoil gives stone for the yard', 'hard rock': 'hard rock: very slow digging, but it barely needs shoring and gives stone' };
@@ -78,11 +80,15 @@ export class Panels {
     window.addEventListener('pointerup', () => { if (this.busy) { this.busy = false; setTimeout(() => this.update(), 0); } });
     body.addEventListener('click', e => this.onClick(e));
     this.ctab = 'about';
-    $('cBody').addEventListener('click', e => { const b = e.target.closest('[data-ctab]'); if (b) { this.ctab = b.dataset.ctab; this.cardSig = ''; this.card(); } });
+    $('cBody').addEventListener('click', e => {
+      const b = e.target.closest('[data-ctab]'); if (b) { this.ctab = b.dataset.ctab; this.cardSig = ''; this.card(); return; }
+      const r = e.target.closest('[data-repl]'); if (r && this.A.sel >= 0) { this.api.cmd('replacePart', { id: this.A.sel, m: +r.dataset.repl }); this.cardSig = ''; }
+    });
     $('bBody').addEventListener('click', e => this.onClick(e));
     $('plBody').addEventListener('click', e => { if (e.target.closest('[data-act="useSug"]')) this.api.useSug(); });
     $('bBody').addEventListener('change', e => this.onChange(e));
     body.addEventListener('change', e => this.onChange(e));
+    body.addEventListener('input', e => { if (e.target.id === 'recQ') { this.recQ = e.target.value; this.update(); } });
     $('cMove').onchange = e => { const v = +e.target.value; this.api.cmd('move', { person: this.A.sel, crew: v }); };
     $('orbit').addEventListener('click', e => {
       const site = e.target.closest('[data-site]'), go = e.target.closest('[data-land]'), sea = e.target.closest('[data-season]');
@@ -115,6 +121,7 @@ export class Panels {
   }
   setTab(t) {
     const [w, part] = t.split(':'); t = w; if (part) this[t === 'build' ? 'btab' : 'ltab'] = part;   // 'life:local' opens a part of a window
+    if ((t === 'records') !== (this.tab === 'records') || !this.recOn) { this.recOn = 1; this.api.wantRecs(t === 'records'); }
     this.tab = t; this.sig = '';
     $('sideTitle').textContent = TAB[t][0]; $('sideIc').innerHTML = `<use href="#i-${TAB[t][1]}"/>`;
     if (this.min) this.fold(false); else this.dock();
@@ -131,8 +138,12 @@ export class Panels {
     if (!this.busy && !this.min) {
       const body = $('sideBody'), focus = document.activeElement;
       const holding = focus && body.contains(focus) && focus.tagName === 'SELECT';
-      const [sig, html] = this.tab === 'archive' ? this.archive(U) : this.tab === 'crews' ? this.crews(U) : this.tab === 'build' ? this.build(U) : this.tab === 'life' ? this.life(U) : this.log(U);
-      if (sig !== this.sig && !holding) { const top = body.scrollTop; body.innerHTML = html(); body.scrollTop = top; this.sig = sig; }
+      const [sig, html] = this.tab === 'records' ? this.records(U) : this.tab === 'archive' ? this.archive(U) : this.tab === 'crews' ? this.crews(U) : this.tab === 'build' ? this.build(U) : this.tab === 'life' ? this.life(U) : this.log(U);
+      if (sig !== this.sig && !holding) {
+        const q = focus && focus.id === 'recQ' ? [focus.selectionStart, focus.selectionEnd] : null, top = body.scrollTop;
+        body.innerHTML = html(); body.scrollTop = top; this.sig = sig;
+        if (q) { const i = $('recQ'); if (i) { i.focus(); i.setSelectionRange(q[0], q[1]); } }   // typing in the search box keeps its place
+      }
       if (this.tab === 'archive') this.archiveLive(U);
     }
     this.card(); this.bcard(); this.ctlBar(U);
@@ -205,6 +216,30 @@ export class Panels {
       };
       if (asleep.length) h += `<div class="sec">Stored in the archive · ${asleep.length}</div>` + asleep.map(p => row(p, capLeft > 0)).join('');
       if (awake.length) h += `<div class="sec">Awake · ${awake.length}</div>` + awake.map(p => row(p, false)).join('');
+      return h;
+    }];
+  }
+  // ---------- the clinic's records: everyone who has lived here, so slow causes can be noticed at all ----------
+  records(U) {
+    const A = this.A, R = A.recs, q = (this.recQ || '').trim().toLowerCase();
+    if (!R) return ['rec-wait', () => '<div class="note">Opening the records…</div>'];
+    return ['rec' + JSON.stringify(R) + '|' + q + '|' + A.names.length, () => {
+      const nm = r => A.names[r.id] || '', work = r => r.wk.length ? WORKS[r.wk[0][0]] || r.wk[0][0] : '';
+      const cond = k => COND[k] ? COND[k].name : k, died = r => r.dead ? `died on day ${r.dday}${WHY[r.why] ? ', ' + WHY[r.why] : r.why.startsWith('ill:') ? ', of an illness' : ''}` : 'alive';
+      const text = r => [nm(r), r.fam, work(r), died(r), ...r.ch.map(cond)].join(' ').toLowerCase();
+      const rows = R.filter(r => r.age >= 0 && (!q || text(r).includes(q)));
+      let h = `<div class="note" style="margin-top:0">Everyone who has lived here, alive or dead: what their working years went on and what the clinic has found in them. Conditions show here once a check-up names them.</div>`;
+      // the pattern a reader would look for: which kind of work ends in which condition
+      const adults = R.filter(r => r.wk.length), works = [...new Set(adults.map(r => r.wk[0][0]))];
+      const known = [...new Set(R.flatMap(r => r.ch))];
+      if (known.length && works.length) {
+        h += `<div class="sec">Conditions by main work</div><table class="rt"><tr><th></th>${known.map(k => `<th>${esc(cond(k))}</th>`).join('')}</tr>${works.map(w => { const g = adults.filter(r => r.wk[0][0] === w); return `<tr><td>${esc(WORKS[w] || w)} <small>${g.length}</small></td>${known.map(k => { const n = g.filter(r => r.ch.includes(k)).length; return `<td>${n ? Math.round(n / g.length * 100) + '%' : '-'}</td>`; }).join('')}</tr>`; }).join('')}</table>`;
+      }
+      const dead = R.filter(r => r.dead), causes = {};
+      for (const r of dead) { const k = WHY[r.why] || (r.why.startsWith('ill:') ? 'of an illness' : 'other'); causes[k] = (causes[k] || 0) + 1; }
+      if (dead.length) h += `<div class="note">${dead.length} ${dead.length === 1 ? 'person has' : 'people have'} died here: ${Object.entries(causes).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${n} ${k}`).join(', ')}.</div>`;
+      h += `<input id="recQ" class="srch" placeholder="Search by name, family, work, condition or cause" value="${esc(this.recQ || '')}" aria-label="Search the records">`;
+      h += rows.map(r => `<div class="rec${r.dead ? ' dead' : ''}" data-act="person" data-id="${r.id}"><div class="row2"><b class="grow">${esc(nm(r))}</b><small>${r.age} · ${esc(died(r))}</small></div><div class="sub">${r.wk.length ? r.wk.map(([k, y]) => `${esc(WORKS[k] || k)} ${y} ${y === 1 ? 'year' : 'years'}`).join(', ') : r.age < 13 ? 'A child' : 'No crew work yet'}${r.gen ? ` · born here, generation ${r.gen}` : ''}</div>${r.ch.length || r.hurt || r.ill ? `<div class="chips">${r.ch.map(k => `<span class="chip b">${esc(cond(k))}</span>`).join('')}${r.hurt ? `<span class="chip m">${r.hurt} lasting ${r.hurt === 1 ? 'injury' : 'injuries'}</span>` : ''}${r.ill ? `<span class="chip">${r.ill} ${r.ill === 1 ? 'illness' : 'illnesses'}</span>` : ''}</div>` : ''}</div>`).join('') || '<div class="note">Nobody matches.</div>';
       return h;
     }];
   }

@@ -13,6 +13,7 @@ import { Pathfinder } from '../core/path.js';
 import { Sim } from '../core/sim.js';
 import { DAY_TICKS, HOUR, ACT } from '../core/consts.js';
 import { findPlot, built, capacity, LANDER_KW } from '../core/build.js';
+import { laidUp } from '../core/body.js';
 import { sizeFor, DEEP_SUN, stoneLeft } from '../core/work.js';
 import { ruleOk } from '../core/lives.js';
 import { mealsInStore, kitchenOnly } from '../core/food.js';
@@ -45,7 +46,7 @@ export function botBuild(sim) {
   const ill = S.cols.filter(c => !c.dead && toIsolate(c)).length, clinic = S.projects.some(p => p.type === 'clinic' && p.done);
   if (clinic && ill >= 2 && !S.care.iso) sim.command({ op: 'iso', v: true }); else if (S.care.iso && !ill) sim.command({ op: 'iso', v: false });
   // short of power while someone is ill or hurt: the clinic goes up the list, ahead of everything else
-  const patients = S.cols.some(c => !c.dead && (c.cap || c.bd.ill.some(q => q.st === 1 || q.st === 2)));
+  const patients = S.cols.some(c => !c.dead && ((c.cap && laidUp(c)) || c.bd.ill.some(q => q.st === 1 || q.st === 2)));
   if (patients) for (const p of S.projects.filter(q => !q.gone && q.done && q.type === 'clinic' && !q.powered && !q.shut)) {
     for (let k = 0; k < 12 && !p.powered; k++) { const i = S.projects.indexOf(p), up = S.projects.slice(0, i).filter(q => !q.gone); if (up.length <= 1 || ['clinic', 'shelter', 'solar'].includes(up[up.length - 1].type)) break; sim.command({ op: 'projMove', id: p.id, d: -1 }); }
   }

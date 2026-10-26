@@ -42,7 +42,7 @@ export const TYPES = {
   plant: { name: 'Feedstock plant', min: 5, max: 9, size: [5, 6], use: 'Tanks that turn biomass and crushed stone into feedstock, which the fabricator prints new people from. They take their loads from the yard and need power' },
   cellar: { name: 'Root cellar', min: 4, max: 10, size: [5, 6], below: true, use: 'A cool room dug under the ground, where the larder keeps far longer. Needs no power' },
   mine: { name: 'Mine', min: 4, max: 10, size: [5, 6], below: true, use: 'Galleries dug along a seam of metal ore. A mining crew brings the ore up, and the workshop smelts it into metal for parts. It is dug and shored with stone and timber alone, and needs a little power for its lamps, which it takes before any other building' },
-  pit: { name: 'Stone pit', min: 4, max: 10, size: [6, 6], open: true, use: 'An open pit cut down into stony ground. Once the boulders and outcrops near camp are used up, the quarry crew cuts stone here, for years' },
+  pit: { name: 'Stone pit', min: 4, max: 10, size: [6, 6], open: true, ground: true, use: 'An open pit cut down into stony ground. Once the boulders and outcrops near camp are used up, the quarry crew cuts stone here, for years' },
   burrow: { name: 'Dug quarters', min: 5, max: 12, size: [6, 8], below: true, use: 'Bunks dug into the ground: the earth keeps them warm in Deep cold, and fire and storms can’t reach them. A little power for light' },
   test: { name: 'Load test', fixed: true },
 };

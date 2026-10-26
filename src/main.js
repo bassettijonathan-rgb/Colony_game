@@ -62,7 +62,7 @@ function ensureView(W) {
   if (!A.view) {
     A.view = new View(app, W);
     if (!A.view.G || !A.view.ok) { loader('This needs a browser with WebGL 2. ' + (A.view.G ? 'A shader did not compile.' : ''), 1); $('ldmsg').id = 'nogl'; return false; }
-    A.panels = new Panels(A, { cmd, select, toast, pickArea, land, siteSelect, startPlace, showProject, useSug });
+    A.panels = new Panels(A, { cmd, select, toast, pickArea, land, siteSelect, startPlace, showProject, useSug, wantRecs: on => { if (A.sim) A.sim.send({ t: 'recs', on }); if (!on) A.recs = null; } });
     A.stats = new Stats(A);
     A.news = new News(A, { select, showProject, setSpeed, toast, when, flyTo: (x, y) => { A.view.flyTo(x, y, Math.max(A.view.cam.z, 18)); A.follow = false; }, tab: t => A.panels.setTab(t) });
     A.guide = new Guide(A, { tab: t => A.panels.setTab(t) });
@@ -142,6 +142,7 @@ function onMarks(m) {
 function flushRetype() { if (A.retype.length && A.view && A.W && performance.now() - (A.retypeAt || 0) > 1500) { A.retypeAt = performance.now(); A.view.terrain.retype(A.W, A.retype); A.view.mmBase = A.view.minimapBase(); A.retype = []; } }
 function onState(m) {
   if (A.phase !== 'colony') return;
+  if (m.recs) A.recs = m.recs;
   if (m.roster) setRoster(m.roster);
   A.ui = m.ui;
   if (m.hist) A.hist.push(...m.hist);
@@ -269,7 +270,7 @@ function startPlace(type, w, h, name) {
   if (A.phase !== 'colony' || !TYPES[type]) return;
   endPick(); select(-1);
   A.place = { type, w: w || 0, h: h || 0, fixed: !!w, name: name || '', x: null, y: null, side: 0, turned: false, check: null, locked: false, seq: 0, wasBelow: !!(A.view && A.view.below) };
-  if (TYPES[type].below) belowView(true);
+  if (TYPES[type].below || TYPES[type].ground) belowView(true);   // the Seed's soundings show where to dig
   $('placeTxt').textContent = w ? `Move the ${name || TYPES[type].name} where it should go and click to put it down` : `Drag on the map to draw the ${TYPES[type].name.toLowerCase()}: at least ${TYPES[type].min} by ${TYPES[type].min} tiles, at most ${TYPES[type].max} long`;
   // the Seed suggests a size for what the colony needs: it follows the pointer and a click puts it down; a drag still draws any size
   if (!w) cmd('sizeFor', { type }).then(r => {
@@ -283,7 +284,7 @@ function startPlace(type, w, h, name) {
   $('plKeep').checked = false; $('plName2').value = name || ''; delete $('plName2').dataset.auto;
   A.panels.planCard(null);
 }
-function endPlace() { if (A.place && TYPES[A.place.type].below && !A.place.wasBelow) belowView(false); A.place = null; $('placeHint').hidden = true; app.classList.remove('placing'); A.panels.planCard(null); }
+function endPlace() { if (A.place && (TYPES[A.place.type].below || TYPES[A.place.type].ground) && !A.place.wasBelow) belowView(false); A.place = null; $('placeHint').hidden = true; app.classList.remove('placing'); A.panels.planCard(null); }
 function placeRect(x, y, w, h) {
   const P = A.place; if (!P) return;
   if (P.x === x && P.y === y && P.w === w && P.h === h) return;
@@ -426,6 +427,7 @@ function hookInput() {
     else if (e.code === 'KeyC' && colony) A.panels.toggleTab('crews');
     else if (e.code === 'KeyL' && colony) A.panels.toggleTab('log');
     else if (e.code === 'KeyG' && colony) A.panels.toggleTab('life');
+    else if (e.code === 'KeyK' && colony) A.panels.toggleTab('records');
     else if (e.code === 'KeyT' && colony) A.stats.show();
     else if (e.code === 'KeyB' && colony) A.panels.toggleTab('build');
     else if (e.code === 'KeyR' && A.place) turnDoor();

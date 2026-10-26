@@ -10,6 +10,7 @@ import { GIVEN, TRAITS, OPP } from './founders.js';
 import { remember, die } from './life.js';
 import { mealsInStore, eat } from './food.js';
 import { planCrews, autoCrew } from './work.js';
+import { printBody, childBody, migrateAging, bodyYears, chronicDay, sleepDay, adjustDay, checkups } from './aging.js';
 
 // stages of a life: 0 in the nursery, 1 small, 2 a child, 3 an apprentice, 4 an adult, 5 an elder
 export const NURSERY = 2, SMALL = 6, APPRENTICE = 13, ADULT = 16, ELDER = 65, RETIRE = 72, COUPLE = 18;
@@ -34,12 +35,14 @@ export function printedBody(sim, c) {
   const y = 26 + (c.look % 997) / 997 * 8;
   c.born = now(sim) - y * YEAR_DAYS; c.life = stageAt(y);
   Object.assign(c, { native: false, gen: 0, par: [], kids: [], partner: -1, owe: 0, retired: false, pr: 0 });
+  printBody(sim, c);
 }
 // saves from before lives: everyone was printed at about thirty when they woke
 export function migrateLives(sim) {
   const S = sim.S;
   if (!S.gen) S.gen = newGen();
   for (const c of S.cols) if (c.born == null) { const y = 26 + (c.look % 997) / 997 * 8; c.born = (c.bday ?? 1) - 1 - y * YEAR_DAYS; c.life = 4; Object.assign(c, { native: false, gen: 0, par: [], kids: [], partner: -1, owe: 0, retired: false, pr: 0 }); }
+  migrateAging(sim);
 }
 
 // ---------- once a day, at four in the morning ----------
@@ -50,11 +53,16 @@ export function livesDay(sim) {
     if (st !== was) { c.life = st; grewUp(sim, c, was, st, y); }
     if (c.dead) continue;
     if (!c.retired && c.life >= 4 && y >= RETIRE) retire(sim, c);
-    // the old: a chance of dying of age that doubles about every seven years, from fifty on
-    if (y >= 50 && rnd() < .00004 * Math.exp(.095 * y) / YEAR_DAYS) { die(sim, c, 'old'); continue; }
+    // the body over a lifetime: last night's sleep, a printed part settling in, the years and what they have
+    // earned (every ten days, a few people each day), and anything serious coming to a head
+    sleepDay(c); adjustDay(sim, c);
+    if ((sim.day + c.id) % 10 === 0) bodyYears(sim, c);
+    if (chronicDay(sim, c)) continue;
+    if (c.crew >= 0 && worker(c)) { const k = S.crews[c.crew].work; (c.wk || (c.wk = {}))[k] = (c.wk[k] || 0) + 1; }   // for the clinic's records: what their days went on
     skillsDay(sim, c);
     if (c.life === 0) feedInfant(sim, c);
   }
+  checkups(sim);
   couples(sim, live.filter(c => !c.dead));
   tanks(sim);
   milestones(sim);
@@ -228,7 +236,7 @@ export function birth(sim, e) {
   const p = { fid: -1, name: nameFor(S, a, b, G.born), age: 0, trade: 'Born here', skills, traits: traitsFor(a, b), mem: [], look: lookFor(a, b), knew: [] };
   const c = sim.spawn(p, sim.cargoTile, ACT.INDOORS);
   Object.assign(c, { fresh: 0, born: now(sim), life: 0, native: true, gen: Math.max(a.gen, b.gen) + 1, par: [a.id, b.id], kids: [], partner: -1, owe: 0, retired: false, pr: 0, bed: 19.5 + rnd() * .5, tru: 70, str: 0, fat: 0, plan: 'nursery', job: 'nursery' });
-  c.mem = [{ d: sim.day, m: 'Born on this world.' }];
+  c.mem = [{ d: sim.day, m: 'Born on this world.' }]; c.bd.marks = []; c.gap = 0; childBody(c, a, b);
   for (const q of [a, b]) {
     for (const i of q.kids) { const s = S.cols[i]; if (s && !s.dead && !c.ties[s.id]) { pair(c, s, 'sibling'); pair(s, c, 'sibling'); c.ties[s.id].f = s.ties[c.id].f = 50; } }
     q.kids.push(c.id); pair(c, q, 'parent'); pair(q, c, 'child'); c.ties[q.id].f = q.ties[c.id].f = 80; c.ties[q.id].a = q.ties[c.id].a = 60;
