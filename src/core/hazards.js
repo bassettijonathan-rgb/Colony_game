@@ -140,6 +140,8 @@ export function fireStep(sim) {
   for (const c of S.cols) {
     if (c.dead || hidden(c.act) || !H.fire[c.tile] || c.burnT > S.tick) continue;
     c.burnT = S.tick + HOUR;
+    // a firefighter sees it coming and steps back, most of the time
+    if (c.fight >= 0 && c.act !== ACT.BED && rnd() < .75) { const t = fightSpot(sim, c.tile); if (t !== c.tile) { c.x = t % MAP + .5; c.y = (t / MAP | 0) + .5; c.tile = t; } continue; }
     const ws = injure(sim, c, 'fire', .15 + rnd() * .45, 'in a fire');
     sim.log(`${c.name} was caught by the flames: ${ws.map(w => woundText(w).toLowerCase()).join(', and ')}.`, 'bad', { e: 'hurt', lvl: 1, who: c.id, title: 'Burned' });
     remember(sim, c, 'Got burned in a fire.');
@@ -191,7 +193,8 @@ function fireCrews(sim) {
   if (!targets.length && !bs.length) { if (H.alarm) endAlarm(sim); return; }
   if (!H.alarm) { H.alarm = S.tick; spend(sim, 2, 'fire'); relive(sim, ['fire']); sim.log('Fire near the camp: everyone who can is going to beat it out.', 'bad', { e: 'alarm', lvl: 1, title: 'All hands to the fire' }); }
   const want = Math.min(12, 2 + Math.ceil((targets.length + bs.length * 6) / 4));
-  const able = c => !c.dead && !c.down && !c.care && !c.ctl && c.carried < 0 && !(c.cap && laidUp(c)) && c.act !== ACT.WAKE && !(c.alone > 0) && !c.iso;
+  // the burned and the hurting stay back: a second burn on top of the first is how firefighters die
+  const able = c => !c.dead && !(c.bd && c.bd.pain > .25) && !c.down && !c.care && !c.ctl && c.carried < 0 && !(c.cap && laidUp(c)) && c.act !== ACT.WAKE && !(c.alone > 0) && !c.iso;
   const spots = [...bs.map(p => sim.doorOf(p)), ...targets];
   const dist = (c, t) => Math.hypot(c.x - (t % MAP), c.y - (t / MAP | 0));
   let on = S.cols.filter(c => c.fight >= 0 && able(c));
@@ -227,7 +230,7 @@ export function beat(sim, c) {
   for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) { const t = (y + dy) * MAP + x + dx; if (H.fire[t] && rnd() < .3 * skill) { const left = H.fire[t]; delete H.fire[t]; if (left < 4) burnt(sim, t); } }
   for (const p of S.projects) if (!p.gone && p.fire && inRect(p, x, y, 2) && rnd() < .12 * skill) putOut(sim, p, `${c.name} and the others beat it out`);
   c.fat = Math.min(100, c.fat + 1.5);
-  if (rnd() < (c.traits.includes('reckless') ? .03 : .012)) { const ws = injure(sim, c, 'fire', .1 + rnd() * .3, 'fighting a fire'); sim.log(`${c.name} was burned fighting the fire: ${ws.map(w => woundText(w).toLowerCase()).join(', and ')}.`, 'bad', { who: c.id }); scar(sim, c, 'fire', 25, 'Was burned fighting a fire.'); }
+  if (rnd() < (c.traits.includes('reckless') ? .015 : .006)) { const ws = injure(sim, c, 'fire', .1 + rnd() * .3, 'fighting a fire'); sim.log(`${c.name} was burned fighting the fire: ${ws.map(w => woundText(w).toLowerCase()).join(', and ')}.`, 'bad', { who: c.id }); scar(sim, c, 'fire', 25, 'Was burned fighting a fire.'); }
 }
 
 // ---------- floods ----------
