@@ -68,14 +68,14 @@ export class NbPanel {
     const where = P.st === 'come' ? `on their way to ${P.tname}` : P.st === 'loot' ? `at ${P.tname}` : P.st === 'held' ? 'gone, leaving their hurt behind' : P.home ? 'the hurt are walking home' : 'leaving';
     const took = Object.entries(P.took).filter(([, n]) => n > 0).map(([k, n]) => k === 'meals' ? `${Math.round(n)} meals` : `${Math.round(n)} loads of ${k === 'rare' ? 'rare earths' : k}`);
     let h = `<div class="box nbp raid"><b>Raiders from ${esc(place)}</b> <span class="note" style="margin:0">· ${where}</span>
-      <div class="note" style="margin:4px 0 6px">${WHY[P.why] || ''}${took.length ? ` They have taken ${list(took)}.` : ''}</div>
+      <div class="note" style="margin:4px 0 6px">${on ? WHY[P.why] || '' : ''}${took.length ? ` They ${on ? 'have taken' : 'took'} ${list(took)}.` : on ? '' : ' They took nothing.'}</div>
       <div class="chips">${P.people.map(p => `<span class="chip${p.dead ? ' bad' : ''}"><i class="dot" style="background:rgb(${p.coat.join(',')})"></i>${esc(p.name)}${p.dead ? ' · dead' : p.down ? ' · down' : p.load ? ' · carrying' : ''}</span>`).join('')}</div>`;
     if (on) {
       const n = N.guard.length + N.watch.filter(id => !N.guard.includes(id)).length;
       h += `<div class="sec">Who meets them</div><div class="seg">${[['guard', `The guard (${n})`], ['all', 'Everyone who can fight'], ['hide', 'Stay inside']].map(([m, t]) => `<button data-act="nbraid" data-m="${m}" class="${P.mode === m ? 'on' : ''}">${t}</button>`).join('')}</div>
         <div class="note">${MODE[P.mode]}${P.mode === 'guard' && !n ? ' Nobody is on the guard yet, so nobody will go.' : ''}</div>`;
     }
-    if (P.st === 'held') h += `<div class="ask"><b>${P.people.filter(p => p.down && !p.dead).map(p => esc(p.name)).join(', ')}: left behind, hurt.</b> Treated, they go home when they can walk, and their people will hear of it. Sent away now, they go as they are, and their people will hear of that too.<div class="row2"><button class="btn go" data-act="nbcapt" data-v="1">Treat them, then send them home</button><button class="btn" data-act="nbcapt" data-v="0">Send them away now</button></div></div>`;
+    if (P.st === 'held') h += `<div class="ask"><b>${P.people.filter(p => p.down && !p.dead).map(p => esc(p.name)).join(', ')}: left behind, hurt.</b> Treated, they go home when they can walk, and their people will hear of it. Sent away now, they go as they are, and their people will hear of that too.<div class="row2"><button class="btn go" data-act="nbcapt" data-v="1">Treat and send home</button><button class="btn" data-act="nbcapt" data-v="0">Send away now</button></div></div>`;
     return h + '</div>';
   }
   // the guard: who goes out when raiders come
@@ -88,7 +88,7 @@ export class NbPanel {
   }
   place(q, P) {
     const here = P && P.i === q.i, bar = Math.round((q.trust + 100) / 2);
-    return `<div class="box"><b>${esc(q.place)}</b>${here ? ' <span class="chip g">in camp</span>' : ''}
+    return `<div class="box"><b>${esc(q.place)}</b>${here ? (P.kind === 'raid' ? ' <span class="chip">raiding</span>' : ' <span class="chip g">in camp</span>') : ''}
       <div class="note" style="margin:2px 0 4px">${esc(cap1(q.folk))}: about ${q.pop} people, ${q.km} km to the ${q.dir}, by their own account.</div>
       <div class="sup"><div class="bar"><u style="width:${bar}%"></u></div><span>${esc(cap1(q.word))}.</span></div>
       <div class="note">Met on day ${q.met}; ${q.visits} visit${q.visits === 1 ? '' : 's'}, ${q.trades} trade${q.trades === 1 ? '' : 's'}${q.joined ? `, ${q.joined} stayed` : ''}. They bring ${list(q.offers.map(gname))}${q.wants.length ? `, and want ${list(q.wants.slice(0, 4).map(gname))} most` : ''}.${q.taught ? ` They have taught the colony ${q.taught} thing${q.taught === 1 ? '' : 's'}.` : ''}${q.left ? ` They know ${q.left} more about this land that the colony doesn’t.` : ''}${q.hungry ? ' They are short of food this year.' : ''}${q.raids ? ` They have raided the colony ${q.raids === 1 ? 'once' : q.raids + ' times'}.` : ''}</div></div>`;

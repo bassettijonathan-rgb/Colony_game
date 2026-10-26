@@ -644,7 +644,7 @@ export class Panels {
     $('cJob').textContent = (flags & 16 ? 'Dead' : ACT_NAME[r[0]] || '') + (extra.length && !(flags & 16) ? ' · ' + extra.join(', ') : '');
     { const cc = $('cCtl'), mine = U.ctl === i;
       cc.hidden = U.mode !== 'landfall' || !!(flags & 16); cc.textContent = mine ? 'Release' : 'Take charge'; cc.classList.toggle('on', mine); cc.disabled = !mine && !U.emerg;
-      { const g = $('cGrd'), on = !!(flags & 524288); g.hidden = U.mode !== 'landfall' || !!(flags & (16 | 65536 | 131072)) || r[8] < 16; g.textContent = on ? 'On the guard' : 'Guard'; g.classList.toggle('on', on); }
+      { const g = $('cGrd'), on = !!(flags & 524288); g.hidden = U.mode !== 'landfall' || !!(flags & (16 | 65536 | 131072)) || r[8] < 16; g.textContent = on ? '✓ Guard' : 'Guard'; g.title = on ? 'On the guard: they go out to meet raiders. Click to take them off it' : 'Put them on the guard: they go out to meet raiders'; g.classList.toggle('on', on); }
       cc.title = mine ? 'Hand them back to their crew (Esc)' : U.emerg ? `Direct them yourself, for now: ${EM_TXT[U.emerg]}. Right-click to give orders` : 'Only in an emergency: a fire near the camp, someone down or bleeding, a flood, or someone freezing'; }
     const sig = JSON.stringify([i, r, d, A.names.length, this.ctab]);
     if (sig !== this.cardSig) {

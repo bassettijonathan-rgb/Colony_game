@@ -130,6 +130,8 @@ const ALERTS = {
   food: ['warn', '', 'Foragers bring in wild food the Life window (G) shows is safe; fields feed more once they are made and sown.'],
   cold: ['bad', '', 'They need to get indoors or to the fire. The very cold work slower and have accidents, and can die if it lasts.'],
   crisis: ['bad', '', 'A clinic bed and a medic sitting with them give them the best chance.'],
+  raid: ['bad', '', 'Choose who meets them in the Neighbours window (V): the guard, everyone who can fight, or nobody.'],
+  captives: ['warn', '', 'Treat them and send them home, or send them away now: the Neighbours window (V).'],
   fire: ['bad', '', 'Everyone who can is beating it out. Rain puts it out; a fire left alone spreads downwind.'],
   bfire: ['bad', '', 'It is out of use while it burns, and every minute of it means more repairs.'],
   flooded: ['warn', '', 'Out of use until the water goes down, then the build crews repair them.'],
@@ -278,6 +280,9 @@ export class News {
     const named = (ids, one, many) => ids.length === 1 ? `${A.names[ids[0]]} ${one}` : `${ids.length} ${many}`;
     const add = (key, title, aims, detail) => list.push({ key, title, aims, detail });
     const eaters = U.alive + U.seed.queue.length + (U.seed.printing ? 1 : 0), days = eaters ? U.food / eaters : 99;
+    const R = U.nb && U.nb.party, rq = R && U.nb.list.find(q => q.i === R.i);
+    if (R && R.kind === 'raid' && (R.st === 'come' || R.st === 'loot')) add('raid', `Raiders from ${rq ? rq.place : 'outside'} ${R.st === 'come' ? 'are coming' : 'are at ' + R.tname}`, [{ tab: 'nb' }]);
+    if (R && R.kind === 'raid' && R.st === 'held') add('captives', 'Hurt raiders left behind', [{ tab: 'nb' }]);
     if (U.seed.feed > 0 && !U.seed.queue.length && !U.seed.printing && U.seed.stored > 0) add('print', ALERTS.print[1], [{ tab: 'archive' }]);
     const F = U.F, Y = U.year, usable = F ? F.usable : U.food, fdays = eaters ? usable / eaters : 99;
     if (eaters && fdays < 10) add('food', usable < 1 ? 'Nothing left to eat' : `Food for ${Math.max(1, Math.floor(fdays))} day${Math.floor(fdays) === 1 ? '' : 's'}`, [{ tab: 'life' }], usable < 1 ? 'Nobody has had a meal since the food ran out.' : U.food >= 1 ? `${Math.floor(U.food)} meals of it are the lander’s rations.` : '');
