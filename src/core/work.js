@@ -167,11 +167,11 @@ export function crewNeeds(sim) {
   // the small children first: nobody leaves them alone
   const small = people.filter(c => c.life <= 1).length; add('care', Math.ceil(small / 4));
   const days = mealsInStore(sim) / Math.max(1, people.length), tested = F.life.some((L, o) => L.tested && sim.kinds[o].food);
+  // the fields first: their harvest is food too, and quicker to bring in than anything found (one farmer for every
+  // two fields to sow, harvest or clear; one to keep an eye on the rest)
+  const fields = has('field'), toDo = fields.filter(p => p.crop && (p.crop.st === 'ripe' || p.crop.st === 'dead' || (p.crop.st === 'bare' && cropPlan(sim, p)))).length;
+  if (fields.length) add('farm', Math.max(1, Math.ceil(toDo / 2)));
   add('forage', days < 3 ? Math.ceil(people.length / 4) : days < 8 ? Math.max(1, Math.ceil(people.length / 8)) : 1);
-  // the last weeks before Deep cold: enough put by to see the cold through, when nothing grows and little can be found
-  // and the thaw after it, until the first crops ripen: the hungry weeks
-  const ahead = untilDeep(sim.cal); if (ahead > 0 && ahead <= 40 && days < ahead + 20 + THAW_GAP) add('forage', Math.ceil(people.length / (days < ahead + 20 ? 2 : 3)));
-  { const doy = doyOf(sim.cal); if (seasonOf(doy) === 0 && doy < 25 && days < 12) add('forage', Math.ceil(people.length / 3)); }
   if (tested || F.firstHarvest || F.vats.length) add('kitchen', Math.max(1, Math.ceil(people.length / 10)) + (people.some(c => c.hungry) && kitchenOnly(sim) > 4 ? 1 : 0));
   // a working feedstock plant eats biomass and stone every half day: a quarry crew for as long as it runs, and another
   // forager while biomass is short. New people come from it, so it comes before the rest
@@ -182,7 +182,6 @@ export function crewNeeds(sim) {
   // or rare earths, when a project waits on them and a deep seam carries them
   const rareWant = (Y.rare || 0) < 10 && active(S).some(p => (p.need.rare || 0) > (p.got.rare || 0)) && mines.some(p => p.rare > 0);
   if (mines.length && (metal < METAL_WANT / 3 || rareWant)) add('mine', Math.min(mines.reduce((a, p) => a + capOf(p).faces, 0), n >= 10 ? 2 : 1));
-  const fields = has('field').length; add('farm', Math.ceil(fields / 2));
   if (S.stakes.length < STAKES_ALL) add('survey', n >= 8 ? 2 : n >= 4 ? 1 : 0);
   // stone and timber for the projects: the builders cut their own only when the yard runs dry
   for (const k of ['stone', 'timber']) { const short = rawWanted(S, k) - (Y[k] || 0); if (short > 8 && active(S).length) add(k === 'stone' ? 'quarry' : 'timber', short > 25 && n >= 10 ? 2 : 1); }
@@ -197,6 +196,14 @@ export function crewNeeds(sim) {
   if (any('school') && pupils) add('teach', Math.ceil(pupils / PUPILS));
   if (any('watch') && n >= 8) add('watch', n >= 40 ? 3 : 2);
   if (any('library') && n >= 10 && libraryWork(S)) add('keep', n >= 40 ? 2 : 1);
+  // the last weeks before Deep cold: enough put by to see the cold through, when nothing grows and little can be found
+  // and the thaw after it, until the first crops ripen: the hungry weeks. These foragers come last, from the hands
+  // that would otherwise be building, so the mines, the workshop and the yard keep going (and never more than two
+  // workers in five)
+  let more = 0; const push = k => { more = Math.max(more, Math.min(Math.ceil(n * .4), k)); };
+  const ahead = untilDeep(sim.cal); if (ahead > 0 && ahead <= 40 && days < ahead + 20 + THAW_GAP) push(Math.ceil(people.length / (days < ahead + 20 ? 2 : 3)));
+  { const doy = doyOf(sim.cal); if (seasonOf(doy) === 0 && doy < 25 && days < 12) push(Math.ceil(people.length / 3)); }
+  const fo = need.find(q => q[0] === 'forage'); if (more > fo[1]) need.push(['forage', more - fo[1]]);   // a second entry, at the back of the queue
   return { need, n };
 }
 // everything that has gone into a project so far, the loads being fitted now included: all of it comes back
