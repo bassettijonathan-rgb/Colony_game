@@ -216,8 +216,9 @@ export function mindTick(sim, c) {
   }
   if (working && c.fat > 70) g += .3 + 1.2 * (c.fat - 70) / 30;
   if (working && c.worked > 11 * HOUR) g += 1.5;
-  if (night && !asleep && dCamp > 25) { g += has('anxious') ? 4.5 : has('reckless') ? 1.5 : 3; c.dark = 1; }
-  if (!asleep && dCamp > 20 && !anyoneNear(S, c, 8)) g += has('sociable') ? 1.6 : has('solitary') ? .25 : .8;
+  const away = !asleep && dCamp > 20 ? fromBase(sim, c, dCamp) : 0;   // out in the wild, not just at the far end of a grown camp
+  if (night && away > 25) { g += has('anxious') ? 4.5 : has('reckless') ? 1.5 : 3; c.dark = 1; }
+  if (away > 20 && !anyoneNear(S, c, 8)) g += has('sociable') ? 1.6 : has('solitary') ? .25 : .8;
   if (a === ACT.EAT) { const n = countNear(S, c, 4.5); if (n >= 2) rel += has('sociable') ? 2.4 : has('solitary') ? 1 : 1.6; if (n > 14 && has('solitary')) g += .8; }
   for (const id in c.ties) {
     const t = c.ties[id], o = S.cols[id]; if (!t.k || !o || o.dead || asleep) continue;
@@ -340,6 +341,16 @@ function bonds(sim, c, dt, working) {
       }
     }
   }
+}
+
+// how far someone is from the colony: from the landing or from the nearest building on the surface, whichever is
+// closer, so a grown camp counts as camp all the way out to its last dormitory
+function fromBase(sim, c, dCamp) {
+  const S = sim.S, key = S.projects.length + ':' + S.rv;
+  if (sim._base?.key !== key) sim._base = { key, rects: S.projects.filter(p => p.done && !p.gone && !p.below).map(p => [p.x, p.y, p.x + p.w, p.y + p.h]) };
+  let d = dCamp;
+  for (const [x0, y0, x1, y1] of sim._base.rects) { const dx = Math.max(x0 - c.x, 0, c.x - x1), dy = Math.max(y0 - c.y, 0, c.y - y1); if (dx < d && dy < d) d = Math.min(d, Math.hypot(dx, dy)); }
+  return d;
 }
 
 // ---------- once a day, before dawn: how the day went, and what it did to trust ----------
