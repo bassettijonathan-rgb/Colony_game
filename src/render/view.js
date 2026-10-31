@@ -213,7 +213,7 @@ export class View {
         if (!p || !vis(p.x + p.w / 2, p.y + p.h / 2, Math.max(p.w, p.h))) continue;
         const [X, Y, pose] = spotInside(p, act, i);
         if (!near) { drawDot(dc, arts[i], X, Y, r); continue; }
-        dc.save(); dc.translate(X, Y); dc.scale(.62, .62);
+        dc.save(); dc.translate(X, Y); if (pose === 'sleep') dc.scale(.62, .62);   // sitting and working at full size, as outdoors; asleep, small enough to fit the bunk
         drawPerson(dc, arts[i], 0, 0, pose === 'sleep' ? (p.w >= p.h ? 0 : -Math.PI / 2) : -Math.PI / 2, 0, pose === 'sleep' ? ACT.BED : pose === 'sit' ? ACT.EAT : ACT.IDLE, F.time);
         dc.restore();
       }
