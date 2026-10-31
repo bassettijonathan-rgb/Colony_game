@@ -214,6 +214,7 @@ export class Sim {
   unblock(p) { p.blocked = false; this.reground(p); }
   reground(p) {
     const W = this.W, S = this.S, on = p.blocked;
+    this.spotCache.clear();   // a plot built against another takes that side's work spots from it
     for (let y = p.y; y < p.y + p.h; y++) for (let x = p.x; x < p.x + p.w; x++) { const t = y * MAP + x; W.cost[t] = on ? 0 : W.cost0[t]; }
     this.P.update(p.x, p.y, p.x + p.w - 1, p.y + p.h - 1); this.home = this.P.field('home', this.ring);
     if (!on) return;

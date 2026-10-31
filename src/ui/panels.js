@@ -499,7 +499,7 @@ export class Panels {
     const c = P.check, T = TYPES[P.type];
     $('plName').textContent = T.name; $('plPic').innerHTML = icon(tic(P.type));
     $('plMeta').textContent = `${P.w} × ${P.h} tiles${doorless(T) ? '' : T.below ? ` · stairs on the ${SIDE[P.side]} side` : ` · door on the ${SIDE[P.side]} side`}`;
-    let h = '';
+    let h = `<div class="note" style="margin:0 0 6px">${P.fixed ? 'Drag it on the map to move it.' : 'Drag its edges or corners on the map to change the size, or its middle to move it.'} R rotates it.</div>`;
     if (!c.ok) h += `<div class="pw bad">${esc(c.why)}</div>`;
     else if (c.warn) h += `<div class="pw">${esc(c.warn)}</div>`;
     { const hd = holds(P.type, c.cap); h += `<div class="note" style="margin:8px 0 4px">${esc(T.use)}.${hd ? ` It holds ${esc(hd)}.` : ''}</div>`; }

@@ -188,8 +188,9 @@ export function billOf(S, type, w, h, ground) {
 export const doorOf = (x, y, w, h, side) => side === 0 ? { x: x + (w >> 1), y: y - 1 } : side === 1 ? { x: x + w, y: y + (h >> 1) } : side === 2 ? { x: x + (w >> 1), y: y + h } : { x: x - 1, y: y + (h >> 1) };
 export function facing(W, x, y, w, h) { const dx = W.land.x - (x + w / 2), dy = W.land.y - (y + h / 2); return Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 1 : 3) : (dy > 0 ? 2 : 0); }
 const inRect = (x, y, r, m) => x >= r.x - m && x < r.x + r.w + m && y >= r.y - m && y < r.y + r.h + m;
-// what a tile is too close to, if anything: the camp keeps its own ground
-export function reservedAt(sim, x, y, m = 1, skip = -1, below = false) {
+// what a tile is too close to, if anything: the camp keeps its own ground. m is the gap kept from the camp's own
+// places, pm the gap from other buildings (0: wall to wall is fine, but never over a door)
+export function reservedAt(sim, x, y, m = 1, skip = -1, below = false, pm = m) {
   const W = sim.W, L = W.land, s = W.site;
   if (below) { const lv = below === true ? 1 : below; for (const p of sim.S.projects) if (!p.gone && p.below && (p.lvl || 1) === lv && p.id !== skip && inRect(x, y, p, m)) return p.name; return ''; }
   for (const p of sim.S.projects) if (!p.gone && p.below && p.id !== skip && p.door && Math.abs(x - p.door.x) <= m && Math.abs(y - p.door.y) <= m) return `the way down to ${p.name}`;
@@ -197,10 +198,13 @@ export function reservedAt(sim, x, y, m = 1, skip = -1, below = false) {
   if (Math.hypot(x + .5 - s.fire.x, y + .5 - s.fire.y) < 3 + m) return 'the cook fire';
   if (Math.hypot(x + .5 - s.cargo.x - .5, y + .5 - s.cargo.y - .5) < 1.5 + m) return "the Seed's cargo door";
   if (inRect(x, y, s.yard, m)) return 'the yard';
-  for (const p of sim.S.projects) if (!p.gone && !p.below && p.id !== skip && p.w && inRect(x, y, p, m)) return p.type === 'shelter' ? 'the shelter' : p.name;
+  for (const p of sim.S.projects) if (!p.gone && !p.below && p.id !== skip && p.w && inRect(x, y, p, pm)) return p.type === 'shelter' ? 'the shelter' : p.name;
+  for (const p of sim.S.projects) if (!p.gone && !p.below && p.id !== skip && p.door && x === p.door.x && y === p.door.y) return `the door of ${p.type === 'shelter' ? 'the shelter' : p.name}`;
   return '';
 }
-export function checkPlot(sim, type, x, y, w, h, side, lvl) {
+// gap: the tiles kept clear around other buildings. The player may build wall to wall (0); the bot and the Seed's
+// own suggestions keep a path around everything (1).
+export function checkPlot(sim, type, x, y, w, h, side, lvl, gap = 1) {
   const W = sim.W, Ty = TYPES[type], bad = [], out = { ok: false, why: '', bad, door: null };
   if (!Ty || Ty.fixed || (Ty.story && !(sim.S.story && sim.S.story.unlock.includes(type)))) { out.why = 'That is not something the colony can plan.'; return out; }
   const sh = Math.min(w, h), lg = Math.max(w, h);
@@ -217,7 +221,7 @@ export function checkPlot(sim, type, x, y, w, h, side, lvl) {
     if (!sim.known[t]) note(t, "The Seed hasn't surveyed all of this ground yet.");
     else if (k === T.SHALLOW || k === T.DEEP) note(t, 'Part of it is in the water.');
     else if (k === T.ROCK) note(t, 'Part of it is on bare rock.');
-    else { const r = reservedAt(sim, tx, ty, 1); if (r) note(t, `Too close to ${r}.`); else if (!W.cost[t] || !W.reach[t]) note(t, "Part of it can't be reached on foot."); }
+    else { const r = reservedAt(sim, tx, ty, 1, -1, false, gap); if (r) note(t, r.startsWith('the door of') ? `It would cover ${r}.` : gap || /^the (Seed|cook fire|yard|way down)/.test(r) ? `Too close to ${r}.` : `It runs into ${r}.`); else if (!W.cost[t] || !W.reach[t]) note(t, "Part of it can't be reached on foot."); }
   }
   const L = W.land;
   const far = Ty.far || 70;
@@ -230,9 +234,32 @@ export function checkPlot(sim, type, x, y, w, h, side, lvl) {
     if (!bad.length && (!W.cost[t] || !W.reach[t] || reservedAt(sim, d.x, d.y, 0))) { bad.push(t); why.set('The door would open onto blocked ground. Turn it to another side.', 1); }
   }
   if (bad.length) { out.why = [...why.keys()][0]; out.bad = bad.slice(0, 400); return out; }
+  if (!gap) { const shut = closesIn(sim, Ty, x, y, w, h, out.door); if (shut) { out.why = shut; return out; } }
   // low ground by the water: allowed, but the Seed says so
   { const thr = floodPlain(W); let n = 0; for (let ty = y; ty < y + h; ty++) for (let tx = x; tx < x + w; tx++) if (thr[ty * MAP + tx] <= FLOOD_LINE) n++; if (n >= w * h * .3) out.warn = 'Low ground by the water: a flood could reach it. The Seed would build higher up.'; }
   out.ok = true; return out;
+}
+// wall to wall is fine, but nothing may be closed in: a plot, and every building beside it, keeps open ground
+// somewhere around it to be built and worked from (at its door, for a building with one)
+function closesIn(sim, Ty, x, y, w, h, door) {
+  const W = sim.W, R = { x, y, w, h }, ps = sim.S.projects.filter(p => !p.gone && !p.below && p.w && p.type !== 'test');
+  const free = (tx, ty, q, withR) => {
+    const t = ty * MAP + tx; if (!W.cost0[t] || !W.reach[t] || (withR && inRect(tx, ty, R, 0))) return false;
+    for (const p of ps) if (p !== q && inRect(tx, ty, p, 0)) return false;
+    return true;
+  };
+  const open = (q, d, withR) => {
+    if (d) return [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => !inRect(d.x + dx, d.y + dy, q, 0) && free(d.x + dx, d.y + dy, q, withR));
+    for (let ty = q.y - 1; ty <= q.y + q.h; ty++) for (let tx = q.x - 1; tx <= q.x + q.w; tx++) if ((tx === q.x - 1 || ty === q.y - 1 || tx === q.x + q.w || ty === q.y + q.h) && free(tx, ty, q, withR)) return true;
+    return false;
+  };
+  if (!open(R, doorless(Ty) ? null : door, false)) return doorless(Ty) ? 'It would be closed in on every side: leave a side open so people can reach it.' : 'Its door would be closed in: leave open ground in front of it.';
+  for (const p of ps) {
+    if (p.x - 2 >= x + w || x >= p.x + p.w + 2 || p.y - 2 >= y + h || y >= p.y + p.h + 2) continue;
+    const nm = p.type === 'shelter' ? 'the shelter' : p.name;
+    if (open(p, p.door, false) && !open(p, p.door, true)) return p.door ? `It would close in the door of ${nm}.` : `It would close in ${nm} on every side.`;
+  }
+  return '';
 }
 // a room below ground: the Seed's sounding of the ground under the plot decides it. Waterlogged ground and solid
 // rock can't be dug; anything else can, slower the harder it is. The stairs come up on open ground.
