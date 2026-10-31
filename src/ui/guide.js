@@ -35,7 +35,7 @@ export const STEPS = [
   },
   {
     title: 'Plan a field', tab: 'build:plan', btn: 'Open Plan',
-    text: 'In the Build window, under Plan, pick Field: the Seed suggests a size for the colony, so click near camp to put it down (or drag to draw your own), then confirm. Build crews make the soil in five stages.',
+    text: 'In the Build window, under Plan, pick Field: the Seed suggests a size for the colony, so click near camp to put it down (or drag to draw your own; R rotates it, and dragging its edges resizes it), then confirm. Build crews make the soil in five stages.',
     done: U => has(U, 'field'),
   },
   {
