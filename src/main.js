@@ -333,20 +333,20 @@ function startPlace(type, w, h, name, lv0 = 0) {
   const was = A.view ? A.view.below : 0, lvs = levelsOf(type), lvl = TYPES[type].below ? (lvs.includes(lv0) ? lv0 : lvs.includes(was) ? was : lvs[0]) : 0;
   A.place = { type, w: w || 0, h: h || 0, fixed: !!w, name: name || '', x: null, y: null, side: 0, turned: false, check: null, locked: false, seq: 0, wasBelow: was, lvl };
   if (TYPES[type].below || TYPES[type].ground) belowView(lvl || 1);   // the Seed's soundings show where to dig
-  $('placeTxt').textContent = w ? `Move the ${name || TYPES[type].name} where it should go and click to put it down` : `Drag on the map to draw the ${TYPES[type].name.toLowerCase()}: at least ${TYPES[type].min} by ${TYPES[type].min} tiles, at most ${TYPES[type].max} long`;
+  $('placeTxt').textContent = w ? `Move the ${name || TYPES[type].name} where it should go and click to put it down. R rotates it.` : `Drag on the map to draw the ${TYPES[type].name.toLowerCase()}: at least ${TYPES[type].min} by ${TYPES[type].min} tiles, at most ${TYPES[type].max} long`;
   // the Seed suggests a size for what the colony needs: it follows the pointer and a click puts it down; a drag still draws any size
   if (!w) cmd('sizeFor', { type }).then(r => {
     const P = A.place; if (!P || P.type !== type || !r || P.drag || P.locked) return;
     P.sug = r; P.w = r.w; P.h = r.h; A.panels.planCard(null);
-    $('placeTxt').textContent = `The Seed suggests ${r.w} × ${r.h} tiles. ${r.why} Click to put it down, or drag to draw another size.`;
+    $('placeTxt').textContent = `The Seed suggests ${r.w} × ${r.h} tiles. ${r.why} Click to put it down (R rotates it), or drag to draw another size.`;
   });
   $('placeTurn').hidden = doorless(TYPES[type]); $('plTurn').hidden = doorless(TYPES[type]);
-  $('placeTurn').textContent = TYPES[type].below ? 'Turn stairs (R)' : 'Turn door (R)'; $('plTurn').textContent = TYPES[type].below ? 'Turn stairs' : 'Turn door';
+  $('placeTurn').textContent = TYPES[type].below ? 'Turn stairs (Shift+R)' : 'Turn door (Shift+R)'; $('plTurn').textContent = TYPES[type].below ? 'Turn stairs' : 'Turn door';
   $('placeHint').hidden = false; app.classList.add('placing');
   $('plKeep').checked = false; $('plName2').value = name || ''; delete $('plName2').dataset.auto;
   A.panels.planCard(null);
 }
-function endPlace() { if (A.place && (TYPES[A.place.type].below || TYPES[A.place.type].ground) && A.place.wasBelow != null) belowView(A.place.wasBelow); A.place = null; $('placeHint').hidden = true; app.classList.remove('placing'); A.panels.planCard(null); }
+function endPlace() { if (A.place && (TYPES[A.place.type].below || TYPES[A.place.type].ground) && A.place.wasBelow != null) belowView(A.place.wasBelow); A.place = null; app.dataset.grab = ''; $('placeHint').hidden = true; app.classList.remove('placing'); A.panels.planCard(null); }
 function placeRect(x, y, w, h) {
   const P = A.place; if (!P) return;
   if (P.x === x && P.y === y && P.w === w && P.h === h) return;
@@ -368,7 +368,18 @@ function useSug() {
   const cx = P.x + P.w / 2, cy = P.y + P.h / 2;
   placeRect(Math.round(cx - P.sug.w / 2), Math.round(cy - P.sug.h / 2), P.sug.w, P.sug.h);
 }
-function turnDoor() { const P = A.place; if (!P || TYPES[P.type].open) return; P.side = (P.side + 1) % 4; P.turned = true; P.door = doorAt(P); checkPlace(); }
+function turnDoor() { const P = A.place; if (!P || doorless(TYPES[P.type])) return; P.side = (P.side + 1) % 4; P.turned = true; P.door = doorAt(P); checkPlace(); }
+// a quarter turn: width and length swap about the middle, and a door you chose turns with it. The Seed's suggestion
+// and a blueprint turn too, so the plot following the pointer is turned.
+function turnPlot() {
+  const P = A.place; if (!P) return;
+  if (P.sug && !P.fixed) P.sug = { ...P.sug, w: P.sug.h, h: P.sug.w };
+  if (P.turned) P.side = (P.side + 1) % 4;
+  if (P.x == null) { [P.w, P.h] = [P.h, P.w]; return; }
+  const cx = P.x + P.w / 2, cy = P.y + P.h / 2, w = P.h, h = P.w;
+  placeRect(Math.round(cx - w / 2), Math.round(cy - h / 2), w, h);
+  if (P.turned) { P.door = doorAt(P); checkPlace(); }
+}
 async function confirmPlace() {
   const P = A.place; if (!P || !P.check || !P.check.ok) return;
   const keep = $('plKeep').checked, name = $('plName2').value.trim();
@@ -451,6 +462,7 @@ function hookInput() {
     if (e.target.closest(HUD + ',#pickHint,#placeHint')) return;
     app.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]);
     // drawing a building: the left button (or one finger) draws, anything else still moves the map
+    if (A.place && ptrs.size === 1 && e.button === 0 && A.place.locked) { const g = grab(e); if (g) { const P = A.place; P.drag = { grab: g, r0: { x: P.x, y: P.y, w: P.w, h: P.h }, w0: V.toWorld(...local(e)) }; P.locked = false; A.panels.planCard(null); return; } }
     if (A.place && ptrs.size === 1 && e.button === 0 && !A.place.fixed) { const [x, y] = tileAt(e); A.place.drag = { x0: x, y0: y, still: !!A.place.sug }; A.place.locked = false; A.panels.planCard(null); if (A.place.sug) sugAt(e); else placeRect(x, y, 1, 1); return; }
     if (ptrs.size === 1) drag = { x: e.clientX, y: e.clientY, cx: V.cam.x, cy: V.cam.y, moved: 0 };
     if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), z: V.cam.z }; drag = null; }
@@ -458,6 +470,8 @@ function hookInput() {
   app.addEventListener('pointermove', e => {
     if (ptrs.has(e.pointerId)) ptrs.set(e.pointerId, [e.clientX, e.clientY]);
     if (pinch && ptrs.size === 2) { const [a, b] = [...ptrs.values()]; const d = Math.hypot(a[0] - b[0], a[1] - b[1]); V.zoomAt(pinch.z * d / pinch.d / V.cam.z, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2); return; }
+    if (A.place && A.place.drag && A.place.drag.grab) { reshape(e); return; }
+    if (A.place && !drag) { const g = A.place.locked ? grab(e) : null; app.dataset.grab = !g ? '' : g.move ? 'move' : (g.l || g.r) && (g.t || g.b) ? ((g.l && g.t) || (g.r && g.b) ? 'nwse' : 'nesw') : g.l || g.r ? 'ew' : 'ns'; }
     if (A.place && A.place.drag) { const [x, y] = tileAt(e), d = A.place.drag; if (d.still && x === d.x0 && y === d.y0) return; d.still = false; placeRect(Math.min(x, d.x0), Math.min(y, d.y0), Math.abs(x - d.x0) + 1, Math.abs(y - d.y0) + 1); return; }
     if (A.place && (A.place.fixed || A.place.sug) && !A.place.locked && !drag && !e.target.closest(HUD)) sugAt(e);
     if (drag) {
@@ -475,6 +489,23 @@ function hookInput() {
     app.classList.toggle('can', can);
   });
   // a blueprint or the suggested size, centred on the pointer
+  // a plot already put down: its edges and corners stretch it, its middle moves it (a blueprint only moves)
+  const grab = e => {
+    const P = A.place; if (!P || P.x == null) return null;
+    const [wx, wy] = V.toWorld(...local(e)), t = Math.max(.3, 9 / V.cam.z), x1 = P.x + P.w, y1 = P.y + P.h;
+    if (wx < P.x - t || wx > x1 + t || wy < P.y - t || wy > y1 + t) return null;
+    const g = P.fixed ? {} : { l: Math.abs(wx - P.x) < t, r: Math.abs(wx - x1) < t, t: Math.abs(wy - P.y) < t, b: Math.abs(wy - y1) < t };
+    if (g.l && g.r) g[wx - P.x < x1 - wx ? 'r' : 'l'] = false; if (g.t && g.b) g[wy - P.y < y1 - wy ? 'b' : 't'] = false;
+    if (g.l || g.r || g.t || g.b) return g;
+    return wx >= P.x && wx <= x1 && wy >= P.y && wy <= y1 ? { move: true } : null;
+  };
+  const reshape = e => {
+    const P = A.place, d = P.drag, g = d.grab, r = d.r0, [wx, wy] = V.toWorld(...local(e));
+    if (g.move) { placeRect(r.x + Math.round(wx - d.w0[0]), r.y + Math.round(wy - d.w0[1]), r.w, r.h); return; }
+    let x0 = r.x, y0 = r.y, x1 = r.x + r.w, y1 = r.y + r.h; const X = Math.round(wx), Y = Math.round(wy);
+    if (g.l) x0 = Math.min(X, x1 - 1); if (g.r) x1 = Math.max(X, x0 + 1); if (g.t) y0 = Math.min(Y, y1 - 1); if (g.b) y1 = Math.max(Y, y0 + 1);
+    placeRect(x0, y0, x1 - x0, y1 - y0);
+  };
   const sugAt = e => { const P = A.place, [wx, wy] = V.toWorld(...local(e)), w = P.fixed ? P.w : P.sug.w, h = P.fixed ? P.h : P.sug.h; placeRect(Math.round(wx - w / 2), Math.round(wy - h / 2), w, h); };
   const up = e => {
     ptrs.delete(e.pointerId); app.classList.remove('drag');
@@ -502,7 +533,7 @@ function hookInput() {
     else if (e.code === 'KeyV' && colony) A.panels.toggleTab('nb');
     else if (e.code === 'KeyT' && colony) A.stats.show();
     else if (e.code === 'KeyB' && colony) A.panels.toggleTab('build');
-    else if (e.code === 'KeyR' && A.place) turnDoor();
+    else if (e.code === 'KeyR' && A.place) { if (e.shiftKey) turnDoor(); else turnPlot(); }
     else if (e.code === 'KeyM') musicToggle();
     else if (e.code === 'KeyN' && colony) skipMenu();
     else if (e.code === 'KeyU' && colony) belowView();
@@ -532,7 +563,7 @@ function hookInput() {
   $('fpsChip').onclick = () => { $('perf').hidden = !$('perf').hidden; menu(false); };
   $('bMenu').onclick = () => menu($('menu').hidden); $('menuX').onclick = () => menu(false);
   $('pickCancel').onclick = endPick;
-  $('placeCancel').onclick = endPlace; $('plCancel').onclick = endPlace; $('placeTurn').onclick = turnDoor; $('plTurn').onclick = turnDoor; $('plGo').onclick = confirmPlace;
+  $('placeCancel').onclick = endPlace; $('plCancel').onclick = endPlace; $('placeTurn').onclick = turnDoor; $('plTurn').onclick = turnDoor; $('placeRot').onclick = turnPlot; $('plRot').onclick = turnPlot; $('plGo').onclick = confirmPlace;
   $('plName2').oninput = e => { delete e.target.dataset.auto; $('plKeep').checked = true; };
   $('cClose').onclick = () => select(-1);
   $('bStats').onclick = () => A.stats.show();

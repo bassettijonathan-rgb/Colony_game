@@ -1045,13 +1045,13 @@ export function command(sim, m) {
     // ---- building ----
     case 'plan': {
       if (!TYPES[m.type] || TYPES[m.type].fixed) return { ok: false, why: 'That is not something the colony can plan.' };
-      const chk = checkPlot(sim, m.type, m.x, m.y, m.w, m.h, m.side, m.lvl), cap = capacity(m.type, m.w, m.h), pw = powerPlan(S);
+      const chk = checkPlot(sim, m.type, m.x, m.y, m.w, m.h, m.side, m.lvl, 0), cap = capacity(m.type, m.w, m.h), pw = powerPlan(S);
       const after = { supply: +(pw.supply + (cap.supply || 0)).toFixed(1), draw: +(pw.draw + cap.kw).toFixed(1) };
       return { ...chk, bill: billOf(S, m.type, m.w, m.h, chk.ground), load: loadCheck(S, m.type, m.w, m.h), cap, power: after, short: +Math.max(0, after.draw - after.supply).toFixed(1), site: storyPlot(sim, m.x, m.y, m.w, m.h) };
     }
     case 'sizeFor': return sizeFor(sim, m.type);
     case 'place': {
-      const chk = checkPlot(sim, m.type, m.x, m.y, m.w, m.h, m.side, m.lvl);
+      const chk = checkPlot(sim, m.type, m.x, m.y, m.w, m.h, m.side, m.lvl, 0);
       if (!chk.ok) return { ok: false, why: chk.why };
       const q = addProject(sim, m.type, m.x, m.y, m.w, m.h, m.side, undefined, m.lvl);
       if (m.save) saveBlueprint(S, m.save, m.type, m.w, m.h);

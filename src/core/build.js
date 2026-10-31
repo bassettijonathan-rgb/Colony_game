@@ -188,8 +188,9 @@ export function billOf(S, type, w, h, ground) {
 export const doorOf = (x, y, w, h, side) => side === 0 ? { x: x + (w >> 1), y: y - 1 } : side === 1 ? { x: x + w, y: y + (h >> 1) } : side === 2 ? { x: x + (w >> 1), y: y + h } : { x: x - 1, y: y + (h >> 1) };
 export function facing(W, x, y, w, h) { const dx = W.land.x - (x + w / 2), dy = W.land.y - (y + h / 2); return Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 1 : 3) : (dy > 0 ? 2 : 0); }
 const inRect = (x, y, r, m) => x >= r.x - m && x < r.x + r.w + m && y >= r.y - m && y < r.y + r.h + m;
-// what a tile is too close to, if anything: the camp keeps its own ground
-export function reservedAt(sim, x, y, m = 1, skip = -1, below = false) {
+// what a tile is too close to, if anything: the camp keeps its own ground. m is the gap kept from the camp's own
+// places, pm the gap from other buildings (0: wall to wall is fine, but never over a door)
+export function reservedAt(sim, x, y, m = 1, skip = -1, below = false, pm = m) {
   const W = sim.W, L = W.land, s = W.site;
   if (below) { const lv = below === true ? 1 : below; for (const p of sim.S.projects) if (!p.gone && p.below && (p.lvl || 1) === lv && p.id !== skip && inRect(x, y, p, m)) return p.name; return ''; }
   for (const p of sim.S.projects) if (!p.gone && p.below && p.id !== skip && p.door && Math.abs(x - p.door.x) <= m && Math.abs(y - p.door.y) <= m) return `the way down to ${p.name}`;
@@ -197,10 +198,13 @@ export function reservedAt(sim, x, y, m = 1, skip = -1, below = false) {
   if (Math.hypot(x + .5 - s.fire.x, y + .5 - s.fire.y) < 3 + m) return 'the cook fire';
   if (Math.hypot(x + .5 - s.cargo.x - .5, y + .5 - s.cargo.y - .5) < 1.5 + m) return "the Seed's cargo door";
   if (inRect(x, y, s.yard, m)) return 'the yard';
-  for (const p of sim.S.projects) if (!p.gone && !p.below && p.id !== skip && p.w && inRect(x, y, p, m)) return p.type === 'shelter' ? 'the shelter' : p.name;
+  for (const p of sim.S.projects) if (!p.gone && !p.below && p.id !== skip && p.w && inRect(x, y, p, pm)) return p.type === 'shelter' ? 'the shelter' : p.name;
+  for (const p of sim.S.projects) if (!p.gone && !p.below && p.id !== skip && p.door && x === p.door.x && y === p.door.y) return `the door of ${p.type === 'shelter' ? 'the shelter' : p.name}`;
   return '';
 }
-export function checkPlot(sim, type, x, y, w, h, side, lvl) {
+// gap: the tiles kept clear around other buildings. The player may build wall to wall (0); the bot and the Seed's
+// own suggestions keep a path around everything (1).
+export function checkPlot(sim, type, x, y, w, h, side, lvl, gap = 1) {
   const W = sim.W, Ty = TYPES[type], bad = [], out = { ok: false, why: '', bad, door: null };
   if (!Ty || Ty.fixed || (Ty.story && !(sim.S.story && sim.S.story.unlock.includes(type)))) { out.why = 'That is not something the colony can plan.'; return out; }
   const sh = Math.min(w, h), lg = Math.max(w, h);
@@ -217,7 +221,7 @@ export function checkPlot(sim, type, x, y, w, h, side, lvl) {
     if (!sim.known[t]) note(t, "The Seed hasn't surveyed all of this ground yet.");
     else if (k === T.SHALLOW || k === T.DEEP) note(t, 'Part of it is in the water.');
     else if (k === T.ROCK) note(t, 'Part of it is on bare rock.');
-    else { const r = reservedAt(sim, tx, ty, 1); if (r) note(t, `Too close to ${r}.`); else if (!W.cost[t] || !W.reach[t]) note(t, "Part of it can't be reached on foot."); }
+    else { const r = reservedAt(sim, tx, ty, 1, -1, false, gap); if (r) note(t, r.startsWith('the door of') ? `It would cover ${r}.` : gap || /^the (Seed|cook fire|yard|way down)/.test(r) ? `Too close to ${r}.` : `It runs into ${r}.`); else if (!W.cost[t] || !W.reach[t]) note(t, "Part of it can't be reached on foot."); }
   }
   const L = W.land;
   const far = Ty.far || 70;

@@ -387,7 +387,7 @@ table.rt{width:100%;border-collapse:collapse;font-size:11px;margin:4px 0 8px}tab
 #belowLv button{flex:none;padding:0 10px;height:24px}
 #bBelow.on{color:#ffd79a;border-color:rgba(201,162,107,.7);background:rgba(201,162,107,.14)}
 @media (min-width:981px){#pickHint,#placeHint{max-width:min(600px,calc(100% - 800px))}}
-#app.placing{cursor:crosshair}
+#app.placing{cursor:crosshair}#app.placing[data-grab=move]{cursor:move}#app.placing[data-grab=ew]{cursor:ew-resize}#app.placing[data-grab=ns]{cursor:ns-resize}#app.placing[data-grab=nwse]{cursor:nwse-resize}#app.placing[data-grab=nesw]{cursor:nesw-resize}
 
 /* news: standing alerts and event cards down the right of the map (left of the window when it is open), letters in the middle */
 #news{position:absolute;right:var(--gr);top:calc(var(--tb) + var(--top) + 8px);bottom:calc(var(--bot) + 250px);width:300px;display:flex;flex-direction:column;justify-content:flex-end;align-items:flex-end;gap:8px;pointer-events:none;z-index:4;overflow:hidden}
@@ -677,13 +677,13 @@ table.rt{width:100%;border-collapse:collapse;font-size:11px;margin:4px 0 8px}tab
     <div id="ctlHint" hidden><span id="ctlTxt"></span><button class="btn" id="ctlEnd">Release (Esc)</button></div>
     <div id="pickHint" hidden><span id="pickTxt"></span><button class="btn" id="pickCancel">Cancel</button></div>
     <div id="belowTag"><span id="belowTxt">A few metres down</span><span class="seg sm" id="belowLv"><button data-lv="1" class="on">Shallow</button><button data-lv="2">Middle</button><button data-lv="3">Deep</button></span><button class="btn" id="belowUp">Surface (U)</button></div>
-    <div id="placeHint" hidden><span id="placeTxt"></span><button class="btn" id="placeTurn">Turn door (R)</button><button class="btn" id="placeCancel">Cancel</button></div>
+    <div id="placeHint" hidden><span id="placeTxt"></span><button class="btn" id="placeRot">Rotate (R)</button><button class="btn" id="placeTurn">Turn door (Shift+R)</button><button class="btn" id="placeCancel">Cancel</button></div>
     <div class="glass" id="plan" hidden>
       <div class="hd"><div class="pic" id="plPic"></div><div class="t"><div class="nm" id="plName"></div><div class="meta" id="plMeta"></div></div></div>
       <div class="in">
         <div id="plBody"></div>
         <label class="keep"><input type="checkbox" id="plKeep"> Save as a blueprint called <input id="plName2" maxlength="40" aria-label="Blueprint name"></label>
-        <div class="acts"><button class="pill" id="plCancel">Cancel</button><button class="pill" id="plTurn">Turn door</button><button class="go" id="plGo">Build it</button></div>
+        <div class="acts"><button class="pill" id="plCancel">Cancel</button><button class="pill" id="plRot">Rotate</button><button class="pill" id="plTurn">Turn door</button><button class="go" id="plGo">Build it</button></div>
       </div>
     </div>
     <nav id="dock" hidden>
