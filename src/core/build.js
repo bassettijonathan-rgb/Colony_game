@@ -234,9 +234,32 @@ export function checkPlot(sim, type, x, y, w, h, side, lvl, gap = 1) {
     if (!bad.length && (!W.cost[t] || !W.reach[t] || reservedAt(sim, d.x, d.y, 0))) { bad.push(t); why.set('The door would open onto blocked ground. Turn it to another side.', 1); }
   }
   if (bad.length) { out.why = [...why.keys()][0]; out.bad = bad.slice(0, 400); return out; }
+  if (!gap) { const shut = closesIn(sim, Ty, x, y, w, h, out.door); if (shut) { out.why = shut; return out; } }
   // low ground by the water: allowed, but the Seed says so
   { const thr = floodPlain(W); let n = 0; for (let ty = y; ty < y + h; ty++) for (let tx = x; tx < x + w; tx++) if (thr[ty * MAP + tx] <= FLOOD_LINE) n++; if (n >= w * h * .3) out.warn = 'Low ground by the water: a flood could reach it. The Seed would build higher up.'; }
   out.ok = true; return out;
+}
+// wall to wall is fine, but nothing may be closed in: a plot, and every building beside it, keeps open ground
+// somewhere around it to be built and worked from (at its door, for a building with one)
+function closesIn(sim, Ty, x, y, w, h, door) {
+  const W = sim.W, R = { x, y, w, h }, ps = sim.S.projects.filter(p => !p.gone && !p.below && p.w && p.type !== 'test');
+  const free = (tx, ty, q, withR) => {
+    const t = ty * MAP + tx; if (!W.cost0[t] || !W.reach[t] || (withR && inRect(tx, ty, R, 0))) return false;
+    for (const p of ps) if (p !== q && inRect(tx, ty, p, 0)) return false;
+    return true;
+  };
+  const open = (q, d, withR) => {
+    if (d) return [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => !inRect(d.x + dx, d.y + dy, q, 0) && free(d.x + dx, d.y + dy, q, withR));
+    for (let ty = q.y - 1; ty <= q.y + q.h; ty++) for (let tx = q.x - 1; tx <= q.x + q.w; tx++) if ((tx === q.x - 1 || ty === q.y - 1 || tx === q.x + q.w || ty === q.y + q.h) && free(tx, ty, q, withR)) return true;
+    return false;
+  };
+  if (!open(R, doorless(Ty) ? null : door, false)) return doorless(Ty) ? 'It would be closed in on every side: leave a side open so people can reach it.' : 'Its door would be closed in: leave open ground in front of it.';
+  for (const p of ps) {
+    if (p.x - 2 >= x + w || x >= p.x + p.w + 2 || p.y - 2 >= y + h || y >= p.y + p.h + 2) continue;
+    const nm = p.type === 'shelter' ? 'the shelter' : p.name;
+    if (open(p, p.door, false) && !open(p, p.door, true)) return p.door ? `It would close in the door of ${nm}.` : `It would close in ${nm} on every side.`;
+  }
+  return '';
 }
 // a room below ground: the Seed's sounding of the ground under the plot decides it. Waterlogged ground and solid
 // rock can't be dug; anything else can, slower the harder it is. The stairs come up on open ground.
