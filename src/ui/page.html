@@ -284,12 +284,22 @@ select{font:600 12px var(--f-ui);color:var(--txt);background:rgba(0,0,0,.35);bor
 .ps{font-size:11.5px;color:var(--mut);font-weight:600;margin-top:3px;line-height:1.4}
 .pw{font-size:11.5px;color:var(--acc2);font-weight:700;margin-top:4px;line-height:1.4}
 .pw.bad{color:#f4aaa2;margin-top:8px}
+.pnext{font-size:11.5px;color:var(--txt);font-weight:600;margin-top:2px;line-height:1.4;padding-left:13px;position:relative}.pnext::before{content:'→';position:absolute;left:0;color:var(--seed)}
+.seedq{display:flex;gap:6px;margin:0 0 6px}.seedq input{flex:1;min-width:0;height:32px;border-radius:3px;border:1px solid var(--line2);background:rgba(0,0,0,.35);color:var(--txt);font:500 12.5px var(--f-ui);padding:0 10px}
+.seedq input:focus{outline:none;border-color:rgba(143,224,255,.6)}.seedex{margin:0 0 4px}.seedex .chip{white-space:normal;text-align:left}
+.qa{margin:8px 0 10px;padding-bottom:10px;border-bottom:1px solid var(--line)}.qq{font-size:12.5px;font-weight:700;color:var(--acc2)}
+.qa-a{font-size:12.5px;line-height:1.55;color:var(--txt);margin-top:6px;padding-left:10px;border-left:2px solid var(--seed)}.qa-a p{margin:0 0 6px}.qa-a p:last-child{margin:0}.qa-a.dim{color:var(--mut)}
+.box.bank{margin:6px 0 0}.box.bank em{font-style:normal;color:var(--mut);font-size:10.5px;font-weight:600;margin-left:6px}
+.rg{display:flex;width:100%;align-items:center;gap:8px;padding:7px 2px;border-bottom:1px solid var(--line);font:700 11px var(--f-hd);letter-spacing:.1em;text-transform:uppercase;color:var(--txt);text-align:left}
+.rg em{font:600 11px var(--f-ui);font-style:normal;color:var(--mut);letter-spacing:0;text-transform:none}.rg:hover{background:rgba(255,255,255,.04)}
+.rcp{padding:8px 2px;border-bottom:1px solid rgba(255,255,255,.04)}.rcp .row2>em{font-style:normal;font-size:11px;color:var(--acc2);font-weight:700;text-align:right;max-width:55%}
+.rlive{font-size:11.5px;color:var(--seed);font-weight:700;margin-top:4px;line-height:1.4}
 .bill{display:grid;gap:2px;font-size:11.5px;font-weight:600}
 .bill div{display:grid;grid-template-columns:96px 1fr;gap:8px}
 .bill em{font-style:normal;color:var(--mut)}
 
 /* what you picked: a person, a building, a building being planned */
-#card,#bcard,#plan{left:var(--gl);bottom:var(--bot);width:330px;max-width:calc(100% - 24px);max-height:min(60vh,560px);overflow:auto;box-sizing:border-box}
+#card,#bcard,#plan{left:var(--gl);bottom:var(--bot);width:330px;max-width:calc(100% - 24px);max-height:min(60vh,560px);overflow:auto;box-sizing:border-box;z-index:4}
 #plan{width:350px;max-height:min(66vh,600px);z-index:4}
 .in{padding:0 14px 12px}
 .hd{display:flex;align-items:center;gap:11px;padding:12px 6px 10px 14px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,rgba(143,224,255,.06),transparent)}
@@ -354,6 +364,7 @@ table.rt{width:100%;border-collapse:collapse;font-size:11px;margin:4px 0 8px}tab
 #dock button:hover{color:var(--txt);background:rgba(255,255,255,.05)}
 #dock button.on{color:var(--txt);background:linear-gradient(180deg,rgba(143,224,255,.2),rgba(143,224,255,.05));border-color:rgba(143,224,255,.45)}
 #dock button.on .ic{color:var(--seed)}
+@media (max-width:1320px) and (min-width:761px){#dock button{width:70px;font-size:10px;letter-spacing:.04em}}
 #dock kbd{position:absolute;left:4px;top:3px;font-size:9px;padding:0 3px;opacity:.7;border-color:var(--line)}
 #dock .badge{position:absolute;right:5px;top:4px;font:700 9.5px var(--f-num);padding:1px 4px;border-radius:2px;background:var(--acc);color:#1a1206;letter-spacing:0}
 
@@ -641,6 +652,7 @@ table.rt{width:100%;border-collapse:collapse;font-size:11px;margin:4px 0 8px}tab
           <span><kbd>Q</kbd> <kbd>C</kbd> <kbd>B</kbd> <kbd>G</kbd> <kbd>V</kbd></span><span>archive, crews, build, life, neighbours</span>
           <span><kbd>K</kbd> <kbd>P</kbd> <kbd>T</kbd> <kbd>L</kbd></span><span>records, society, stats, log</span>
           <span><kbd>I</kbd> <kbd>U</kbd> <kbd>E</kbd></span><span>roofs off, below ground, heights</span>
+          <span><kbd>?</kbd></span><span>ask the Seed how something is made or done</span>
           <span><kbd>Tab</kbd></span><span>names on the map</span>
           <span><kbd>F</kbd> <kbd>H</kbd></span><span>follow the picked person, back to the Seed</span>
           <span><kbd>R</kbd> <kbd>Shift+R</kbd> <kbd>Esc</kbd></span><span>while placing: rotate, turn the door, cancel</span>
@@ -712,6 +724,7 @@ table.rt{width:100%;border-collapse:collapse;font-size:11px;margin:4px 0 8px}tab
       <button data-tab="nb" title="Neighbours: other settlements, visitors and trade (V)"><kbd>V</kbd><svg class="ic"><use href="#i-nb"/></svg>Neighbours</button>
       <button id="bStats" title="Colony record and charts (T)"><kbd>T</kbd><svg class="ic"><use href="#i-chart"/></svg>Stats</button>
       <button data-tab="log" title="Log (L)"><kbd>L</kbd><svg class="ic"><use href="#i-log"/></svg>Log<span class="badge" id="logNew" hidden></span></button>
+      <button data-tab="seed" title="Ask the Seed: how things are made and done (?)"><kbd>?</kbd><svg class="ic"><use href="#i-seed"/></svg>Ask</button>
     </nav>
     <div class="glass mmw"><div class="wt"><svg class="ic"><use href="#i-map"/></svg><b id="mmc">Surface</b><em>600 × 600</em></div><canvas id="mm" aria-label="Minimap: click to look there"></canvas></div>
     <div class="glass" id="newdlg" hidden>

@@ -24,7 +24,7 @@ import { worker, portion, playSpot, BIT } from './lives.js';
 import { keepHour, libraryWork, pupilsOf, PUPILS, setRule, askCouncil, giveWay, RULES } from './society.js';
 
 export const PRINT_TICKS = 4 * HOUR;
-const MEDS_SALVAGE = 2, MEDS_H = 3;   // a batch of medical supplies: salvage, and hours at a workshop's pace
+export const MEDS_SALVAGE = 2, MEDS_H = 3;   // a batch of medical supplies: salvage, and hours at a workshop's pace
 const TPH = 95;          // tiles an unhurried person covers in an hour, for planning trips
 const STAKES_ALL = 10, PICK = 100, NO_WORK = Math.round(HOUR / 2);
 const FIT_JOBS = new Set(['fetch', 'pick', 'cut', 'fit']);
@@ -613,8 +613,37 @@ function waitReason(sim, p) {
   if (k === 'stone') return 'Needs stone and there is none left to cut near camp: plan a stone pit on stony ground';
   if (RAW.includes(k)) return `Needs ${matName(k, n)} and there is none left to gather near camp`;
   if ((S.fab.job && S.fab.job.k === k) || S.cols.some(o => !o.dead && o.make === k)) return `Waiting for ${matName(k, n)}, being made`;
-  if (S.stores.yard.salvage < RECIPE[k].salvage) return `Needs ${matName(k, n)} and there is no salvage left to make them${(S.stores.yard.ore || 0) >= SMELT.ore ? ': ore is waiting to be smelted' : built(S).some(q => q.type === 'mine' && q.seam > 0) ? ': the miners bring up ore to smelt' : ''}`;
-  return `Waiting for ${matName(k, n)}`;
+  if (S.stores.yard.salvage < RECIPE[k].salvage) return `Needs ${matName(k, n)} and there is no salvage left to make them\n${metalStep(sim)}`;
+  const m = makerStep(sim);
+  return `Waiting for ${matName(k, n)}${m ? '\n' + m : ''}`;
+}
+// A stalled project's reason can end with the next thing to do about it, on a line of its own after a newline:
+// the cards show it under the reason, the map's label leaves it out.
+const crewOn = (S, w) => S.crews.some(cr => !cr.gone && cr.work === w && cr.members.length);
+// where the colony's next metal comes from, when the salvage is gone: ore to smelt, miners to dig it, a mine to build
+function metalStep(sim) {
+  const S = sim.S, Y = S.stores.yard, B = built(S), shop = B.some(q => q.type === 'workshop' && q.powered);
+  if ((Y.ore || 0) >= SMELT.ore) {
+    if (shop && crewOn(S, 'workshop')) return `The workshop crew smelts ore into salvage, ${SMELT.ore} loads into ${SMELT.out}.`;
+    return shop ? `Ore is waiting to be smelted. Put someone on Workshop work in Crews (C), or the fabricator smelts it slowly when it is free.`
+      : `Ore is waiting to be smelted. The fabricator smelts it slowly when it is free; a workshop with someone on Workshop work is faster.`;
+  }
+  const mines = B.filter(q => q.type === 'mine' && q.seam > 0);
+  if (mines.length) {
+    if (!mines.some(q => q.powered)) return `${mines[0].name} has no power, so nobody can mine ore there.`;
+    return crewOn(S, 'mine') ? `The miners bring up ore, and it is smelted into salvage, ${SMELT.ore} loads into ${SMELT.out}.` : `Put someone on Mine work in Crews (C): they bring up ore to smelt into salvage.`;
+  }
+  const open = active(S).filter(q => !q.paused), plan = active(S).find(q => q.type === 'mine' && q.seam > 0);
+  if (plan) return plan.paused ? `${plan.name} would bring up ore, but it is paused: resume it in Build (B).`
+    : open.indexOf(plan) > 0 ? `${plan.name} brings up ore once it is built. Move it up the project list in Build (B) to build it sooner.` : `${plan.name} brings up ore once it is built.`;
+  return 'Metal has to be mined now: plan a mine over a seam of ore in Build (B). Press U to see the seams.';
+}
+// why nobody is making a part the colony has the salvage for
+function makerStep(sim) {
+  const S = sim.S, sd = S.seedc, shops = built(S).filter(q => q.type === 'workshop'), shop = shops.some(q => q.powered);
+  if (shop && crewOn(S, 'workshop')) return '';
+  const why = sd.printing || sd.queue.length ? 'The fabricator makes parts only when it is not printing a body' : S.fab.job ? 'The fabricator is making something else first' : '';
+  return why && `${why}. ${shop ? 'Put someone on Workshop work in Crews (C) to make parts at the workshop bench.' : shops.length ? `${shops[0].name} has no power, so nobody can make parts there.` : 'A workshop makes them three times faster.'}`;
 }
 export function projectsThink(sim) {
   const S = sim.S, list = active(S), crews = S.crews.filter(cr => !cr.gone && cr.work === 'build' && cr.members.length);
@@ -633,7 +662,7 @@ export function projectsThink(sim) {
     const stuck = !p.done && !!w && !/^(Paused|Queued|No build crew)/.test(w);
     if (stuck && !S.salvOut && /no salvage left/.test(w)) { S.salvOut = 1; sim.log(`The salvage the Seed brought down is used up, and ${p.name} needs parts nobody can make without it. Metal has to come from this world now: plan a mine over a seam of ore (the Build window, then press U to see the seams), and a workshop to smelt what the miners bring up.`, 'bad', { e: 'nosalvage', lvl: 2, pid: p.id, title: 'Out of salvage' }); }
     if (stuck && !S.stoneOut && /^Needs stone and there is none/.test(w)) { S.stoneOut = 1; sim.log(`There is no stone left to cut near camp: the boulders and rock faces are used up, and ${p.name} needs more. Plan a stone pit in the Build window, on ground where stone lies under shallow soil (press U to see it), and the quarry crew will cut it there for years.`, 'bad', { e: 'nostone', lvl: 2, pid: p.id, title: 'Out of stone' }); }
-    if (stuck && !p.stall) { p.stall = 1; sim.log(`${p.name} stalled: ${w[0].toLowerCase() + w.slice(1)}.`, 'bad', { e: 'stalled', lvl: 1, pid: p.id, title: 'A project stalled' }); }
+    if (stuck && !p.stall) { p.stall = 1; const [why, next] = w.split('\n'); sim.log(`${p.name} stalled: ${why[0].toLowerCase() + why.slice(1)}.${next ? ' ' + next : ''}`, 'bad', { e: 'stalled', lvl: 1, pid: p.id, title: 'A project stalled' }); }
     else if (!stuck && p.stall) { p.stall = 0; if (!p.done && !w) sim.log(`Work on ${p.name} picked up again.`, '', { pid: p.id }); }
     if (w !== p.wait) { p.wait = w; S.rv++; }
   }

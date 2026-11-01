@@ -547,6 +547,7 @@ function hookInput() {
     if (e.code === 'Space') { e.preventDefault(); if (colony && !(A.news && A.news.open)) setSpeed(A.speed ? 0 : A.lastSpeed); }
     else if (e.code === 'Digit1' && colony) setSpeed(1); else if (e.code === 'Digit2' && colony) setSpeed(2); else if (e.code === 'Digit3' && colony) setSpeed(3);
     else if (e.code === 'Tab') { e.preventDefault(); V.labels = !V.labels; }
+    else if (e.key === '?' && colony) { e.preventDefault(); A.panels.toggleTab('seed'); const i = $('seedQ'); if (i && A.panels.tab === 'seed' && !A.panels.min) i.focus(); }   // before Minus: on some keyboards ? is Shift and that key
     else if (e.code === 'KeyH') goHome();
     else if (e.code === 'KeyF' && A.sel >= 0) { A.follow = !A.follow; $('cFollow').textContent = A.follow ? 'Stop following' : 'Follow'; }
     else if (e.code === 'KeyQ' && colony) A.panels.toggleTab('archive');
