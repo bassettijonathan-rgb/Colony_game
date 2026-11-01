@@ -269,6 +269,7 @@ export class News {
   // ---------- looking at what a letter is about ----------
   go(e) {
     const A = this.A;
+    if (e.e === 'find' && e.x != null && this.api.showPlace) { this.api.showPlace(e.x, e.y, e.title); return; }   // a find: the place it was made, not who made it
     if (e.who != null && e.who >= 0) this.api.select(e.who, true);
     else if (e.pid != null && A.ui && A.ui.projects.some(p => p.id === e.pid)) this.api.showProject(e.pid);
     else if (e.x != null) this.api.flyTo(e.x, e.y);

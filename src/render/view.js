@@ -14,6 +14,7 @@ import { drawLife, placeLife } from '../core/food.js';
 import { drawPatch, drawKitchen } from './life.js';
 import { drawPerson, drawDot, makeSeed, crewColour } from './people.js';
 import { floodPlain, underOf, ORE, RARE } from '../core/world.js';
+import { campStep, M_PER, groundAt, hollowWords } from '../core/height.js';
 
 const mul3 = (a, f) => [a[0] * f, a[1] * f, a[2] * f];
 const rgb = (c, a = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
@@ -42,21 +43,21 @@ export class View {
     }
     this.seed = makeSeed();
     this.LP = new Float32Array(96); this.LC = new Float32Array(96);
-    this.labels = false; this.below = 0; this.inside = true; this.stats = { lights: 0, lightsInView: 0, people: 0 }; this.order = [];
+    this.labels = false; this.below = 0; this.inside = true; this.hv = false; this.hvA = 0; this.stats = { lights: 0, lightsInView: 0, people: 0 }; this.order = [];
     this.fly = null; this.anim = null; this.fog = !!W.land;
     this.mm = app.querySelector('#mm'); this.mmBase = this.minimapBase(); this.mmFog = this.fogBase();
     this.resize();
   }
   // a new planet, same window
   setWorld(W) {
-    this.W = W; this.life = null; this.ugCv = null; this.terrain.dispose(); this.terrain = new Terrain(this.G, W);
+    this.W = W; this.life = null; this.ugCv = null; this.hvKey = null; this.mmHV = null; this.terrain.dispose(); this.terrain = new Terrain(this.G, W);
     this.cam = W.land ? { x: W.land.x + .5, y: W.land.y + 3, z: Math.max(this.cam.z, 24) } : { x: MAP / 2, y: MAP / 2, z: 1 };
     this.fly = null; this.anim = null; this.fog = !!W.land;
     this.mmBase = this.minimapBase(); this.mmFog = this.fogBase(); this.clampCam();
   }
   // the lander comes down where the player chose: the ground it changed is painted again, and it descends
   land(W, rect) {
-    this.W = W; this.life = null; this.ugCv = null; this.terrain.patch(W, rect); this.fog = true;
+    this.W = W; this.life = null; this.ugCv = null; this.hvKey = null; this.mmHV = null; this.terrain.patch(W, rect); this.fog = true;
     this.mmBase = this.minimapBase(); this.mmFog = this.fogBase();
     this.anim = { t0: performance.now() };
     this.flyTo(W.land.x + .5, W.land.y + 2, 26);
@@ -130,6 +131,7 @@ export class View {
   // ---------- the frame ----------
   frame(F) {
     const G = this.G, gl = G.gl, [L, Tp, R, B] = this.rect, z = this.cam.z, ppt = z * this.DPR;
+    { const now = performance.now(), dt = Math.min(.1, (now - (this.hvT || now)) / 1000); this.hvT = now; this.hvA = clamp(this.hvA + (this.hv && !this.below && this.W.land ? 6 : -6) * dt, 0, 1); }
     this.terrain.update(L, Tp, R, B, ppt, performance.now(), F.budget || 2);
     const X = this.sky(F), E = env(F.hour, X);
     const lights = this.lights(F, E);
@@ -164,6 +166,7 @@ export class View {
     // composite
     gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, this.glc.width, this.glc.height); gl.useProgram(this.P.c.p); u = this.P.c.u;
     look(u, 0); G.bind(u.uDyn, 7, this.tDyn); G.bind(u.uLight, 8, this.rtL.t); G.bind(u.uH, 9, this.rtH.t); G.bind(u.uKnown, 10, T.tKnown); gl.uniform1f(u.uFogOn, this.fog ? 1 : 0); gl.uniform4fv(u.uHM, sInH); gl.uniform4fv(u.uLM, sInL);
+    { const on = this.hvA > .001; G.bind(u.uElev, 11, on ? this.heightTex() : T.tKnown); gl.uniform4f(u.uHV, on ? ease(this.hvA) : 0, M_PER, this.DPR, 5); }
     gl.uniform2f(u.uRes, this.glc.width, this.glc.height); gl.uniform4fv(u.uCam, cam4); gl.uniform1f(u.uTime, F.time); gl.uniform1f(u.uExposure, E.exp); gl.uniform1f(u.uSat, E.sat); gl.uniform1f(u.uMist, E.mist); gl.uniform1f(u.uNight, E.night); gl.uniform1f(u.uEnc, G.float ? 0 : 1); gl.uniform1f(u.uVig, .5);
     gl.uniform3fv(u.uKeyDir, E.key); gl.uniform3fv(u.uKeyCol, E.kc); gl.uniform3fv(u.uSky, E.sky); gl.uniform3fv(u.uFog, mul3(E.amb.map((v, i) => v + ([.9, .85, .8][i] - v) * .3), 1.1)); gl.uniform3fv(u.uLift, E.lift); gl.uniform3fv(u.uGain, E.gain);
     gl.uniform1f(u.uSnowC, X ? X.cover : 0); gl.uniform1f(u.uIce, X ? X.ice : 0); gl.uniform1f(u.uWet, X ? X.wet : 0); gl.uniform2f(u.uSeas, X ? X.aut : 0, X ? X.wint : 0);
@@ -429,6 +432,7 @@ export class View {
     }
     if (F.colony) this.projectLabels(F, sx, sy, z);
     if (F.place) this.placePreview(F.place, sx, sy, z);
+    if (F.colony && !this.below) this.drawMarkers(F, sx, sy, z);
     ui.font = `700 ${fs}px Manrope,system-ui,sans-serif`;
     const label = (i, strong) => {
       const o = i * 4, X = sx(F.pos[o]), Y = sy(F.pos[o + 1]); if (X < -60 || Y < -40 || X > this.VW + 60 || Y > this.VH + 40) return;
@@ -479,6 +483,74 @@ export class View {
       for (const [a, b] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { ui.moveTo(X + a * r, Y + b * (r - l)); ui.lineTo(X + a * r, Y + b * r); ui.lineTo(X + a * (r - l), Y + b * r); }
       ui.stroke(); ui.shadowBlur = 0;
     }
+    if (this.hv && F.hvAt && F.colony && !this.below) this.heightTip(F.hvAt, sx, sy);
+  }
+
+  // ---------- heights ----------
+  // the map's heights for the height view, in steps from the camp, smoothed a little so that the lines run round
+  // instead of along the tiles: made when the view is first used, and again for a new camp
+  heightTex() {
+    const W = this.W, key = W.land ? W.land.y * MAP + W.land.x : -1;
+    if (this.hvTex && this.hvKey === key) return this.hvTex;
+    const N = MAP * MAP, c = campStep(W), a = new Float32Array(N), b = new Float32Array(N), K = [1, 4, 6, 4, 1];
+    for (let i = 0; i < N; i++) a[i] = W.elev[i] - c;
+    for (let y = 0; y < MAP; y++) for (let x = 0; x < MAP; x++) { let s = 0, n = 0; for (let j = -2; j <= 2; j++) { const q = x + j; if (q >= 0 && q < MAP) { s += a[y * MAP + q] * K[j + 2]; n += K[j + 2]; } } b[y * MAP + x] = s / n; }
+    for (let y = 0; y < MAP; y++) for (let x = 0; x < MAP; x++) { let s = 0, n = 0; for (let j = -2; j <= 2; j++) { const q = y + j; if (q >= 0 && q < MAP) { s += b[q * MAP + x] * K[j + 2]; n += K[j + 2]; } } a[y * MAP + x] = s / n; }
+    const gl = this.G.gl; if (this.hvTex) gl.deleteTexture(this.hvTex);
+    this.hvTex = this.G.tex2D(MAP, MAP, { internal: gl.R16F, format: gl.RED, type: gl.FLOAT, data: a });
+    this.hvKey = key; return this.hvTex;
+  }
+  // the minimap while the heights are shown: the same colours as on the map, and the camp's level in white
+  minimapHeights() {
+    const W = this.W, c = campStep(W), cv = mk(MAP, MAP), g = cv.getContext('2d'), id = g.createImageData(MAP, MAP), D = id.data;
+    const lo = [[166, 201, 233], [89, 120, 201]], hi = [[219, 207, 179], [233, 227, 214]], mix = (A, f) => [0, 1, 2].map(k => A[0][k] + (A[1][k] - A[0][k]) * f);
+    for (let i = 0; i < MAP * MAP; i++) {
+      const m = (W.elev[i] - c) * M_PER, x = i % MAP, o = i * 4, ty = W.type[i];
+      let col = m < 0 ? mix(lo, sstep(0, 30, -m)) : mix(hi, sstep(0, 30, m));
+      if (ty === 3 || ty === 4) col = col.map(v => v * .62);   // water, darker
+      const r = x < MAP - 1 ? W.elev[i + 1] : W.elev[i], d = i + MAP < MAP * MAP ? W.elev[i + MAP] : W.elev[i];
+      if ((W.elev[i] < c) !== (r < c) || (W.elev[i] < c) !== (d < c)) col = [255, 250, 236];
+      D[o] = col[0]; D[o + 1] = col[1]; D[o + 2] = col[2]; D[o + 3] = 255;
+    }
+    g.putImageData(id, 0, 0); return cv;
+  }
+  // where the finds were made, while the heights are shown, and a place just asked for, ringed for a while
+  drawMarkers(F, sx, sy, z) {
+    const ui = this.ui, now = performance.now(), off = (X, Y) => X < -60 || Y < -60 || X > this.VW + 60 || Y > this.VH + 60;
+    const P = F.ping, a = P ? (now - P.at) / 1000 : 99, rung = a < 9 ? P : null;
+    if (this.hv && F.finds) for (const f of F.finds) {
+      if (f.x == null) continue;
+      const X = sx(f.x + .5), Y = sy(f.y + .5); if (off(X, Y)) continue;
+      ui.lineWidth = 2; ui.strokeStyle = 'rgba(10,14,20,.9)'; ui.fillStyle = '#ffd79a';
+      ui.beginPath(); ui.moveTo(X, Y - 8); ui.lineTo(X + 6, Y); ui.lineTo(X, Y + 8); ui.lineTo(X - 6, Y); ui.closePath(); ui.fill(); ui.stroke();
+      if (z >= 4 && !(rung && Math.abs(rung.x - f.x - .5) < 1 && Math.abs(rung.y - f.y - .5) < 1)) {   // the ring names the one asked for
+        ui.font = '700 11.5px Manrope,system-ui,sans-serif'; const tw = ui.measureText(f.name).width + 14;
+        ui.fillStyle = 'rgba(10,14,20,.8)'; ui.beginPath(); ui.roundRect(X - tw / 2, Y + 12, tw, 19, 9.5); ui.fill(); ui.fillStyle = '#ffe7c0'; ui.fillText(f.name, X, Y + 22);
+      }
+    }
+    if (a >= 0 && a < 9) {
+      const X = sx(P.x), Y = sy(P.y), fade = 1 - sstep(7, 9, a), R = Math.max(26, (P.r || 6) * z);
+      for (let k = 0; k < 3; k++) { const q = ((a + k * .6) % 1.8) / 1.8; ui.strokeStyle = `rgba(255,215,154,${(1 - q) * .9 * fade})`; ui.lineWidth = 2.5; ui.beginPath(); ui.arc(X, Y, 6 + q * R, 0, 6.3); ui.stroke(); }
+      ui.setLineDash([6, 5]); ui.lineDashOffset = -a * 10; ui.strokeStyle = `rgba(255,236,190,${.85 * fade})`; ui.lineWidth = 1.6; ui.beginPath(); ui.arc(X, Y, R, 0, 6.3); ui.stroke(); ui.setLineDash([]);
+      if (P.label) {
+        ui.font = '700 12px Manrope,system-ui,sans-serif'; const tw = ui.measureText(P.label).width + 16;
+        ui.globalAlpha = fade; ui.fillStyle = 'rgba(243,182,92,.92)'; ui.beginPath(); ui.roundRect(X - tw / 2, Y - R - 30, tw, 22, 11); ui.fill(); ui.fillStyle = '#1a1206'; ui.fillText(P.label, X, Y - R - 18.5); ui.globalAlpha = 1;
+      }
+    }
+  }
+  // the pointer's readout while the heights are shown: the ground's height from the camp, and the hollow it lies in
+  heightTip([wx, wy], sx, sy) {
+    if (wx < 0 || wy < 0 || wx >= MAP || wy >= MAP) return;
+    const ui = this.ui, g = groundAt(this.W, wx, wy), cap = t => t.charAt(0).toUpperCase() + t.slice(1);
+    const t1 = cap((g.wet ? 'water, ' : '') + g.height), t2 = g.hollow ? cap(hollowWords(g)) : '';
+    ui.font = '700 12px Manrope,system-ui,sans-serif'; const w1 = ui.measureText(t1).width;
+    ui.font = '600 11.5px Manrope,system-ui,sans-serif'; const w2 = t2 ? ui.measureText(t2).width : 0;
+    const bw = Math.max(w1, w2) + 18, bh = t2 ? 39 : 23, x0 = Math.min(sx(wx) + 16, this.VW - bw - 6), y0 = Math.min(sy(wy) + 18, this.VH - bh - 6);
+    ui.fillStyle = 'rgba(12,16,24,.88)'; ui.beginPath(); ui.roundRect(x0, y0, bw, bh, 4); ui.fill();
+    ui.strokeStyle = g.m < 0 ? 'rgba(126,172,240,.75)' : g.m > 0 ? 'rgba(222,198,142,.75)' : 'rgba(255,250,236,.8)'; ui.lineWidth = 1; ui.stroke();
+    ui.textAlign = 'left'; ui.fillStyle = '#f2f4f8'; ui.font = '700 12px Manrope,system-ui,sans-serif'; ui.fillText(t1, x0 + 9, y0 + 12);
+    if (t2) { ui.fillStyle = '#a9c9f6'; ui.font = '600 11.5px Manrope,system-ui,sans-serif'; ui.fillText(t2, x0 + 9, y0 + 28); }
+    ui.textAlign = 'center';
   }
 
   // ---------- below ground ----------
@@ -630,7 +702,7 @@ export class View {
     const m = this.mm; if (!m) return; const D = this.DPR, S = m.clientWidth || 180;
     if (m.width !== Math.round(S * D)) { m.width = m.height = Math.round(S * D); }
     const g = m.getContext('2d'), k = m.width / MAP;
-    g.setTransform(1, 0, 0, 1, 0, 0); g.imageSmoothingEnabled = true; g.drawImage(this.mmBase, 0, 0, m.width, m.height);
+    g.setTransform(1, 0, 0, 1, 0, 0); g.imageSmoothingEnabled = true; g.drawImage(this.hv && this.W.land && !this.below ? this.mmHV || (this.mmHV = this.minimapHeights()) : this.mmBase, 0, 0, m.width, m.height);
     if (this.fog) g.drawImage(this.mmFog, 0, 0, m.width, m.height);
     g.fillStyle = 'rgba(8,12,18,.18)'; g.fillRect(0, 0, m.width, m.height);
     if (F.orbit) F.orbit.sites.forEach((s, i) => { g.strokeStyle = i === F.orbit.sel ? '#8fe0ff' : 'rgba(255,255,255,.7)'; g.lineWidth = 1.5 * D; g.beginPath(); g.arc(s.x * k, s.y * k, 40 * k, 0, 6.3); g.stroke(); g.fillStyle = g.strokeStyle; g.font = `800 ${10 * D}px Manrope,system-ui,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(LETTERS[i], s.x * k, s.y * k); });

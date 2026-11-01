@@ -17,6 +17,7 @@ import { EM_TXT } from '../core/control.js';
 import { TR_NAME } from '../core/trauma.js';
 import { COND } from '../core/aging.js';
 import { NbPanel } from './nbpanel.js';
+import { groundAt, hollowWords } from '../core/height.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -494,7 +495,7 @@ export class Panels {
   // the card for a building being placed: what it holds, what it costs, whether it carries its loads, its power
   planCard(P) {
     const el = $('plan'); if (!P || P.x == null || !P.check || !P.locked) { el.hidden = true; this.planSig = ''; return; }
-    const sig = JSON.stringify([P.type, P.x, P.y, P.w, P.h, P.side, P.check.ok, P.check.why, P.check.warn, P.sug]); if (sig === this.planSig) { el.hidden = false; return; }
+    const hv = !!(this.A.view && this.A.view.hv && this.A.W && this.A.W.land), sig = JSON.stringify([P.type, P.x, P.y, P.w, P.h, P.side, P.check.ok, P.check.why, P.check.warn, P.sug, hv]); if (sig === this.planSig) { el.hidden = false; return; }
     this.planSig = sig;
     const c = P.check, T = TYPES[P.type];
     $('plName').textContent = T.name; $('plPic').innerHTML = icon(tic(P.type));
@@ -503,7 +504,8 @@ export class Panels {
     if (!c.ok) h += `<div class="pw bad">${esc(c.why)}</div>`;
     else if (c.warn) h += `<div class="pw">${esc(c.warn)}</div>`;
     { const hd = holds(P.type, c.cap); h += `<div class="note" style="margin:8px 0 4px">${esc(T.use)}.${hd ? ` It holds ${esc(hd)}.` : ''}</div>`; }
-    if (c.site && c.site.note) h += `<div class="note" style="margin:0 0 4px">The ground here: ${esc(c.site.note)}</div>`;
+    { const g = hv ? groundAt(this.A.W, P.x + P.w / 2, P.y + P.h / 2) : null, t = [g ? `${g.height}${g.hollow ? ', ' + hollowWords(g) : ''}.` : '', c.site && c.site.note || ''].filter(Boolean).join(' ');
+      if (t) h += `<div class="note" style="margin:0 0 4px">The ground here: ${esc(t)}</div>`; }
     const sg = P.sug;
     if (sg && sg.w === P.w && sg.h === P.h) h += `<div class="note sug">The size the Seed suggests. ${esc(sg.why)}</div>`;
     else if (sg) h += `<div class="row2 sug"><span class="grow">The Seed suggests ${sg.w} × ${sg.h} tiles for what the colony needs.</span><button class="btn" data-act="useSug">Use ${sg.w} × ${sg.h}</button></div>`;
@@ -573,6 +575,7 @@ export class Panels {
       case 'sact': this.api.cmd('story', { pid: +el.dataset.pid, id: el.dataset.id }); break;
       case 'bunks': this.api.cmd('projBunks', { id: +el.dataset.id, closed: el.dataset.v === '1' }); break;
       case 'sfind': this.api.cmd('story', { do: el.dataset.do, i: +el.dataset.i }); break;
+      case 'fGo': { const f = A.story && A.story.finds.find(q => q.i === +el.dataset.i); if (f && f.x != null) this.api.showPlace(f.x, f.y, f.name); break; }
       case 'rkeep': this.socPick = null; if (A.soc && A.soc.verdict) { A.soc.verdict = null; this.api.cmd('ruleKeep', {}); } break;
       case 'area': this.api.pickArea(crew); break;
       case 'areaClear': this.api.cmd('crewSet', { crew, target: -1 }); break;
@@ -790,7 +793,7 @@ function findsView(Y, U) {
     h += `<div class="sec">Finds · ${Y.finds.length}</div>`;
     for (const f of Y.finds.slice().reverse()) {
       h += `<div class="crew"><h3><i style="background:${f.st === 2 ? '#7fd38f' : f.st === 1 ? '#e0c46a' : '#8a96a6'}"></i>${esc(f.name)}<em>${f.st === 2 ? 'looked at' : f.st === 1 ? 'at the lab' : 'not looked at'}</em></h3>
-        <div class="note" style="margin:2px 0 6px">${day(f.d)}${f.who ? ' · ' + esc(f.who) : ''}</div>${f.text ? `<div class="note">${esc(f.text)}</div>` : ''}`;
+        <div class="row2" style="margin:2px 0 6px"><span class="grow note" style="margin:0">${day(f.d)}${f.who ? ' · ' + esc(f.who) : ''}</span>${f.x != null ? `<button class="btn" data-act="fGo" data-i="${f.i}">Show on the map</button>` : ''}</div>${f.text ? `<div class="note">${esc(f.text)}</div>` : ''}`;
       if (f.st === 2) h += `<div class="note" style="margin-top:8px;color:var(--txt)">${esc(f.res)}</div><div class="note">The lab, ${day(f.dd)}</div>`;
       else if (f.st === 1) { const on = cur === 'f' + f.i; h += `<div class="row2" style="margin-top:8px"><span class="grow" style="font-size:12px;font-weight:600">${on ? `At the analyser, about ${Math.max(1, Math.ceil(f.left))} hours left` : 'Waiting for the analyser'}</span>${on ? '' : `<button class="btn" data-act="sfind" data-do="unanalyse" data-i="${f.i}">Take out</button>`}</div>`; }
       else h += `<div class="row2" style="margin-top:8px"><span class="grow" style="font-size:12px;font-weight:600">The Seed’s analyser can look at it</span><button class="btn" data-act="sfind" data-do="analyse" data-i="${f.i}">Look at it</button></div>`;

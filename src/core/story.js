@@ -19,12 +19,13 @@ import { mealsInStore } from './food.js';
 import { KINDS } from './nb.js';
 import { makePerson } from './founders.js';
 import { lcg } from './rng.js';
+import { M_PER } from './height.js';
 
 const ST = SEALED.story || null;
 export const storyOn = () => !!ST;
 export const LAB_H = 8;                 // hours a find takes at the lab, unless the story says otherwise
 const KEEP = 4000;                      // days of readings kept, about fifty years
-export const M_PER = .8;                // metres of height for each step of the map's height field
+export { M_PER };                        // metres of height for each step of the map's height field
 
 export const newStory = () => ({ v: 1, st: {}, finds: [], facts: {}, rd: {}, marks: [], unlock: [], arch: [], notes: [], end: null, rv: 1, dbg: 0, ground: [] });
 
@@ -189,7 +190,7 @@ export function storyUI(sim) {
   const S = sim.S, Y = S.story; if (!Y) return null;
   return {
     rv: Y.rv, unlock: Y.unlock, marks: Y.marks, end: Y.end, facts: Object.values(Y.facts).filter(f => f.text).map(f => ({ d: f.d, text: f.text })),
-    finds: Y.finds.map(f => ({ i: f.i, name: f.name, text: f.text, d: f.d, who: f.who, st: f.st, res: f.res, dd: f.dd || 0, h: f.h, left: f.st === 1 ? Math.max(0, f.h - (S.F.lab.cur === 'f' + f.i ? S.F.lab.work : 0)) : 0 })),
+    finds: Y.finds.map(f => ({ i: f.i, name: f.name, text: f.text, d: f.d, who: f.who, st: f.st, res: f.res, dd: f.dd || 0, h: f.h, x: f.x, y: f.y, left: f.st === 1 ? Math.max(0, f.h - (S.F.lab.cur === 'f' + f.i ? S.F.lab.work : 0)) : 0 })),
     arch: Y.arch, notes: Y.notes.slice(-60),
     rd: Object.entries(Y.rd).map(([k, R]) => ({ k, name: R.name, unit: R.unit, d0: R.d0, v: R.v, fixed: !!R.fixed })),
   };

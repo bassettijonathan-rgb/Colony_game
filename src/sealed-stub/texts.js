@@ -41,7 +41,7 @@ export const SEALED = {
   // The hidden story: plain functions over the API in src/core/story.js. The stand-in leaves one find, whose lab
   // result opens one building, keeps one reading, and adds one rule, so every part of the page can be tried.
   story: {
-    devices: { sx: { name: 'Stand-in post', min: 2, max: 3, size: [2, 2], cap: { kw: .1 }, look: 'post', use: 'A stand-in for something the hidden story opens to build.' } },
+    devices: { sx: { name: 'Stand-in post', min: 2, max: 3, size: [2, 2], cap: { kw: .1 }, look: 'post', view: 'height', use: 'A stand-in for something the hidden story opens to build.' } },
     finds: { sx: { name: 'A stand-in find', h: 4 } },
     facts: { sx: { unlock: 'sx' } },
     rules: { sxr: { name: 'A stand-in rule', opts: [['a', 'The first way'], ['b', 'The other way']] } },
