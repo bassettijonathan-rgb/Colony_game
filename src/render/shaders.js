@@ -155,15 +155,17 @@ vec4 a=hmAt(w);vec4 b=texture(uDH,s);o=vec4(max(a.rg,b.rg),0.0,1.0);}`;
 export const FS_L = `#version 300 es
 precision highp float;precision highp int;
 ${LOOKUP}
-uniform sampler2D uH;uniform vec2 uRes,uWind;uniform vec4 uCam;
+uniform sampler2D uH;uniform vec2 uRes,uWind;uniform vec4 uCam,uHM;
 uniform vec3 uKeyDir,uKeyCol,uAmb;uniform float uNight,uTime,uCloud,uEnc,uPPT;
 uniform vec4 uLP[24];uniform vec4 uLC[24];uniform int uNL;out vec4 o;
 ${NOISE}
-vec2 HBL(vec2 s,float l){return textureLod(uH,vec2(s.x,1.0-s.y),l).rg;}
-float H(vec2 s){return texture(uH,vec2(s.x,1.0-s.y)).r*4.0;}
+// the heights reach past the screen on the sides the light comes from (uHM places this layer within them); beyond them nothing casts
+vec2 hs(vec2 s){return s*uHM.xy+uHM.zw;}
+vec2 HBL(vec2 s,float l){vec2 q=hs(s);if(q.x<0.0||q.y<0.0||q.x>1.0||q.y>1.0)return vec2(0.0,1.0);return textureLod(uH,vec2(q.x,1.0-q.y),l).rg;}
+float H(vec2 s){vec2 q=hs(s);return texture(uH,vec2(q.x,1.0-q.y)).r*4.0;}
 void main(){
  vec2 g=gl_FragCoord.xy/uRes;vec2 s=vec2(g.x,1.0-g.y);vec2 w=uCam.xy+s*uCam.zw;vec2 px=1.0/uCam.zw;
- float j=fract(52.9829189*fract(dot(gl_FragCoord.xy,vec2(0.06711056,0.00583715))));
+ float j=fract(52.9829189*fract(dot(mod(floor(w*uPPT),1024.0),vec2(0.06711056,0.00583715))));   // the march's dither, tied to the ground and not the screen
  float h0=H(s);float e=0.16;
  vec2 gr=vec2(H(s+vec2(e*px.x,0.0))-H(s-vec2(e*px.x,0.0)),H(s+vec2(0.0,e*px.y))-H(s-vec2(0.0,e*px.y)))/(2.0*e);
  gr=clamp(gr,-3.0,3.0);vec3 n=normalize(vec3(-gr,1.0));
@@ -195,7 +197,7 @@ void main(){
 export const FS_C = `#version 300 es
 precision highp float;precision highp int;
 ${LOOKUP}
-uniform sampler2D uDyn,uLight,uH,uKnown;uniform vec2 uRes;uniform vec4 uCam;
+uniform sampler2D uDyn,uLight,uH,uKnown;uniform vec2 uRes;uniform vec4 uCam,uHM,uLM;
 uniform float uTime,uExposure,uSat,uMist,uNight,uEnc,uVig,uFogOn;uniform vec3 uKeyDir,uKeyCol,uSky,uFog,uLift,uGain;
 uniform vec4 uLP[24];uniform vec4 uLC[24];uniform int uNL;out vec4 o;
 // the year: snow cover, ice, wet ground, the season's colour on the growth (x autumn, y winter), and what is
@@ -220,9 +222,10 @@ void main(){
   st=mix(st,vec3(lg*1.28,lg*1.02,lg*.52),veg*uSeas.x*.7);st=mix(st,vec3(lg*1.04,lg*.97,lg*.86)*.86,veg*uSeas.y*.78);}
  vec3 alb=pow(max(st*(1.0-dy.a)+dy.rgb,0.0),vec3(2.2));
  alb*=1.0-uWet*.3*(1.0-dy.a);
- vec2 lp=1.0/vec2(textureSize(uLight,0));vec4 Lt=texture(uLight,g)*0.36+(texture(uLight,g+vec2(0.9,0.6)*lp)+texture(uLight,g+vec2(-0.6,0.9)*lp)+texture(uLight,g+vec2(-0.9,-0.6)*lp)+texture(uLight,g+vec2(0.6,-0.9)*lp))*0.16;vec3 light=uEnc>0.5?Lt.rgb*Lt.rgb*8.0:Lt.rgb;float sunv=Lt.a;
+ vec2 sl=s*uLM.xy+uLM.zw,lg=vec2(sl.x,1.0-sl.y);   // the light layer lies on the world's grid, a little off the screen's
+ vec2 lp=1.0/vec2(textureSize(uLight,0));vec4 Lt=texture(uLight,lg)*0.36+(texture(uLight,lg+vec2(0.9,0.6)*lp)+texture(uLight,lg+vec2(-0.6,0.9)*lp)+texture(uLight,lg+vec2(-0.9,-0.6)*lp)+texture(uLight,lg+vec2(0.6,-0.9)*lp))*0.16;vec3 light=uEnc>0.5?Lt.rgb*Lt.rgb*8.0:Lt.rgb;float sunv=Lt.a;
  vec3 col=alb*light;
- vec4 m=matAt(w);float hT=texture(uH,g).r*4.0;
+ vec4 m=matAt(w);vec2 sh=s*uHM.xy+uHM.zw;float hT=texture(uH,vec2(sh.x,1.0-sh.y)).r*4.0;
  float wat=smoothstep(0.35,0.65,m.r)*(1.0-smoothstep(0.03,0.1,hT))*(1.0-dy.a);
  if(wat>0.002){float t=uTime;
   vec3 n1=noised(w*vec2(1.1,0.6)+vec2(0.0,-t*0.5));vec3 n2=noised(w*vec2(2.4,1.6)+vec2(t*0.12,-t*0.9)+5.3);vec3 n3=noised(w*5.5+vec2(-t*0.2,-t*1.5)+11.7);
