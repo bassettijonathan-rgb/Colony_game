@@ -871,7 +871,7 @@ export function onTimer(sim, c) {
       const i = c.src, pt = sim.life.list[i], F = S.F, L = pt && F.life[pt.o];
       if (L && !L.tested && !L.queued && L.samples < SAMPLES && !F.sampled[i]) {
         F.sampled[i] = 1; L.samples++; S.rv++;
-        if (L.samples === SAMPLES) sim.log(`Samples of ${sim.kinds[pt.o].name.toLowerCase()} are ready to test: ${c.name} took the third.`, 'good', { e: 'samples', lvl: 1, who: c.id, title: 'Ready to test' });
+        if (L.samples === SAMPLES) sim.log(`Samples of ${sim.kinds[pt.o].name.toLowerCase()} are ready to test: ${c.name} took the third.`, 'good', { e: 'samples', lvl: 1, who: c.id, title: 'Ready to test', act: 'life:local' });
       }
       c.job = ''; c.src = -1; c.act = ACT.IDLE; break;
     }

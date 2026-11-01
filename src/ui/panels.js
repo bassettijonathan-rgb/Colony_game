@@ -25,6 +25,10 @@ const rgb = c => `rgb(${c.map(v => v | 0).join(',')})`;
 const pad = n => String(n).padStart(2, '0');
 const when = t => { const d = Math.floor(t / DAY_TICKS) + 1, h = (t % DAY_TICKS) / HOUR; return `Day ${d} ${pad(Math.floor(h))}:${pad(Math.floor((h % 1) * 60))}`; };
 const cap1 = s => s.charAt(0).toUpperCase() + s.slice(1);
+// a suggestion's place on the map, for its Plan button
+const atData = o => o && o.at ? ` data-x="${Math.round(o.at.x)}" data-y="${Math.round(o.at.y)}"` : '';
+// bunks the Seed suggests closing, with the reason and a button that does it
+const closeRows = (AD, U) => (AD && AD.close || []).map(c => { const p = U.projects.find(q => q.id === c.id); return p && !p.closed ? `<div class="box adv"><i class="bi">${icon(tic(p.type))}</i><div><b>Close the bunks in ${esc(p.name)}</b><div class="note" style="margin:2px 0 0">${esc(c.why || `${p.sleepers} sleep there, and there are bunks free elsewhere.`)}</div></div><button class="btn" data-act="bunks" data-id="${p.id}" data-v="1">Close them</button></div>` : ''; }).join('');
 const SIDE = ['north', 'east', 'south', 'west'];
 const pct = f => Math.round(f * 100) + '%';
 const icon = (id, cls = 'ic') => `<svg class="${cls}"><use href="#i-${id}"/></svg>`;
@@ -85,7 +89,7 @@ export class Panels {
     this.nbp = new NbPanel({ cmd: (op, m) => api.cmd(op, m), toast: m => api.toast(m), name: id => this.A.people[id] && this.A.people[id].name, refresh: () => { this.sig = ''; this.update(); } });
     document.querySelectorAll('#dock [data-tab]').forEach(b => b.onclick = () => this.toggleTab(b.dataset.tab));
     $('sideMin').onclick = () => this.fold(true);
-    $('kBuild').onclick = e => { const b = e.target.closest('[data-proj]'); if (b) this.api.showProject(+b.dataset.proj); const g = e.target.closest('[data-sug]'); if (g) this.api.startPlace(g.dataset.sug, 0, 0, '', +g.dataset.lvl); };
+    $('kBuild').onclick = e => { const b = e.target.closest('[data-proj]'); if (b) this.api.showProject(+b.dataset.proj); const g = e.target.closest('[data-sug]'); if (g) this.planAt(g); };
     const bar = $('bar');
     bar.onclick = e => { const b = e.target.closest('[data-i]'); if (b) this.api.select(+b.dataset.i); };
     bar.ondblclick = e => { const b = e.target.closest('[data-i]'); if (b) this.api.select(+b.dataset.i, true); };
@@ -134,7 +138,7 @@ export class Panels {
     this.dock();
   }
   setTab(t) {
-    const [w, part] = t.split(':'); t = w; if (part) this[t === 'build' ? 'btab' : 'ltab'] = part;   // 'life:local' opens a part of a window
+    const [w, part] = t.split(':'); t = w; if (part) this[t === 'build' ? 'btab' : t === 'log' ? 'logView' : 'ltab'] = part;   // 'life:local' opens a part of a window
     if ((t === 'records') !== (this.tab === 'records') || !this.recOn) { this.recOn = 1; this.api.wantRecs(t === 'records'); }
     if ((t === 'society') !== (this.tab === 'society') || !this.socOn) { this.socOn = 1; this.api.wantSoc(t === 'society'); }
     this.tab = t; this.sig = '';
@@ -144,6 +148,12 @@ export class Panels {
   }
   fold(on = !this.min) { this.min = on; $('side').hidden = on || !this.on; this.dock(); }
   dock() { document.querySelectorAll('#dock [data-tab]').forEach(b => b.classList.toggle('on', !this.min && b.dataset.tab === this.tab)); $('news').classList.toggle('side', !$('side').hidden); }
+  // start planning a kind of building, and fly to where the Seed suggests it, when it says
+  planAt(el) {
+    const type = el.dataset.type || el.dataset.sug;
+    this.api.startPlace(type, 0, 0, '', +(el.dataset.lvl || 0));
+    if (el.dataset.x != null) this.api.showPlace(+el.dataset.x, +el.dataset.y, 'Where the Seed suggests', 8);
+  }
   toggleTab(t) { if (this.tab === t && !this.min) this.fold(true); else this.setTab(t); }
   update() {
     const A = this.A, U = A.ui; if (!U) return;
@@ -444,7 +454,7 @@ export class Panels {
       let h = sub('btab', bt, [['plan', 'Plan'], ['list', `Projects · ${open.length}`], ['mat', 'Materials']]);
       if (bt === 'plan') {
         const AD = U.advice;
-        if (AD) h += `<div class="sec">The Seed suggests</div>` + (AD.note ? `<div class="note">${esc(AD.note)}</div>` : AD.list.length ? AD.list.slice(0, 3).map((o, i) => `<div class="box adv"><i class="bi">${icon(tic(o.type))}</i><div><b>${i ? '' : 'Next: '}${esc(TYPES[o.type].name)}</b><div class="note" style="margin:2px 0 0">${esc(o.why)}</div></div><button class="btn${i ? '' : ' go'}" data-act="plan" data-type="${o.type}" data-lvl="${o.lvl || 0}">Plan it</button></div>`).join('') : '<div class="note">Nothing is short just now. Build what you like.</div>') + `<div class="sec">How to build</div>`;
+        if (AD) h += `<div class="sec">The Seed suggests</div>` + (AD.note ? `<div class="note">${esc(AD.note)}</div>` : AD.list.length ? AD.list.slice(0, 3).map((o, i) => `<div class="box adv"><i class="bi">${icon(tic(o.type))}</i><div><b>${i ? '' : 'Next: '}${esc(TYPES[o.type].name)}</b><div class="note" style="margin:2px 0 0">${esc(o.why)}</div></div><button class="btn${i ? '' : ' go'}" data-act="plan" data-type="${o.type}" data-lvl="${o.lvl || 0}"${atData(o)}>Plan it</button></div>`).join('') : '<div class="note">Nothing is short just now. Build what you like.</div>') + closeRows(AD, U) + `<div class="sec">How to build</div>`;
         h += how(['Pick a building below.', 'Click on the map to put down the size the Seed suggests, or drag to draw your own. <kbd>R</kbd> rotates it and <kbd>Shift</kbd>+<kbd>R</kbd> turns the door. Once it is down, drag its edges to resize it or its middle to move it. Buildings can stand wall to wall, but never over a door. The card shows what it needs; confirm to add it to the projects.', 'Build crews (Crews window, <kbd>C</kbd>) work through the projects from the top, cutting stone and felling trees for what each needs.', 'A finished building only works with power: see Materials.', 'Root cellars, dug quarters and mines go below ground: the map switches to the view underneath (<kbd>U</kbd>), where the Seed’s soundings show what can be dug and where the seams of ore run. A lift shaft opens the middle and the deep below it (press <kbd>U</kbd> again to go down), for deep vaults, heat taps and richer seams.']);
         h += `<div class="sec">Everything you can build</div><div class="types">${PLANNABLE.concat(this.A.story ? this.A.story.unlock : []).map(t => `<button data-act="plan" data-type="${t}"><i class="bi">${icon(tic(t))}</i><b>${TYPES[t].name}</b><span>${esc(TYPES[t].use)}</span></button>`).join('')}</div>`;
         if (U.blueprints.length) h += `<div class="sec">Blueprints</div><div class="note" style="margin:0 0 6px">Buildings you saved to place again, same size and layout.</div>` + U.blueprints.map((b, i) => `<div class="q"><span>${esc(b.name)} <em class="dim">${TYPES[b.type].name.toLowerCase()} · ${b.w} × ${b.h}</em></span><button class="btn" data-act="bp" data-i="${i}">Place</button><button data-act="bpDel" data-i="${i}" title="Forget this blueprint">Forget</button></div>`).join('');
@@ -575,6 +585,7 @@ export class Panels {
       case 'sact': this.api.cmd('story', { pid: +el.dataset.pid, id: el.dataset.id }); break;
       case 'bunks': this.api.cmd('projBunks', { id: +el.dataset.id, closed: el.dataset.v === '1' }); break;
       case 'sfind': this.api.cmd('story', { do: el.dataset.do, i: +el.dataset.i }); break;
+      case 'noteGo': this.api.showPlace(+el.dataset.x, +el.dataset.y, 'Noticed here'); break;
       case 'fGo': { const f = A.story && A.story.finds.find(q => q.i === +el.dataset.i); if (f && f.x != null) this.api.showPlace(f.x, f.y, f.name); break; }
       case 'rkeep': this.socPick = null; if (A.soc && A.soc.verdict) { A.soc.verdict = null; this.api.cmd('ruleKeep', {}); } break;
       case 'area': this.api.pickArea(crew); break;
@@ -583,7 +594,7 @@ export class Panels {
       case 'crewNew': this.api.cmd('crewNew', {}); break;
       case 'crewPlan': this.api.cmd('crewPlan', { keep: true }); break;
       case 'crewDel': this.api.cmd('crewDel', { crew }); break;
-      case 'plan': this.api.startPlace(el.dataset.type, 0, 0, '', +(el.dataset.lvl || 0)); break;
+      case 'plan': this.planAt(el); break;
       case 'bp': { const b = U.blueprints[+el.dataset.i]; if (b) this.api.startPlace(b.type, b.w, b.h, b.name); break; }
       case 'bpDel': this.api.cmd('bpDel', { i: +el.dataset.i }); break;
       case 'test': this.api.cmd('test', { mat: el.dataset.mat }); this.api.toast(`The ${el.dataset.mat} test is first on the project list.`); break;
@@ -625,7 +636,7 @@ export class Panels {
         <div class="ps">${p.paused ? 'Paused · ' : ''}${esc(names[p.stage])}${p.stall ? ' · stalled' : !p.crews.length && !p.paused ? ' · waiting' : ''}</div><div class="bar"><u style="width:${pct(all)}"></u></div></button>`;
     }).join('') + (open.length > 5 ? `<div class="tk idle">${open.length - 5} more in the build list</div>` : '') : `<div class="tk idle">Nothing being built. Press B to plan a building.</div>`;
     // the Seed's idea of what comes next, one click from planning it
-    if (ad) $('kBuild').innerHTML += `<button class="tk sug" data-sug="${ad.type}" data-lvl="${ad.lvl || 0}" title="${esc(ad.why)}"><div class="row2"><b class="grow">Suggested: ${esc(TYPES[ad.type].name)}</b><em>Plan</em></div><div class="ps">${esc(ad.why)}</div></button>`;
+    if (ad) $('kBuild').innerHTML += `<button class="tk sug" data-sug="${ad.type}" data-lvl="${ad.lvl || 0}"${atData(ad)} title="${esc(ad.why)}"><div class="row2"><b class="grow">Suggested: ${esc(TYPES[ad.type].name)}</b><em>Plan</em></div><div class="ps">${esc(ad.why)}</div></button>`;
   }
   // the colonists along the top, like a game's party bar
   colbar(U) {
@@ -699,7 +710,7 @@ export class Panels {
     const A = this.A, U = A.ui, el = $('bcard'), p = U && A.projSel >= 0 ? U.projects.find(q => q.id === A.projSel) : null;
     if (!p && A.thing && U && A.phase === 'colony') return this.tcard(A.thing);
     if (!p || A.phase !== 'colony') { el.hidden = true; this.bSig = ''; return; }
-    const sig = JSON.stringify([p, this.confirm === p.id, p.type === 'clinic' && [U.care, U.med, U.ill], p.type === 'plant' && [U.seed.feed, U.seed.fb]]); if (sig === this.bSig) { el.hidden = false; return; }
+    const sig = JSON.stringify([p, this.confirm === p.id, p.type === 'clinic' && [U.care, U.med, U.ill], p.type === 'plant' && [U.seed.feed, U.seed.fb], TYPES[p.type] && TYPES[p.type].reads && A.story && A.story.rv, p.below && U.projects.filter(q => TYPES[q.type] && TYPES[q.type].for === 'below').map(q => [q.id, q.done, q.powered, q.shut])]); if (sig === this.bSig) { el.hidden = false; return; }
     this.bSig = sig;
     const T = TYPES[p.type], test = p.type === 'test', names = stagesOf(p.type), n = names.length;
     const f = progress(p), all = p.done ? 1 : (p.stage + f) / n;
@@ -717,7 +728,7 @@ export class Panels {
     else if (p.dmg && !p.done) h += `<div class="note" style="margin:0 0 6px">Damaged by ${DMG[p.dmg] || 'damage'}: it is out of use until the build crews finish the repairs below.</div>`;
     if (!test) { const hd = holds(p.type, p.cap), kw = p.type === 'solar' || !p.cap.kw ? '' : `draws ${p.cap.kw} kW`; h += `<div class="note" style="margin:8px 0 0">${esc(T.use || 'Twelve bunks in the lander\'s own modules, the first roof on this world')}.${hd ? ` It holds ${esc(hd)}${kw ? ' and ' + kw : ''}.` : kw ? ` It ${kw}.` : ''}</div>`; }
     if (BUNKS.includes(p.type) && p.done) {
-      h += `<div class="sec">Bunks</div><div class="box"><div class="row2"><span class="grow">${p.closed ? 'Closed: nobody sleeps here.' : `${p.sleepers} of ${p.cap.beds} taken.`}</span><button class="btn" data-act="bunks" data-id="${p.id}" data-v="${p.closed ? 0 : 1}">${p.closed ? 'Open the bunks' : 'Close the bunks'}</button></div><div class="note">${p.closed ? 'Open them and the Seed fills them again with anyone who has no bunk.' : 'Closed bunks stand empty: whoever sleeps here moves to a free bunk elsewhere, or sleeps outside if there is none. New bunks are given to people without one, so close the old ones to move people into new ones.'}</div></div>`;
+      h += `<div class="sec">Bunks</div>${p.ground ? `<div class="note" style="margin:0 0 6px">${esc(cap1(p.ground))}</div>` : ''}<div class="box"><div class="row2"><span class="grow">${p.closed ? 'Closed: nobody sleeps here.' : `${p.sleepers} of ${p.cap.beds} taken.`}</span><button class="btn" data-act="bunks" data-id="${p.id}" data-v="${p.closed ? 0 : 1}">${p.closed ? 'Open the bunks' : 'Close the bunks'}</button></div><div class="note">${p.closed ? 'Open them and the Seed fills them again with anyone who has no bunk.' : 'Closed bunks stand empty: whoever sleeps here moves to a free bunk elsewhere, or sleeps outside if there is none. New bunks are given to people without one, so close the old ones to move people into new ones.'}</div></div>`;
     }
     if (p.type === 'clinic' && p.done && U.care) {
       const C = U.care, M = U.med, here = C.ward.filter(q => q[1] === p.id).map(q => q[0]);
@@ -744,6 +755,17 @@ export class Panels {
       h += `<div class="sec">The seam</div><div class="note" style="margin:0">${p.seam > 0 ? `About ${p.seam} loads of ore are left to bring up${p.done ? '' : ', once the galleries are dug'}.` : 'Worked out: there is no ore left under it. Plan a new mine over another seam.'} ${p.done && p.seam > 0 ? 'A crew set to mine work cuts it, a load at a time, and piles it in the yard, while the colony is short of metal.' : ''} Every three loads of ore smelt into two of salvage at a workshop bench, or more slowly in the Seed's fabricator.${Y.ore ? ` The yard holds ${Y.ore} ${Y.ore === 1 ? 'load' : 'loads'} of ore.` : ''}</div>`;
     }
     if (p.type === 'pit') h += `<div class="sec">The stone</div><div class="note" style="margin:0">${p.rock > 0 ? `About ${p.rock} loads of stone are left to cut${p.done ? '' : ', once the face is open'}.` : 'Cut out: the stone left is too deep to reach. Plan a new pit on stony ground.'} ${p.done && p.rock > 0 ? 'Quarry crews and builders cut here when it is nearer than the rocks left lying about, or when nothing else is left.' : ''}</div>`;
+    // a room below ground: whether each device that reaches rooms down there reaches this one
+    if (T.below && p.done && A.story) for (const k of A.story.unlock) {
+      const Q = TYPES[k]; if (!Q || Q.for !== 'below' || !Q.reach || !Q.cardIn) continue;
+      const near = U.projects.some(q => q.type === k && q.done && !q.shut && q.powered !== false && Math.hypot(q.x + q.w / 2 - p.x - p.w / 2, q.y + q.h / 2 - p.y - p.h / 2) <= Q.reach);
+      h += `<div class="note" style="margin:6px 0 0">${esc(near ? Q.cardIn : Q.cardOut)}</div>`;
+    }
+    // a device that takes readings: the latest, and the level that matters
+    if (T.reads && p.done && this.A.story) {
+      const R = this.A.story.rd.find(r => r.k === T.reads), v = R && [...R.v].reverse().find(x => x != null), u = n => R.unit.startsWith('%') ? `${n}${R.unit}` : `${n} ${R.unit}`;
+      h += `<div class="sec">Readings</div><div class="note" style="margin:0">${v != null ? `${esc(cap1(R.name))}: <b>${esc(u(+v.toFixed(2)))}</b>.${R.warn != null ? ` ${esc(cap1(R.wn || 'the warning level'))} at ${esc(u(R.warn).split(' ')[0])}.` : ''}` : 'No readings yet: the first comes the morning after it is finished.'} The Stats window (T) charts every day.</div>`;
+    }
     if (p.acts && p.acts.length) h += `<div class="sec">What it can do</div>` + p.acts.map(a => `<div class="box"><div class="row2"><span class="grow">${a.note && a.off ? `<span class="note" style="margin:0">${esc(a.note)}</span>` : ''}</span><button class="btn go" data-act="sact" data-pid="${p.id}" data-id="${esc(a.id)}"${a.off ? ' disabled' : ''}>${esc(a.label)}</button></div></div>`).join('');
     if (p.type === 'field' && p.done) { const [state, sel] = fieldBits(p); h += `<div class="sec">Crop</div><div class="note" style="margin:0 0 6px">${state}</div>${sel}`; }
     if (!p.done) {
@@ -802,6 +824,6 @@ function findsView(Y, U) {
   }
   if (Y.facts && Y.facts.length) h += `<div class="sec">What the colony knows</div>` + Y.facts.map(f => `<div class="li2"><span>${esc(f.text)}</span></div>`).join('');
   if (Y.arch.length) h += `<div class="sec">Records</div>` + Y.arch.slice().reverse().map(a => `<details class="box"><summary><b>${esc(a.title)}</b> · ${day(a.d)}</summary><div class="note" style="color:var(--txt);margin-top:6px">${esc(a.text)}</div></details>`).join('');
-  if (Y.notes.length) h += `<div class="sec">Noticed</div>` + Y.notes.slice().reverse().map(n => `<div class="lg"><em>${day(n.d)}</em><span>${esc(n.m)}</span></div>`).join('');
+  if (Y.notes.length) h += `<div class="sec">Noticed</div>` + Y.notes.slice().reverse().map(n => `<div class="lg${n.x != null ? ' at' : ''}"><em>${day(n.d)}</em><span>${esc(n.m)}</span>${n.x != null ? `<button class="btn sm" data-act="noteGo" data-x="${n.x}" data-y="${n.y}">Show</button>` : ''}</div>`).join('');
   return h;
 }

@@ -72,10 +72,13 @@ export function hzMorning(sim) {
   G.burst = (G.burst || 0) * .5;
   G.to = Math.max(0, (G.rain - 1.6) * 3 + Math.max(0, G.melt - .15) * 12) * amp * dm + G.burst;   // a wet week or a fast thaw; ordinary rain soaks in
   // the Seed's sensors upstream see the water coming
-  if (G.to > G.lv + 1.5 && G.said !== sim.day) {
+  // (and which buildings stand in its way, for the warning on screen)
+  if (G.to > G.lv + 1) {
     const thr = floodPlain(sim.W), risk = S.projects.filter(p => !p.gone && p.type !== 'shelter' && p.type !== 'test' && wetShare(thr, p, G.to) >= .3);
-    if (risk.length && sim.day - G.said > 4) { G.said = sim.day; sim.log(`The river is rising: ${G.melt > .03 ? 'the snow is melting upstream' : 'days of rain are running off the hills'}. The Seed expects the water over the low ground by tomorrow, and into ${risk.map(p => p.name).join(', ')}.`, 'bad', { e: 'floodwarn', lvl: 2, pid: risk[0].id, title: 'Flood warning' }); }
-  }
+    G.risk = risk.map(p => p.id);
+    if (G.to > G.lv + 1.5 && risk.length && sim.day - G.said > 4) { G.said = sim.day; sim.log(`The river is rising: ${G.melt > .03 ? 'the snow is melting upstream' : 'days of rain are running off the hills'}. The Seed expects the water over the low ground by tomorrow, and into ${risk.map(p => p.name).join(', ')}.`, 'bad', { e: 'floodwarn', lvl: 2, pid: risk[0].id, title: 'Flood warning' }); }
+  } else if (G.risk) G.risk = null;
+
   // scorched ground greens over again after a season: woodland comes back as meadow first
   if (H.scorch.length && H.scorch[0][2] <= sim.day - REGROW) {
     const keep = [];
@@ -202,6 +205,13 @@ export function damage(sim, p, frac, why) {
 
 // ---------- beating it out ----------
 // Anyone close by and able comes when a fire threatens the camp, the fields or a building, woken if need be.
+// where a fire letter's Show me looks: a burning building, or the burning ground nearest the camp
+const fireAt = (L, tiles, bs) => {
+  if (bs.length) return { pid: bs[0].id };
+  if (!tiles.length) return {};
+  const t = tiles.reduce((a, b) => Math.hypot(b % MAP - L.x, (b / MAP | 0) - L.y) < Math.hypot(a % MAP - L.x, (a / MAP | 0) - L.y) ? b : a);
+  return { x: t % MAP + .5, y: (t / MAP | 0) + .5 };
+};
 function fireCrews(sim) {
   const S = sim.S, H = S.hz, W = sim.W, L = W.land, keys = Object.keys(H.fire).map(Number);
   const homeish = S.projects.filter(p => !p.gone && p.type !== 'test');
@@ -214,7 +224,7 @@ function fireCrews(sim) {
     const late = H.unseen ? Math.round((S.tick - H.unseen) / HOUR * 10) / 10 : 0; H.unseen = 0;
     H.alarm = S.tick; spend(sim, 2, 'fire'); relive(sim, ['fire']); noteEvent(sim, 'fire');
     const w = watcher(sim), night = sim.hour < sim.dawn || sim.hour >= sim.dusk;
-    sim.log(late >= .5 ? `Fire near the camp! It burned unseen for ${late < 1.5 ? 'an hour' : `${Math.round(late)} hours`} while everyone slept, until it came close enough to wake them.${S.projects.some(p => !p.gone && p.type === 'watch') ? '' : ' Nobody keeps watch at night.'}` : night && w ? `${w.name}, on watch, saw the fire and raised the alarm: everyone who can is going to beat it out.` : 'Fire near the camp: everyone who can is going to beat it out.', 'bad', { e: late >= .5 ? 'unseen' : 'alarm', lvl: late >= .5 ? 2 : 1, title: 'All hands to the fire' });
+    sim.log(late >= .5 ? `Fire near the camp! It burned unseen for ${late < 1.5 ? 'an hour' : `${Math.round(late)} hours`} while everyone slept, until it came close enough to wake them.${S.projects.some(p => !p.gone && p.type === 'watch') ? '' : ' Nobody keeps watch at night.'}` : night && w ? `${w.name}, on watch, saw the fire and raised the alarm: everyone who can is going to beat it out.` : 'Fire near the camp: everyone who can is going to beat it out.', 'bad', { e: late >= .5 ? 'unseen' : 'alarm', lvl: late >= .5 ? 2 : 1, title: 'All hands to the fire', ...fireAt(L, targets, bs) });
   }
   const want = Math.min(12, 2 + Math.ceil((targets.length + bs.length * 6) / 4));
   // the burned and the hurting stay back: a second burn on top of the first is how firefighters die
@@ -320,5 +330,5 @@ export const flooded = (sim, t) => sim.S.hz.fl.lv > .3 && floodPlain(sim.W)[t] <
 // what the page needs: the flames, the water level and how dry it is
 export function hzUI(S) {
   const H = S.hz;
-  return { fire: Object.keys(H.fire).map(Number), lv: +H.fl.lv.toFixed(2), dry: +H.dry.toFixed(2), wa: +H.wa.toFixed(2), alarm: !!H.alarm, warn: H.fl.to > H.fl.lv + 1, flare: flareUI(S) };
+  return { fire: Object.keys(H.fire).map(Number), lv: +H.fl.lv.toFixed(2), dry: +H.dry.toFixed(2), wa: +H.wa.toFixed(2), alarm: !!H.alarm, warn: H.fl.to > H.fl.lv + 1, risk: H.fl.to > H.fl.lv + 1 && H.fl.risk || [], flare: flareUI(S) };
 }

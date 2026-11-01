@@ -204,7 +204,7 @@ uniform vec4 uLP[24];uniform vec4 uLC[24];uniform int uNL;out vec4 o;
 // falling (x rain, y snow, z wind), in a colour that suits the light
 uniform float uSnowC,uIce,uWet;uniform vec2 uSeas;uniform vec4 uPrec;uniform vec3 uPC;
 // the height view: how far it is shown, metres for each step of the heights, screen pixels to the page's, metres between lines
-uniform sampler2D uElev;uniform vec4 uHV;
+uniform sampler2D uElev;uniform vec4 uHV;uniform vec2 uLv;
 ${NOISE}
 // rain: thin streaks in screen space, slanted by the wind; snow: flakes that drift as they fall
 float rainL(vec2 p,float sc,float sp,float dens){p*=sc;p.x+=p.y*uPrec.z*.35;p.y-=uTime*sp;p.x-=uTime*sp*uPrec.z*.35;
@@ -276,6 +276,9 @@ void main(){
   float ln=(1.0-smoothstep(wp*0.5-0.5,wp*0.5+0.5,dl))*(zero>0.5?1.0:mj>0.5?1.0-smoothstep(0.5,1.0,fw):1.0-smoothstep(0.14,0.28,fw));
   vec3 lc=zero>0.5?vec3(1.0,0.97,0.88):hm<0.0?vec3(0.03,0.07,0.25):vec3(0.33,0.22,0.10);
   hc=mix(hc,lc,ln*(zero>0.5?0.95:mj>0.5?0.8:0.6));
+  // a level the colony has learned matters, in red
+  if(uLv.y>0.5){float c2=hm-uLv.x,d2=abs(c2)/max(fwidth(c2),1e-4),w2=uHV.z*2.2;
+   hc=mix(hc,vec3(0.96,0.26,0.18),1.0-smoothstep(w2*0.5-0.5,w2*0.5+0.5,d2));}
   col=mix(col,hc,uHV.x*(1.0-dy.a*0.55));}
  // ground the Seed has not surveyed: seen only from orbit, so drained of colour, dimmer and cold, with a soft ragged edge
  // (lighter over the heights, which the orbital survey did map)
