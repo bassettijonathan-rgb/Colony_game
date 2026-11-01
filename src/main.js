@@ -18,7 +18,7 @@ import { Narrator } from './ui/narrator.js';
 import { Store, initStorage, saveLocal, loadLocal, saveAccount, loadAccount, exportFile, importFile } from './ui/storage.js';
 
 const $ = id => document.getElementById(id);
-const HUD = '.glass,.topbar,#bar,#dock,.lt,.al';   // the interface over the map: clicks and the wheel there are not for the map
+const HUD = '.glass,.topbar,#bar,#dock,.lt,.al,#belowTag,#hvTag';   // the interface over the map: clicks and the wheel there are not for the map
 const app = $('app');
 const A = {
   sim: null, view: null, panels: null, phase: 'boot', W: null, sites: null, siteSel: 0, mode: 'landfall', tag: '',
@@ -66,9 +66,9 @@ function ensureView(W) {
   if (!A.view) {
     A.view = new View(app, W);
     if (!A.view.G || !A.view.ok) { loader('This needs a browser with WebGL 2. ' + (A.view.G ? 'A shader did not compile.' : ''), 1); $('ldmsg').id = 'nogl'; return false; }
-    A.panels = new Panels(A, { cmd, select, toast, pickArea, land, siteSelect, startPlace, showProject, useSug, wantRecs: on => { if (A.sim) A.sim.send({ t: 'recs', on }); if (!on) A.recs = null; }, wantSoc: on => { if (A.sim) A.sim.send({ t: 'soc', on }); if (!on) A.soc = null; } });
+    A.panels = new Panels(A, { cmd, select, toast, pickArea, land, siteSelect, startPlace, showProject, useSug, showPlace, wantRecs: on => { if (A.sim) A.sim.send({ t: 'recs', on }); if (!on) A.recs = null; }, wantSoc: on => { if (A.sim) A.sim.send({ t: 'soc', on }); if (!on) A.soc = null; } });
     A.stats = new Stats(A);
-    A.news = new News(A, { select, showProject, setSpeed, toast, when, flyTo: (x, y) => { A.view.flyTo(x, y, Math.max(A.view.cam.z, 18)); A.follow = false; }, tab: t => A.panels.setTab(t) });
+    A.news = new News(A, { select, showProject, setSpeed, toast, when, showPlace, flyTo: (x, y) => { A.view.flyTo(x, y, Math.max(A.view.cam.z, 18)); A.follow = false; }, tab: t => A.panels.setTab(t) });
     A.guide = new Guide(A, { tab: t => A.panels.setTab(t) });
     A.narrator = new Narrator(A, { cmd });
     hookInput();
@@ -189,7 +189,7 @@ function frame(now) {
   V.clampCam();
   const colony = A.phase === 'colony' && A.ui ? { seed: A.ui.seed, stakes: A.ui.stakes, crews: A.ui.crews, projects: A.ui.projects, stores: A.ui.stores, year: A.ui.year, F: A.ui.F, spots: A.ui.spots, hz: A.ui.hz, ctl: A.ui.ctl ?? -1, ord: A.ui.ord, day: A.clock ? A.clock.cal || A.clock.abs : 1 } : null;
   const hour = A.clock && A.phase === 'colony' ? A.clock.hour : 10.5;
-  V.frame({ n: A.n, pos: A.pos, arts: A.arts, names: A.names, leads: A.leads, hour, time: now / 1000, sel: A.sel, hover: A.hover, budget: A.frames.length > 30 && avgMs() > 22 ? 1 : 2, colony, orbit: A.phase === 'orbit' ? { sites: A.sites, sel: A.siteSel } : null, pickAt: A.pickCrew >= 0 ? A.pickAt : null, place: A.place, projSel: A.projSel, thing: A.thing, ctlMark: A.ctlMark, G: A.phase === 'colony' ? A.G : null, ghover: A.ghover ?? -1 });
+  V.frame({ n: A.n, pos: A.pos, arts: A.arts, names: A.names, leads: A.leads, hour, time: now / 1000, sel: A.sel, hover: A.hover, budget: A.frames.length > 30 && avgMs() > 22 ? 1 : 2, colony, orbit: A.phase === 'orbit' ? { sites: A.sites, sel: A.siteSel } : null, pickAt: A.pickCrew >= 0 ? A.pickAt : null, place: A.place, projSel: A.projSel, thing: A.thing, ctlMark: A.ctlMark, G: A.phase === 'colony' ? A.G : null, ghover: A.ghover ?? -1, hvAt: A.hvAt, finds: A.story ? A.story.finds : null, ping: A.ping });
   if (A.hold && A.phase === 'colony' && !V.landing) { A.hold = false; setSpeed(A.speed || 1); if (V.anim) toast('The Seed is down. Choose who the fabricator prints first.'); }
   A.frames.push(now - (A.lastNow || now)); A.lastNow = now; if (A.frames.length > 120) A.frames.shift();
   A.cpuMs = (A.cpuMs || 0) * .9 + (performance.now() - t0) * .1;
@@ -331,8 +331,11 @@ function startPlace(type, w, h, name, lv0 = 0) {
   if (A.phase !== 'colony' || !TYPES[type]) return;
   endPick(); select(-1);
   const was = A.view ? A.view.below : 0, lvs = levelsOf(type), lvl = TYPES[type].below ? (lvs.includes(lv0) ? lv0 : lvs.includes(was) ? was : lvs[0]) : 0;
+  const hvPrev = A.place ? A.place.hvWas : undefined;   // a plan replaced by another: the heights it turned on are still for it to turn off
   A.place = { type, w: w || 0, h: h || 0, fixed: !!w, name: name || '', x: null, y: null, side: 0, turned: false, check: null, locked: false, seq: 0, wasBelow: was, lvl };
   if (TYPES[type].below || TYPES[type].ground) belowView(lvl || 1);   // the Seed's soundings show where to dig
+  if (TYPES[type].view === 'height') { if (!A.view.hv) { A.place.hvWas = false; heightView(true); } else A.place.hvWas = hvPrev; }   // and the heights where height matters
+  else if (hvPrev === false) heightView(false);
   $('placeTxt').textContent = w ? `Move the ${name || TYPES[type].name} where it should go and click to put it down. R rotates it.` : `Drag on the map to draw the ${TYPES[type].name.toLowerCase()}: at least ${TYPES[type].min} by ${TYPES[type].min} tiles, at most ${TYPES[type].max} long`;
   // the Seed suggests a size for what the colony needs: it follows the pointer and a click puts it down; a drag still draws any size
   if (!w) cmd('sizeFor', { type }).then(r => {
@@ -346,7 +349,7 @@ function startPlace(type, w, h, name, lv0 = 0) {
   $('plKeep').checked = false; $('plName2').value = name || ''; delete $('plName2').dataset.auto;
   A.panels.planCard(null);
 }
-function endPlace() { if (A.place && (TYPES[A.place.type].below || TYPES[A.place.type].ground) && A.place.wasBelow != null) belowView(A.place.wasBelow); A.place = null; app.dataset.grab = ''; $('placeHint').hidden = true; app.classList.remove('placing'); A.panels.planCard(null); }
+function endPlace() { if (A.place && (TYPES[A.place.type].below || TYPES[A.place.type].ground) && A.place.wasBelow != null) belowView(A.place.wasBelow); if (A.place && A.place.hvWas === false) heightView(false); A.place = null; app.dataset.grab = ''; $('placeHint').hidden = true; app.classList.remove('placing'); A.panels.planCard(null); }
 function placeRect(x, y, w, h) {
   const P = A.place; if (!P) return;
   if (P.x === x && P.y === y && P.w === w && P.h === h) return;
@@ -415,6 +418,23 @@ function roofView(on) {
   $('bRoof').classList.toggle('on', V.inside); $('bRoof').setAttribute('aria-pressed', V.inside ? 'true' : 'false');
   $('bRoof').title = V.inside ? 'Roofs off: see inside buildings (I)' : 'Roofs on (I)';
 }
+// the height view: the land coloured by its height from the camp, with a line every 5 m and a readout at the pointer;
+// on and off by the button or E, and on by itself while a building that needs low ground is placed
+function heightView(on) {
+  const V = A.view; if (!V) return;
+  V.hv = on === undefined ? !V.hv : !!on;
+  if (V.hv && V.below) belowView(0);
+  $('bHeight').classList.toggle('on', V.hv); $('bHeight').setAttribute('aria-pressed', V.hv ? 'true' : 'false');
+  app.classList.toggle('hv', V.hv);
+  if (!V.hv) A.hvAt = null;
+  if (A.place && A.panels) { A.panels.planSig = ''; A.panels.planCard(A.place); }   // the plan card gives the ground's height while it is on
+}
+// a place on the map the player asked to see: the view goes there and rings it for a few seconds
+function showPlace(x, y, label, r) {
+  if (!A.view || x == null) return;
+  A.view.flyTo(x + .5, y + .5, Math.max(A.view.cam.z, 14)); A.follow = false;
+  A.ping = { x: x + .5, y: y + .5, label: label || '', r: r || 6, at: performance.now() + 900 };
+}
 // U goes down a level at a time and back up to the surface; the middle and the deep only once a lift shaft is planned
 const LEVEL_TAG = ['', 'A few metres down', 'The middle, 30 m down, by lift shaft', 'The deep, over 100 m down, by lift shaft'];
 function belowView(on) {
@@ -423,6 +443,7 @@ function belowView(on) {
   V.below = on === undefined ? (V.below + 1) % (shaft ? 4 : 2) : on === true ? V.below || 1 : +on || 0;
   $('bBelow').classList.toggle('on', !!V.below); $('bBelow').setAttribute('aria-pressed', V.below ? 'true' : 'false');
   app.classList.toggle('below', !!V.below);
+  if (V.below && V.hv) heightView(false);
   $('belowTxt').textContent = LEVEL_TAG[V.below];
   for (const b of document.querySelectorAll('#belowLv button')) b.classList.toggle('on', +b.dataset.lv === V.below);
   const P = A.place;   // a room being planned moves with the view to a level it can go on
@@ -446,7 +467,7 @@ function newest(a, b) { if (!a) return b; if (!b) return a; return (a.savedAt ||
 // milestone 2 colonies (version 2) carry on: their shelter becomes the first project of many
 const isSave = d => d && d.v >= 2 && d.v <= 4 && d.sim && d.sim.v >= 2 && d.sim.v <= 7 && Array.isArray(d.sim.cols);
 function startColony(opts) {
-  A.phase = 'boot'; A.hold = false; endPick(); if (A.place) endPlace(); A.projSel = -1; A.thing = null; belowView(false);
+  A.phase = 'boot'; A.hold = false; endPick(); if (A.place) endPlace(); A.projSel = -1; A.thing = null; belowView(false); heightView(false); A.ping = null;
   if (A.panels) { A.panels.show(false); A.panels.orbit(null); }
   $('loader').classList.remove('gone'); loader(opts.save ? 'Waking the colony' : 'Surveying the planet from orbit', .15);
   A.sim.send(opts.save ? { t: 'init', seed: opts.save.seed, save: opts.save } : { t: 'init', seed: opts.seed, mode: opts.mode || 'landfall', count: opts.count || 300 });
@@ -469,6 +490,7 @@ function hookInput() {
   });
   app.addEventListener('pointermove', e => {
     if (ptrs.has(e.pointerId)) ptrs.set(e.pointerId, [e.clientX, e.clientY]);
+    if (V.hv) A.hvAt = e.pointerType === 'mouse' && !e.target.closest(HUD) ? V.toWorld(...local(e)) : null;
     if (pinch && ptrs.size === 2) { const [a, b] = [...ptrs.values()]; const d = Math.hypot(a[0] - b[0], a[1] - b[1]); V.zoomAt(pinch.z * d / pinch.d / V.cam.z, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2); return; }
     if (A.place && A.place.drag && A.place.drag.grab) { reshape(e); return; }
     if (A.place && !drag) { const g = A.place.locked ? grab(e) : null; app.dataset.grab = !g ? '' : g.move ? 'move' : (g.l || g.r) && (g.t || g.b) ? ((g.l && g.t) || (g.r && g.b) ? 'nwse' : 'nesw') : g.l || g.r ? 'ew' : 'ns'; }
@@ -538,6 +560,7 @@ function hookInput() {
     else if (e.code === 'KeyN' && colony) skipMenu();
     else if (e.code === 'KeyU' && colony) belowView();
     else if (e.code === 'KeyI' && colony) roofView();
+    else if (e.code === 'KeyE' && colony) heightView();
     else if (e.code === 'F11') { e.preventDefault(); fullscreen(); }
     else if ((e.code === 'Escape' || e.code === 'Enter') && A.news && A.news.open) { e.preventDefault(); A.news.closeLetter(); }
     else if (e.code === 'Escape' && A.ui && A.ui.ctl >= 0 && !A.place) toggleCtl(A.ui.ctl);
@@ -553,6 +576,8 @@ function hookInput() {
   $('bSkip').onclick = () => skipMenu(); $('skStop').onclick = stopSkip;
   document.querySelectorAll('[data-skip]').forEach(b => b.onclick = () => startSkip(b.dataset.skip));
   $('bBelow').onclick = () => belowView(); $('bRoof').onclick = () => roofView(); $('belowUp').onclick = () => belowView(0);
+  $('bHeight').onclick = () => heightView(); $('hvOff').onclick = () => heightView(false);
+  app.addEventListener('pointerleave', () => { A.hvAt = null; });
   for (const b of document.querySelectorAll('#belowLv button')) b.onclick = () => belowView(+b.dataset.lv);
   $('bFull').onclick = () => fullscreen();
   const fsIcon = () => { const on = !!(document.fullscreenElement || document.webkitFullscreenElement); $('bFull').querySelector('use').setAttribute('href', on ? '#i-unfull' : '#i-full'); $('bFull').title = on ? 'Leave fullscreen (F11)' : 'Fullscreen (F11)'; };

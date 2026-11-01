@@ -203,6 +203,8 @@ uniform vec4 uLP[24];uniform vec4 uLC[24];uniform int uNL;out vec4 o;
 // the year: snow cover, ice, wet ground, the season's colour on the growth (x autumn, y winter), and what is
 // falling (x rain, y snow, z wind), in a colour that suits the light
 uniform float uSnowC,uIce,uWet;uniform vec2 uSeas;uniform vec4 uPrec;uniform vec3 uPC;
+// the height view: how far it is shown, metres for each step of the heights, screen pixels to the page's, metres between lines
+uniform sampler2D uElev;uniform vec4 uHV;
 ${NOISE}
 // rain: thin streaks in screen space, slanted by the wind; snow: flakes that drift as they fall
 float rainL(vec2 p,float sc,float sp,float dens){p*=sc;p.x+=p.y*uPrec.z*.35;p.y-=uTime*sp;p.x-=uTime*sp*uPrec.z*.35;
@@ -260,10 +262,26 @@ void main(){
  float lum=dot(col,vec3(0.2126,0.7152,0.0722));col=max(mix(vec3(lum),col,uSat),0.0);
  col=col*uGain+uLift*(1.0-col);
  vec2 v=s-0.5;v.x*=uRes.x/uRes.y;col*=clamp(1.0-uVig*dot(v,v)*1.15,0.0,1.0);
+ // the height view: the land below the camp in blues, darker the deeper it lies, the land above it in sand, paler the
+ // higher; a line every 5 m, stronger every 25 m, and the camp's own level in white. Hollows show as rings of lines.
+ // The picture under it is kept, quieter and never black, so the camp and the ground stay recognisable at night.
+ if(uHV.x>0.001){float hm=texture(uElev,w/uMap).r*uHV.y;
+  float lm=dot(col,vec3(0.2126,0.7152,0.0722)),lb=0.34+0.95*sqrt(lm);
+  float dn=smoothstep(0.0,30.0,-hm),up=smoothstep(0.0,30.0,hm);
+  vec3 tint=hm<0.0?mix(vec3(0.46,0.70,0.96),vec3(0.12,0.22,0.70),dn):mix(vec3(0.84,0.74,0.54),vec3(0.97,0.92,0.80),up);
+  vec3 hc=mix(vec3(lm),tint*lb,0.85);
+  float c=hm/uHV.w,fw=max(fwidth(c),1e-4),k=floor(c+0.5),dl=abs(c-k)/fw;
+  float zero=step(abs(k),0.5),mj=step(mod(abs(k)+0.5,5.0),1.0)*(1.0-zero);
+  float wp=uHV.z*(zero>0.5?1.7:mj>0.5?1.2:0.95);
+  float ln=(1.0-smoothstep(wp*0.5-0.5,wp*0.5+0.5,dl))*(zero>0.5?1.0:mj>0.5?1.0-smoothstep(0.5,1.0,fw):1.0-smoothstep(0.14,0.28,fw));
+  vec3 lc=zero>0.5?vec3(1.0,0.97,0.88):hm<0.0?vec3(0.03,0.07,0.25):vec3(0.33,0.22,0.10);
+  hc=mix(hc,lc,ln*(zero>0.5?0.95:mj>0.5?0.8:0.6));
+  col=mix(col,hc,uHV.x*(1.0-dy.a*0.55));}
  // ground the Seed has not surveyed: seen only from orbit, so drained of colour, dimmer and cold, with a soft ragged edge
+ // (lighter over the heights, which the orbital survey did map)
  if(uFogOn>0.5){vec2 fw=w+(vec2(vn(w*.21),vn(w*.21+7.3))-.5)*5.0;float kn=texture(uKnown,fw/uMap).r;float fg=1.0-smoothstep(.2,.8,kn);
-  if(fg>0.001){float lm=dot(col,vec3(0.2126,0.7152,0.0722));vec3 fc=vec3(lm)*vec3(.6,.7,.86)*.62+vec3(.01,.015,.03);
-   float edge=fg*(1.0-fg)*4.0;fc+=vec3(.05,.12,.16)*edge*(.6+.4*sin(uTime*1.5+w.x*.2+w.y*.13))*(1.0-uNight*.5);col=mix(col,fc,fg*.88);}}
+  if(fg>0.001){float lm=dot(col,vec3(0.2126,0.7152,0.0722));vec3 fc=vec3(lm)*mix(vec3(.6,.7,.86),vec3(.74),uHV.x)*.62+vec3(.01,.015,.03);
+   float edge=fg*(1.0-fg)*4.0;fc+=vec3(.05,.12,.16)*edge*(.6+.4*sin(uTime*1.5+w.x*.2+w.y*.13))*(1.0-uNight*.5);col=mix(col,fc,fg*(.88-.36*uHV.x));}}
  if(!inMap(w))col*=0.25;
  // falling rain and snow, over everything
  if(uPrec.x+uPrec.y>0.001){vec2 sp=vec2(s.x*uRes.x/uRes.y,s.y);float f=0.0;

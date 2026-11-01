@@ -383,6 +383,14 @@ table.rt{width:100%;border-collapse:collapse;font-size:11px;margin:4px 0 8px}tab
 .nbp.raid{border-left:2px solid var(--bad)}.chip.bad{opacity:.6}
 #belowTag{position:absolute;left:50%;bottom:calc(var(--bot) + 74px);transform:translateX(-50%);padding:6px 8px 6px 12px;border-radius:3px;background:rgba(30,22,14,.9);border:1px solid rgba(201,162,107,.6);font-size:12px;font-weight:700;color:#e9d6b4;z-index:6;display:none;gap:10px;align-items:center;pointer-events:auto;box-shadow:0 8px 20px rgba(0,0,0,.45)}
 #app.below #belowTag{display:flex}
+#hvTag{position:absolute;left:50%;bottom:calc(var(--bot) + 74px);transform:translateX(-50%);padding:6px 8px 6px 12px;border-radius:3px;background:rgba(14,20,30,.9);border:1px solid rgba(126,172,240,.55);font-size:12px;font-weight:700;color:#dfe8f6;z-index:6;display:none;gap:12px;align-items:center;pointer-events:auto;box-shadow:0 8px 20px rgba(0,0,0,.45);max-width:calc(100% - 24px)}
+#app.hv:not(.below) #hvTag{display:flex}
+#hvTag #hvTxt{font-weight:600;color:#c9d6ea;line-height:1.35}
+.hvKey{display:flex;flex-direction:column;gap:3px;flex:none;width:168px}
+.hvKey i{display:block;height:9px;border-radius:2px;background:linear-gradient(90deg,#5978c9 0%,#a6c9e9 49%,#fffaec 49.6%,#fffaec 50.4%,#dbcfb3 51%,#e9e3d6 100%);box-shadow:inset 0 0 0 1px rgba(0,0,0,.35)}
+.hvKey em{display:flex;justify-content:space-between;font-style:normal;font-size:10.5px;font-weight:700;color:#aebbd0}
+#bHeight.on{color:#cfe2ff;border-color:rgba(126,172,240,.7);background:rgba(126,172,240,.14)}
+@media (max-width:760px){#hvTag #hvTxt{display:none}}
 #belowTag #belowTxt{white-space:nowrap}
 #belowLv button{flex:none;padding:0 10px;height:24px}
 #bBelow.on{color:#ffd79a;border-color:rgba(201,162,107,.7);background:rgba(201,162,107,.14)}
@@ -548,6 +556,7 @@ table.rt{width:100%;border-collapse:collapse;font-size:11px;margin:4px 0 8px}tab
   <symbol id="i-temp" viewBox="0 0 16 16"><path d="M6.5 9.4V3a1.5 1.5 0 0 1 3 0v6.4a3 3 0 1 1-3 0z"/><path d="M8 6v5"/></symbol>
   <symbol id="i-solar" viewBox="0 0 16 16"><path d="M2.5 11.5L4.5 4h7l2 7.5z"/><path d="M3.5 7.75h9M8 4v7.5M8 11.5v2.5M5.5 14h5"/></symbol>
   <symbol id="i-roof" viewBox="0 0 24 24"><path d="M3 11l9-7 9 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-dasharray="3 2.2"/><path d="M5.5 10.5V20h13v-9.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><rect x="8.5" y="14" width="3.2" height="3" rx=".5" fill="currentColor"/><rect x="13" y="13" width="3" height="4" rx=".5" fill="none" stroke="currentColor" stroke-width="1.4"/></symbol><symbol id="i-below" viewBox="0 0 16 16"><path d="M1.5 5.5h13"/><path d="M3 5.5v8h10v-8"/><path d="M5.5 5.5v2h2v2h2v2h2"/></symbol>
+  <symbol id="i-height" viewBox="0 0 16 16"><path d="M8 2.6c3.2 0 5.6 2.2 5.6 5.1 0 3-2.6 5.7-5.8 5.7S2.4 11 2.4 8.1 4.8 2.6 8 2.6z"/><path d="M7.9 5.4c1.7 0 3 1.1 3 2.5s-1.3 2.8-3.1 2.8-2.9-1.2-2.9-2.6 1.3-2.7 3-2.7z"/><path d="M7.7 7.7h.5"/></symbol>
   <symbol id="i-cellar" viewBox="0 0 16 16"><path d="M1.5 4.5h13M3 4.5v9h10v-9"/><path d="M4.75 8h6.5M4.75 11h6.5"/><circle cx="6" cy="6.75" r=".9"/><circle cx="9.5" cy="9.75" r=".9"/></symbol>
   <symbol id="i-scan" viewBox="0 0 16 16"><circle cx="8" cy="7" r="4.5"/><path d="M8 4.5v5M5.5 7h5M3 14.5h10"/></symbol><symbol id="i-shaft" viewBox="0 0 16 16"><path d="M4 14.5L8 2.5l4 12M5.3 10.5h5.4"/><circle cx="8" cy="4.5" r="1.8"/></symbol><symbol id="i-vault" viewBox="0 0 16 16"><path d="M1.5 4.5h13"/><path d="M3.5 14V9.5a4.5 4.5 0 0 1 9 0V14z"/><path d="M8 9.5v2"/></symbol><symbol id="i-mine" viewBox="0 0 16 16"><path d="M1.5 4.5h13M3 4.5v9h10v-9"/><path d="M5.5 12l4.5-4.5"/><path d="M7.5 6.25q2.75-1.25 4.5 1.75"/></symbol>
   <symbol id="i-test" viewBox="0 0 16 16"><path d="M2.5 11a5.5 5.5 0 0 1 11 0"/><path d="M8 11l3-3.5"/><path d="M2 13.5h12"/></symbol>
@@ -589,6 +598,7 @@ table.rt{width:100%;border-collapse:collapse;font-size:11px;margin:4px 0 8px}tab
         <button class="sq" id="bHome" title="Back to the Seed (H)" aria-label="Back to the Seed"><svg class="ic" style="width:19px;height:19px"><use href="#i-seed"/></svg></button>
         <button class="sq on" id="bRoof" title="Roofs off: see inside buildings (I)" aria-label="See inside buildings" aria-pressed="true"><svg class="ic" style="width:19px;height:19px"><use href="#i-roof"/></svg></button>
         <button class="sq" id="bBelow" title="Below ground (U)" aria-label="Below ground" aria-pressed="false"><svg class="ic" style="width:19px;height:19px"><use href="#i-below"/></svg></button>
+        <button class="sq" id="bHeight" title="Heights: low and high ground (E)" aria-label="Heights" aria-pressed="false"><svg class="ic" style="width:19px;height:19px"><use href="#i-height"/></svg></button>
         <button class="sq" id="bFull" title="Fullscreen (F11)" aria-label="Fullscreen"><svg class="ic" style="width:19px;height:19px"><use href="#i-full"/></svg></button>
         <button class="sq" id="bMenu" title="Menu: save, load, music, controls" aria-label="Menu"><svg class="ic" style="width:19px;height:19px"><use href="#i-menu"/></svg></button>
         <button id="fpsChip" title="Performance"><b id="fps">--</b>FPS</button>
@@ -623,12 +633,12 @@ table.rt{width:100%;border-collapse:collapse;font-size:11px;margin:4px 0 8px}tab
           <span><kbd>Space</kbd></span><span>pause</span>
           <span><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></span><span>speed</span>
           <span><kbd>N</kbd></span><span>skip ahead: to the next season, or a year</span>
-          <span><kbd>Q</kbd> <kbd>C</kbd> <kbd>B</kbd> <kbd>G</kbd></span><span>archive, crews, build, life</span>
+          <span><kbd>Q</kbd> <kbd>C</kbd> <kbd>B</kbd> <kbd>G</kbd> <kbd>V</kbd></span><span>archive, crews, build, life, neighbours</span>
           <span><kbd>K</kbd> <kbd>P</kbd> <kbd>T</kbd> <kbd>L</kbd></span><span>records, society, stats, log</span>
-          <span><kbd>I</kbd> <kbd>U</kbd></span><span>roofs off, below ground</span>
+          <span><kbd>I</kbd> <kbd>U</kbd> <kbd>E</kbd></span><span>roofs off, below ground, heights</span>
           <span><kbd>Tab</kbd></span><span>names on the map</span>
           <span><kbd>F</kbd> <kbd>H</kbd></span><span>follow the picked person, back to the Seed</span>
-          <span><kbd>R</kbd> <kbd>Esc</kbd></span><span>turn the door, cancel</span>
+          <span><kbd>R</kbd> <kbd>Shift+R</kbd> <kbd>Esc</kbd></span><span>while placing: rotate, turn the door, cancel</span>
           <span><kbd>M</kbd></span><span>music</span>
           <span><kbd>F11</kbd></span><span>fullscreen</span>
         </div>
@@ -676,6 +686,7 @@ table.rt{width:100%;border-collapse:collapse;font-size:11px;margin:4px 0 8px}tab
     <div class="glass" id="orbit" hidden></div>
     <div id="ctlHint" hidden><span id="ctlTxt"></span><button class="btn" id="ctlEnd">Release (Esc)</button></div>
     <div id="pickHint" hidden><span id="pickTxt"></span><button class="btn" id="pickCancel">Cancel</button></div>
+    <div id="hvTag"><span class="hvKey"><i></i><em><b>−30 m</b><b>camp</b><b>+30 m</b></em></span><span id="hvTxt">Blue ground lies below the camp, sand above it. A line every 5 m, the camp’s own level in white. Point at the ground to read its height.</span><button class="btn" id="hvOff">Close (E)</button></div>
     <div id="belowTag"><span id="belowTxt">A few metres down</span><span class="seg sm" id="belowLv"><button data-lv="1" class="on">Shallow</button><button data-lv="2">Middle</button><button data-lv="3">Deep</button></span><button class="btn" id="belowUp">Surface (U)</button></div>
     <div id="placeHint" hidden><span id="placeTxt"></span><button class="btn" id="placeRot">Rotate (R)</button><button class="btn" id="placeTurn">Turn door (Shift+R)</button><button class="btn" id="placeCancel">Cancel</button></div>
     <div class="glass" id="plan" hidden>
