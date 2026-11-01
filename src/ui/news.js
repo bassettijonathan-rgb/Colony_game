@@ -14,9 +14,10 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;',
 const KEY = 'colony-news';
 const SMALL_S = 90, SMALL_NEW_S = 180, MAX_LETTERS = 12;   // seconds of play a small letter stays; how many fit
 
-const ACT_LABEL = { nb: 'Neighbours (V)' };
+const ACT_LABEL = { nb: 'Neighbours (V)', society: 'Society (P)', 'life:local': 'Local life (G)', 'log:finds': 'Finds (L)' };
 // what an event means, said once, the first time it happens
 export const EXPLAIN = {
+  note: 'Something someone noticed, which may matter later. Everything noticed is kept in the Log (L), under Finds.',
   find: 'Something someone found and brought back. The Seed’s analyser can look at it, the same way it tests local life: open the Log (L), Finds, and press Look at it. People at a lab’s benches do it much faster. Everything found, and what the lab made of it, stays under Finds.',
   woke: 'A founder is awake in a printed body. For the first ten days a new body feels strange: they tire faster and work a little slower. Unless you have taken over the crews, the Seed puts each new founder in one.',
   nocrew: 'Since you took over the crews from the Seed, new founders wait at camp until you put them in one. Open Crews (C) to choose.',
@@ -269,7 +270,7 @@ export class News {
   // ---------- looking at what a letter is about ----------
   go(e) {
     const A = this.A;
-    if (e.e === 'find' && e.x != null && this.api.showPlace) { this.api.showPlace(e.x, e.y, e.title); return; }   // a find: the place it was made, not who made it
+    if ((e.e === 'find' || e.e === 'note') && e.x != null && this.api.showPlace) { this.api.showPlace(e.x, e.y, e.title); return; }   // a find or a thing noticed: the place, not who saw it
     if (e.who != null && e.who >= 0) this.api.select(e.who, true);
     else if (e.pid != null && A.ui && A.ui.projects.some(p => p.id === e.pid)) this.api.showProject(e.pid);
     else if (e.x != null) this.api.flyTo(e.x, e.y);
@@ -319,7 +320,7 @@ export class News {
       const wet = U.projects.filter(p => p.wet && p.type !== 'shelter');
       if (wet.length) add('flooded', wet.length === 1 ? `${wet[0].name} is under water` : `${wet.length} buildings are under water`, wet.map(p => ({ pid: p.id })));
       else if (H.lv > 1) add('floodwarn', 'The river is in flood', [], 'The water is over the low ground. Nothing the colony has built is in it.');
-      else if (H.warn) add('floodwarn', ALERTS.floodwarn[1], []);
+      else if (H.warn) add('floodwarn', ALERTS.floodwarn[1], H.risk.map(id => ({ pid: id })), H.risk.length ? `In its way: ${U.projects.filter(p => H.risk.includes(p.id)).map(p => p.name).join(', ')}.` : 'Nothing the colony has built is in its way.');
       if (H.flare) add('flare', H.flare.on ? `Particle storm overhead, ${H.flare.left} h left` : `Particle storm in ${H.flare.in} h`, [], H.flare.on ? `About ${H.flare.rate} mSv an hour out in the open just now. Everyone is under cover until it passes.` : 'Everyone will go under cover just before it arrives; work outside stops while it lasts.');
     }
     const hurtN = people(p => p[6] & 4098).length, M = U.med;

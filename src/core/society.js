@@ -182,7 +182,7 @@ function council(sim, adults, view) {
     Q.council = { since: sim.day, members: choose(sim, adults), chose: sim.day };
     const names = Q.council.members.map(i => S.cols[i].name);
     for (const i of Q.council.members) remember(sim, S.cols[i], 'Was chosen for the first council.');
-    sim.log(`The colony has chosen a council for the first time: ${list(names)}. It speaks for the colony and can be asked before a rule changes. It only advises: the Seed decides, but people notice whether it listens.`, 'good', { e: 'council', lvl: 2, title: 'The first council' });
+    sim.log(`The colony has chosen a council for the first time: ${list(names)}. It speaks for the colony and can be asked before a rule changes. It only advises: the Seed decides, but people notice whether it listens.`, 'good', { e: 'council', lvl: 2, title: 'The first council', act: 'society' });
     return;
   }
   const C = Q.council;
@@ -201,7 +201,7 @@ function council(sim, adults, view) {
     Q.verdict = { k, v, d: sim.day, yes, no: votes.length - yes, votes };
     Q.q = null;
     const reasons = votes.filter(q => !q.yes && q.why).slice(0, 2).map(q => `${first(S.cols[q.id].name)} ${q.why}`);
-    sim.log(`The council has answered the Seed: should the rule on ${RULES[k].name.toLowerCase()} be “${optName(k, v)}”? ${yes} of ${votes.length} say yes.${reasons.length ? ` Against: ${reasons.join('; ')}.` : ''} Change the rule in the Society window, or leave it.`, yes > votes.length / 2 ? 'good' : '', { e: 'verdict', lvl: 2, title: 'The council’s answer' });
+    sim.log(`The council has answered the Seed: should the rule on ${RULES[k].name.toLowerCase()} be “${optName(k, v)}”? ${yes} of ${votes.length} say yes.${reasons.length ? ` Against: ${reasons.join('; ')}.` : ''} Change the rule in the Society window, or leave it.`, yes > votes.length / 2 ? 'good' : '', { e: 'verdict', lvl: 2, title: 'The council’s answer', act: 'society' });
   }
   // unasked: a rule most of the colony wants changed
   if (sim.day % 10 === 0) for (const k in view) {
@@ -209,7 +209,7 @@ function council(sim, adults, view) {
     if (Q.said['c' + k] && sim.day - Q.said['c' + k] < 40) continue;
     Q.said['c' + k] = sim.day;
     const alt = Object.entries(v.pref).sort((a, b) => b[1] - a[1])[0], val = isNaN(+alt[0]) ? alt[0] : +alt[0];
-    sim.log(`The council asks the Seed to change the rule on ${RULES[k].name.toLowerCase()}: ${v.n - v.for} of ${v.n} adults would rather have “${optName(k, val)}”.`, '', { e: 'councilask', lvl: 1, title: 'The council asks' });
+    sim.log(`The council asks the Seed to change the rule on ${RULES[k].name.toLowerCase()}: ${v.n - v.for} of ${v.n} adults would rather have “${optName(k, val)}”.`, '', { e: 'councilask', lvl: 1, title: 'The council asks', act: 'society' });
     break;
   }
 }

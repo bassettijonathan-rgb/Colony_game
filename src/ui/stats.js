@@ -90,7 +90,8 @@ export class Stats {
       for (const u of units) {
         const ss = rd.filter(R => R.unit === u).sort((a, b) => a.fixed - b.fixed), N = Math.max(...ss.map(R => R.d0 + R.v.length - 1)), days = [], data = [];
         for (let d = 1; d <= N; d++) { days.push(d); data.push(ss.map(R => { const j = d - R.d0; return j >= 0 && j < R.v.length && R.v[j] != null ? R.v[j] : null; })); }
-        this.charts.push({ rd: true, title: ss[0].name, unit: u, series: ss.map(R => [R.fixed ? R.name : ss.length > 1 ? 'This colony' : R.name]), data, days, xl: N > 2 * YEAR_DAYS ? d => `Year ${Math.floor((d - 1) / YEAR_DAYS) + 1}` : null, fmt: v => v == null ? '–' : `${+v.toFixed(2)}` });
+        const wr = ss.find(R => R.warn != null);
+        this.charts.push({ rd: true, warn: wr && wr.warn, wn: wr && wr.wn, title: ss[0].name, unit: u, series: ss.map(R => [R.fixed ? R.name : ss.length > 1 ? 'This colony' : R.name]), data, days, xl: N > 2 * YEAR_DAYS ? d => `Year ${Math.floor((d - 1) / YEAR_DAYS) + 1}` : null, fmt: v => v == null ? '–' : `${+v.toFixed(2)}` });
       }
       h += `<div class="sec">Readings</div><div class="stgrid">` + this.charts.slice(base).map((c, k) => `<div class="stc"><div class="sth"><b>${esc(c.title)}</b><em>${esc(c.unit)}</em></div>` +
         (c.series.length > 1 ? `<div class="stleg">${c.series.map(([nm], j) => `<span><i style="background:${C[j]}"></i>${esc(nm)}</span>`).join('')}</div>` : '') +
@@ -140,7 +141,7 @@ export class Stats {
       g.fillStyle = '#6b7486'; g.fillText(+v.toFixed(ax.step < 1 ? 1 : 0), L - 5, y);
     }
     if (c.zero && lo < 0) { g.strokeStyle = 'rgba(255,255,255,.22)'; g.beginPath(); g.moveTo(L, Math.round(Y(0)) + .5); g.lineTo(W - R, Math.round(Y(0)) + .5); g.stroke(); }
-    if (c.warn) { g.strokeStyle = 'rgba(238,107,95,.45)'; g.setLineDash([3, 3]); g.beginPath(); g.moveTo(L, Math.round(Y(c.warn)) + .5); g.lineTo(W - R, Math.round(Y(c.warn)) + .5); g.stroke(); g.setLineDash([]); }
+    if (c.warn) { g.strokeStyle = 'rgba(238,107,95,.45)'; g.setLineDash([3, 3]); g.beginPath(); g.moveTo(L, Math.round(Y(c.warn)) + .5); g.lineTo(W - R, Math.round(Y(c.warn)) + .5); g.stroke(); g.setLineDash([]); if (c.wn) { g.save(); g.font = '600 9.5px Manrope,system-ui,sans-serif'; g.textAlign = 'right'; g.textBaseline = 'bottom'; g.fillStyle = 'rgba(246,160,150,.8)'; g.fillText(c.wn, W - R - 2, Math.round(Y(c.warn)) - 2); g.restore(); } }
     // x labels: a few day numbers
     g.textAlign = 'center'; g.textBaseline = 'top'; g.fillStyle = '#6b7486';
     const step = Math.max(1, Math.ceil(n / Math.max(2, Math.floor(pw / 70))));

@@ -55,9 +55,10 @@ function api(sim) {
     learn: (k, text) => learn(sim, k, text),
     unlock: type => { if (TYPES[type] && !Y.unlock.includes(type)) { Y.unlock.push(type); Y.rv++; S.rv++; } },
     unlocked: type => Y.unlock.includes(type),
-    note: m => { Y.notes.push({ d: sim.day, m }); Y.rv++; },
+    // something noticed: kept under Finds, and told in a small letter (with the place, when there is one)
+    note: (m, at) => { const p = at ? { x: Math.round(at.x), y: Math.round(at.y) } : {}; Y.notes.push({ d: sim.day, m, ...p }); Y.rv++; sim.log(m, '', { e: 'note', lvl: 1, title: 'Noticed', act: 'log:finds', ...p }); },
     open: (id, title, text) => { if (Y.arch.some(a => a.id === id)) return false; Y.arch.push({ id, d: sim.day, title, text }); Y.rv++; return true; },
-    read: (key, v, name, unit) => reading(sim, key, v, name, unit),
+    read: (key, v, name, unit, o) => reading(sim, key, v, name, unit, o),
     series: (key, name, unit, pts) => { Y.rd[key] = { name, unit, d0: 1, v: pts.slice(0, KEEP), fixed: true }; Y.rv++; },
     mark: (x, y, k = 'line') => { Y.marks.push([Math.round(x), Math.round(y), k]); Y.rv++; },
     unmark: k => { Y.marks = Y.marks.filter(m => m[2] !== k); Y.rv++; },
@@ -108,7 +109,7 @@ function addFind(sim, k, o) {
   const Y = sim.S.story, def = ST.finds && ST.finds[k] || {}, i = Y.finds.length;
   const f = { i, k, d: sim.day, who: o.who != null && sim.S.cols[o.who] ? sim.S.cols[o.who].name : o.by || '', name: o.name || def.name || k, text: o.text || def.text || o.say || '', st: 0, h: o.h ?? def.h ?? LAB_H, work: 0, res: '', x: o.x, y: o.y };
   Y.finds.push(f); Y.rv++; sim.S.rv++;
-  if (o.letter !== false) sim.log(`${o.say || `${f.who ? f.who + ' brought back' : 'The colony has'} something to look at: ${f.name.charAt(0).toLowerCase() + f.name.slice(1)}. ${f.text}`} The lab can work out what it is (Log, Finds).`, '', { e: 'find', lvl: o.lvl ?? 2, title: o.title || f.name, x: o.x, y: o.y, who: o.who });
+  if (o.letter !== false) sim.log(`${o.say || `${f.who ? f.who + ' brought back' : 'The colony has'} something to look at: ${f.name.charAt(0).toLowerCase() + f.name.slice(1)}. ${f.text}`} The lab can work out what it is (Log, Finds).`, '', { e: 'find', lvl: o.lvl ?? 2, title: o.title || f.name, x: o.x, y: o.y, who: o.who, act: 'log:finds' });
   if (o.lab) analyseFind(sim, i);
   return f;
 }
@@ -119,9 +120,11 @@ function learn(sim, k, text) {
   return true;
 }
 // a measurement for today: the worst of the day is kept
-function reading(sim, key, v, name, unit) {
+// o.warn: a level worth watching for, drawn across the chart, with o.wn saying what it means
+function reading(sim, key, v, name, unit, o) {
   const Y = sim.S.story; let R = Y.rd[key];
   if (!R) { R = Y.rd[key] = { name, unit, d0: sim.day, v: [] }; }
+  if (o && o.warn != null && R.warn !== o.warn) { R.warn = o.warn; R.wn = o.wn || ''; Y.rv++; }
   const i = sim.day - R.d0; if (i < 0) return;
   while (R.v.length < i) R.v.push(null);
   if (R.v[i] == null) Y.rv++;   // a new day's reading: the page gets the record again, once a day
@@ -192,6 +195,13 @@ export function storyUI(sim) {
     rv: Y.rv, unlock: Y.unlock, marks: Y.marks, end: Y.end, facts: Object.values(Y.facts).filter(f => f.text).map(f => ({ d: f.d, text: f.text })),
     finds: Y.finds.map(f => ({ i: f.i, name: f.name, text: f.text, d: f.d, who: f.who, st: f.st, res: f.res, dd: f.dd || 0, h: f.h, x: f.x, y: f.y, left: f.st === 1 ? Math.max(0, f.h - (S.F.lab.cur === 'f' + f.i ? S.F.lab.work : 0)) : 0 })),
     arch: Y.arch, notes: Y.notes.slice(-60),
-    rd: Object.entries(Y.rd).map(([k, R]) => ({ k, name: R.name, unit: R.unit, d0: R.d0, v: R.v, fixed: !!R.fixed })),
+    rd: Object.entries(Y.rd).map(([k, R]) => ({ k, name: R.name, unit: R.unit, d0: R.d0, v: R.v, fixed: !!R.fixed, warn: R.warn, wn: R.wn })),
+    levels: storyLevels(sim),
   };
+}
+// heights the colony has learned matter (the story may name some), in metres from the camp, for the height view
+function storyLevels(sim) {
+  const r = call(sim, 'levels'); if (!Array.isArray(r) || !r.length || !sim.W.land) return [];
+  const W = sim.W, c = (W.elev[W.land.y * MAP + W.land.x] - floorOf(sim)) * M_PER;
+  return r.map(l => ({ m: +(l.m - c).toFixed(2), label: l.label || 'a level that matters' }));
 }

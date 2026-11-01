@@ -189,7 +189,7 @@ function frame(now) {
   V.clampCam();
   const colony = A.phase === 'colony' && A.ui ? { seed: A.ui.seed, stakes: A.ui.stakes, crews: A.ui.crews, projects: A.ui.projects, stores: A.ui.stores, year: A.ui.year, F: A.ui.F, spots: A.ui.spots, hz: A.ui.hz, ctl: A.ui.ctl ?? -1, ord: A.ui.ord, day: A.clock ? A.clock.cal || A.clock.abs : 1 } : null;
   const hour = A.clock && A.phase === 'colony' ? A.clock.hour : 10.5;
-  V.frame({ n: A.n, pos: A.pos, arts: A.arts, names: A.names, leads: A.leads, hour, time: now / 1000, sel: A.sel, hover: A.hover, budget: A.frames.length > 30 && avgMs() > 22 ? 1 : 2, colony, orbit: A.phase === 'orbit' ? { sites: A.sites, sel: A.siteSel } : null, pickAt: A.pickCrew >= 0 ? A.pickAt : null, place: A.place, projSel: A.projSel, thing: A.thing, ctlMark: A.ctlMark, G: A.phase === 'colony' ? A.G : null, ghover: A.ghover ?? -1, hvAt: A.hvAt, finds: A.story ? A.story.finds : null, ping: A.ping });
+  V.frame({ n: A.n, pos: A.pos, arts: A.arts, names: A.names, leads: A.leads, hour, time: now / 1000, sel: A.sel, hover: A.hover, budget: A.frames.length > 30 && avgMs() > 22 ? 1 : 2, colony, orbit: A.phase === 'orbit' ? { sites: A.sites, sel: A.siteSel } : null, pickAt: A.pickCrew >= 0 ? A.pickAt : null, place: A.place, projSel: A.projSel, thing: A.thing, ctlMark: A.ctlMark, G: A.phase === 'colony' ? A.G : null, ghover: A.ghover ?? -1, hvAt: A.hvAt, levels: A.story && A.story.levels && A.story.levels.length ? A.story.levels : null, finds: A.story ? A.story.finds : null, ping: A.ping });
   if (A.hold && A.phase === 'colony' && !V.landing) { A.hold = false; setSpeed(A.speed || 1); if (V.anim) toast('The Seed is down. Choose who the fabricator prints first.'); }
   A.frames.push(now - (A.lastNow || now)); A.lastNow = now; if (A.frames.length > 120) A.frames.shift();
   A.cpuMs = (A.cpuMs || 0) * .9 + (performance.now() - t0) * .1;
@@ -420,6 +420,7 @@ function roofView(on) {
 }
 // the height view: the land coloured by its height from the camp, with a line every 5 m and a readout at the pointer;
 // on and off by the button or E, and on by itself while a building that needs low ground is placed
+const HV_TXT = 'Blue ground lies below the camp, sand above it. A line every 5 m, the camp’s own level in white. Point at the ground to read its height.';
 function heightView(on) {
   const V = A.view; if (!V) return;
   V.hv = on === undefined ? !V.hv : !!on;
@@ -427,6 +428,7 @@ function heightView(on) {
   $('bHeight').classList.toggle('on', V.hv); $('bHeight').setAttribute('aria-pressed', V.hv ? 'true' : 'false');
   app.classList.toggle('hv', V.hv);
   if (!V.hv) A.hvAt = null;
+  else { const L = A.story && A.story.levels && A.story.levels[0]; $('hvTxt').textContent = HV_TXT + (L ? ` The red line: ${L.label}.` : ''); }
   if (A.place && A.panels) { A.panels.planSig = ''; A.panels.planCard(A.place); }   // the plan card gives the ground's height while it is on
 }
 // a place on the map the player asked to see: the view goes there and rings it for a few seconds
@@ -445,6 +447,7 @@ function belowView(on) {
   app.classList.toggle('below', !!V.below);
   if (V.below && V.hv) heightView(false);
   $('belowTxt').textContent = LEVEL_TAG[V.below];
+  $('ugKey').innerHTML = V.below ? V.underKey(V.below).map(([n, c]) => `<span><i style="background:rgb(${c.join(',')})"></i>${n}</span>`).join('') : '';
   for (const b of document.querySelectorAll('#belowLv button')) b.classList.toggle('on', +b.dataset.lv === V.below);
   const P = A.place;   // a room being planned moves with the view to a level it can go on
   if (P && TYPES[P.type].below && V.below && levelsOf(P.type).includes(V.below) && P.lvl !== V.below) { P.lvl = V.below; checkPlace(); }

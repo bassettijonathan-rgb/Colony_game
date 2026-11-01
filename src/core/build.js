@@ -50,7 +50,7 @@ export const TYPES = {
   library: { name: 'Library', min: 4, max: 9, size: [5, 6], use: 'Shelves and the Seed’s terminals, where a library crew writes down what the best people know, so it outlives them and apprentices can learn it. Needs no power' },
   watch: { name: 'Watch house', min: 3, max: 5, size: [4, 4], use: 'A post at the edge of camp with a lamp: one of the watch crew stays up here each night, by turns, to raise the alarm and to step in when someone lashes out. Needs no power' },
   nursery: { name: 'Growth tanks', min: 4, max: 9, size: [5, 6], use: 'More tanks like the Seed’s own two, where it grows children for the couples who ask, each from a body’s worth of feedstock. Needs power' },
-  shaft: { name: 'Lift shaft', min: 3, max: 4, size: [3, 3], ground: true, use: 'A shaft sunk straight down through the bedrock, with a powered cage, to the middle and the deep levels. Rooms down there are dug out from its foot, within 80 m of it. Needs power for the hoist' },
+  shaft: { name: 'Lift shaft', min: 3, max: 4, size: [3, 3], ground: true, reach: 40, for: 'deep', ring: 'Rooms in the middle and the deep are dug inside this ring', use: 'A shaft sunk straight down through the bedrock, with a powered cage, to the middle and the deep levels. Rooms down there are dug out from its foot, within 80 m of it. Needs power for the hoist' },
   vault: { name: 'Deep vault', min: 5, max: 12, size: [6, 8], below: true, lv: [2, 3], use: 'A room cut deep in the rock, where nothing on the surface reaches. On a flare day everyone who can shelters down here. A little power for light and air' },
   scanner: { name: 'Scanner', min: 4, max: 7, size: [4, 5], use: 'Records the pattern of each sleeping mind once a season, for everyone who agrees, so the Seed can wake them again if they die. Its imaging magnets need rare earths from the deep level. Needs a lot of power' },
   geo: { name: 'Heat tap', min: 3, max: 6, size: [4, 4], below: true, lv: [3], use: 'Bores into the hot rock of the deep level and runs a heat engine on it: power day and night, in any season. Draw it over hot rock' },
@@ -64,7 +64,7 @@ for (const k of STORY_TYPES) TYPES[k] = { ...SEALED.story.devices[k], story: tru
 export const levelsOf = type => TYPES[type] && TYPES[type].below ? TYPES[type].lv || [1] : [0];
 // open-air builds have no door: solar fields, and the story's devices, which stand in the open
 export const doorless = Ty => !!(Ty && (Ty.open || Ty.look));
-export const SHAFT_CREW = 4, SHAFT_REACH = 40;
+export const SHAFT_CREW = 4, SHAFT_REACH = TYPES.shaft.reach;
 export const PLANNABLE = ['field', 'workshop', 'plant', 'commons', 'clinic', 'dorm', 'solar', 'lab', 'cellar', 'burrow', 'mine', 'pit', 'school', 'library', 'watch', 'nursery', 'shaft', 'vault', 'geo', 'scanner'];
 const inner = (w, h) => Math.max(0, (w - 2) * (h - 2));
 // what a building of this size holds, and the power it draws (kW) or makes

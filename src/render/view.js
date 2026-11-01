@@ -13,7 +13,7 @@ import { fireOn, skyAt, doyOf, seasonOf } from '../core/year.js';
 import { drawLife, placeLife } from '../core/food.js';
 import { drawPatch, drawKitchen } from './life.js';
 import { drawPerson, drawDot, makeSeed, crewColour } from './people.js';
-import { floodPlain, underOf, ORE, RARE } from '../core/world.js';
+import { floodPlain, underOf, ORE, RARE, UG } from '../core/world.js';
 import { campStep, M_PER, groundAt, hollowWords } from '../core/height.js';
 
 const mul3 = (a, f) => [a[0] * f, a[1] * f, a[2] * f];
@@ -26,6 +26,7 @@ export const LETTERS = 'ABC';
 const LAND_MS = 2600;
 // the ground below, as the Seed's soundings show it: soil, clay, stone, hard rock, waterlogged, solid, hot
 const UGC = [[92, 70, 50], [124, 82, 56], [98, 95, 92], [66, 68, 76], [38, 54, 62], [26, 26, 30], [118, 58, 36]];
+const UG_KEY = ['soil', 'clay', 'stone', 'hard rock', 'waterlogged', '', 'hot rock'];
 
 export class View {
   constructor(app, W) {
@@ -50,14 +51,14 @@ export class View {
   }
   // a new planet, same window
   setWorld(W) {
-    this.W = W; this.life = null; this.ugCv = null; this.hvKey = null; this.mmHV = null; this.terrain.dispose(); this.terrain = new Terrain(this.G, W);
+    this.W = W; this.life = null; this.ugCv = null; this.ugKey = null; this.hvKey = null; this.mmHV = null; this.terrain.dispose(); this.terrain = new Terrain(this.G, W);
     this.cam = W.land ? { x: W.land.x + .5, y: W.land.y + 3, z: Math.max(this.cam.z, 24) } : { x: MAP / 2, y: MAP / 2, z: 1 };
     this.fly = null; this.anim = null; this.fog = !!W.land;
     this.mmBase = this.minimapBase(); this.mmFog = this.fogBase(); this.clampCam();
   }
   // the lander comes down where the player chose: the ground it changed is painted again, and it descends
   land(W, rect) {
-    this.W = W; this.life = null; this.ugCv = null; this.hvKey = null; this.mmHV = null; this.terrain.patch(W, rect); this.fog = true;
+    this.W = W; this.life = null; this.ugCv = null; this.ugKey = null; this.hvKey = null; this.mmHV = null; this.terrain.patch(W, rect); this.fog = true;
     this.mmBase = this.minimapBase(); this.mmFog = this.fogBase();
     this.anim = { t0: performance.now() };
     this.flyTo(W.land.x + .5, W.land.y + 2, 26);
@@ -166,7 +167,7 @@ export class View {
     // composite
     gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, this.glc.width, this.glc.height); gl.useProgram(this.P.c.p); u = this.P.c.u;
     look(u, 0); G.bind(u.uDyn, 7, this.tDyn); G.bind(u.uLight, 8, this.rtL.t); G.bind(u.uH, 9, this.rtH.t); G.bind(u.uKnown, 10, T.tKnown); gl.uniform1f(u.uFogOn, this.fog ? 1 : 0); gl.uniform4fv(u.uHM, sInH); gl.uniform4fv(u.uLM, sInL);
-    { const on = this.hvA > .001; G.bind(u.uElev, 11, on ? this.heightTex() : T.tKnown); gl.uniform4f(u.uHV, on ? ease(this.hvA) : 0, M_PER, this.DPR, 5); }
+    { const on = this.hvA > .001; G.bind(u.uElev, 11, on ? this.heightTex() : T.tKnown); gl.uniform4f(u.uHV, on ? ease(this.hvA) : 0, M_PER, this.DPR, 5); const lv = F.levels && F.levels[0]; gl.uniform2f(u.uLv, lv ? lv.m : 0, lv ? 1 : 0); }
     gl.uniform2f(u.uRes, this.glc.width, this.glc.height); gl.uniform4fv(u.uCam, cam4); gl.uniform1f(u.uTime, F.time); gl.uniform1f(u.uExposure, E.exp); gl.uniform1f(u.uSat, E.sat); gl.uniform1f(u.uMist, E.mist); gl.uniform1f(u.uNight, E.night); gl.uniform1f(u.uEnc, G.float ? 0 : 1); gl.uniform1f(u.uVig, .5);
     gl.uniform3fv(u.uKeyDir, E.key); gl.uniform3fv(u.uKeyCol, E.kc); gl.uniform3fv(u.uSky, E.sky); gl.uniform3fv(u.uFog, mul3(E.amb.map((v, i) => v + ([.9, .85, .8][i] - v) * .3), 1.1)); gl.uniform3fv(u.uLift, E.lift); gl.uniform3fv(u.uGain, E.gain);
     gl.uniform1f(u.uSnowC, X ? X.cover : 0); gl.uniform1f(u.uIce, X ? X.ice : 0); gl.uniform1f(u.uWet, X ? X.wet : 0); gl.uniform2f(u.uSeas, X ? X.aut : 0, X ? X.wint : 0);
@@ -431,6 +432,7 @@ export class View {
       ui.strokeStyle = 'rgba(243,182,92,.95)'; ui.lineWidth = 2; ui.setLineDash([5, 5]); ui.beginPath(); ui.arc(X, Y, Math.max(10, 12 * z), 0, 6.3); ui.stroke(); ui.setLineDash([]);
     }
     if (F.colony) this.projectLabels(F, sx, sy, z);
+    if (F.place && F.colony) this.reachRings(F, sx, sy, z);
     if (F.place) this.placePreview(F.place, sx, sy, z);
     if (F.colony && !this.below) this.drawMarkers(F, sx, sy, z);
     ui.font = `700 ${fs}px Manrope,system-ui,sans-serif`;
@@ -483,7 +485,7 @@ export class View {
       for (const [a, b] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { ui.moveTo(X + a * r, Y + b * (r - l)); ui.lineTo(X + a * r, Y + b * r); ui.lineTo(X + a * (r - l), Y + b * r); }
       ui.stroke(); ui.shadowBlur = 0;
     }
-    if (this.hv && F.hvAt && F.colony && !this.below) this.heightTip(F.hvAt, sx, sy);
+    if (this.hv && F.hvAt && F.colony && !this.below) this.heightTip(F.hvAt, sx, sy, F.levels);
   }
 
   // ---------- heights ----------
@@ -539,17 +541,17 @@ export class View {
     }
   }
   // the pointer's readout while the heights are shown: the ground's height from the camp, and the hollow it lies in
-  heightTip([wx, wy], sx, sy) {
+  heightTip([wx, wy], sx, sy, levels) {
     if (wx < 0 || wy < 0 || wx >= MAP || wy >= MAP) return;
-    const ui = this.ui, g = groundAt(this.W, wx, wy), cap = t => t.charAt(0).toUpperCase() + t.slice(1);
-    const t1 = cap((g.wet ? 'water, ' : '') + g.height), t2 = g.hollow ? cap(hollowWords(g)) : '';
-    ui.font = '700 12px Manrope,system-ui,sans-serif'; const w1 = ui.measureText(t1).width;
-    ui.font = '600 11.5px Manrope,system-ui,sans-serif'; const w2 = t2 ? ui.measureText(t2).width : 0;
-    const bw = Math.max(w1, w2) + 18, bh = t2 ? 39 : 23, x0 = Math.min(sx(wx) + 16, this.VW - bw - 6), y0 = Math.min(sy(wy) + 18, this.VH - bh - 6);
+    const ui = this.ui, g = groundAt(this.W, wx, wy), cap = t => t.charAt(0).toUpperCase() + t.slice(1), F1 = '700 12px Manrope,system-ui,sans-serif', F2 = '600 11.5px Manrope,system-ui,sans-serif';
+    const lines = [[cap((g.wet ? 'water, ' : '') + g.height), F1, '#f2f4f8']];
+    if (g.hollow) lines.push([cap(hollowWords(g)), F2, '#a9c9f6']);
+    if (levels) { const m = (this.W.elev[Math.floor(wy) * MAP + Math.floor(wx)] - campStep(this.W)) * M_PER; for (const l of levels) { const d = Math.round(m - l.m); lines.push([cap(d === 0 ? `level with ${l.label}` : `${Math.abs(d)} m ${d > 0 ? 'above' : 'below'} ${l.label}`), F2, '#f6a096']); } }
+    let w = 0; for (const [t, f] of lines) { ui.font = f; w = Math.max(w, ui.measureText(t).width); }
+    const bw = w + 18, bh = 7 + lines.length * 16, x0 = Math.min(sx(wx) + 16, this.VW - bw - 6), y0 = Math.min(sy(wy) + 18, this.VH - bh - 6);
     ui.fillStyle = 'rgba(12,16,24,.88)'; ui.beginPath(); ui.roundRect(x0, y0, bw, bh, 4); ui.fill();
     ui.strokeStyle = g.m < 0 ? 'rgba(126,172,240,.75)' : g.m > 0 ? 'rgba(222,198,142,.75)' : 'rgba(255,250,236,.8)'; ui.lineWidth = 1; ui.stroke();
-    ui.textAlign = 'left'; ui.fillStyle = '#f2f4f8'; ui.font = '700 12px Manrope,system-ui,sans-serif'; ui.fillText(t1, x0 + 9, y0 + 12);
-    if (t2) { ui.fillStyle = '#a9c9f6'; ui.font = '600 11.5px Manrope,system-ui,sans-serif'; ui.fillText(t2, x0 + 9, y0 + 28); }
+    ui.textAlign = 'left'; lines.forEach(([t, f, c], i) => { ui.font = f; ui.fillStyle = c; ui.fillText(t, x0 + 9, y0 + 12 + i * 16); });
     ui.textAlign = 'center';
   }
 
@@ -566,6 +568,47 @@ export class View {
       D[o + 3] = 255;
     }
     g.putImageData(id, 0, 0); return (this.ugCv[lv] = cv);
+  }
+  // what the colours below ground mean at a level: the kinds of ground the soundings found there, and the ore
+  underKey(lv) {
+    this.ugKey = this.ugKey || [];
+    if (this.ugKey[lv]) return this.ugKey[lv];
+    const U = underOf(this.W, lv), n = new Uint32Array(8); let ore = 0, rare = 0;
+    for (let i = 0; i < MAP * MAP; i++) { const u = U[i]; n[u & 7]++; if (u & RARE) rare++; else if (u & ORE) ore++; }
+    const out = [];
+    for (let b = 0; b < 7; b++) if (n[b] && b !== UG.SOLID) out.push([UG_KEY[b], UGC[b]]);
+    if (ore) out.push(['ore', [172, 134, 80]]);
+    if (rare) out.push(['rare earths', [120, 206, 188]]);
+    out.push(['not sounded', UGC[UG.SOLID]]);
+    return (this.ugKey[lv] = out);
+  }
+  // while placing: how far a device reaches (a lift shaft's rooms, and whatever else says so), round the plot being
+  // placed, and round the ones already there when placing something that depends on them
+  reachRings(F, sx, sy, z) {
+    const P = F.place, T = TYPES[P.type], rings = [];
+    if (!T) return;
+    if (T.reach && P.x != null) rings.push([P.x + P.w / 2, P.y + P.h / 2, T.reach, T.ring, true]);
+    if (T.below) for (const q of F.colony.projects) {
+      const Q = TYPES[q.type];
+      if (Q && Q.reach && !q.shut && (Q.for === 'below' || (Q.for === 'deep' && (P.lvl || 1) >= 2))) rings.push([q.x + q.w / 2, q.y + q.h / 2, Q.reach, Q.ring, q.done]);
+    }
+    if (!rings.length) return;
+    const ui = this.ui; ui.save();
+    ui.font = '700 11.5px Manrope,system-ui,sans-serif'; ui.textAlign = 'center'; ui.textBaseline = 'middle';
+    for (const [x, y, r, label, done] of rings) {
+      const X = sx(x), Y = sy(y), R = r * z;
+      ui.beginPath(); ui.arc(X, Y, R, 0, Math.PI * 2);
+      ui.fillStyle = done ? 'rgba(143,224,255,.07)' : 'rgba(143,224,255,.035)'; ui.fill();
+      ui.setLineDash([9, 6]); ui.lineWidth = 1.6; ui.strokeStyle = done ? 'rgba(143,224,255,.9)' : 'rgba(143,224,255,.5)'; ui.stroke(); ui.setLineDash([]);
+      if (!label) continue;
+      // the label sits on the ring where it can be seen; zoomed in too far for the ring, under the building instead
+      const vis = Y - R > 84 ? Y - R : Y + R < this.VH - 150 ? Y + R : null, onScreen = X > 0 && X < this.VW && Y > 0 && Y < this.VH;
+      if (vis == null && !onScreen) continue;
+      const t = vis == null ? 'Zoom out to see how far it reaches' : done ? label : `${label}, once it is finished`, tw = ui.measureText(t).width + 16, ly = vis ?? Y + Math.max(26, 2 * z + 30);
+      ui.fillStyle = 'rgba(10,14,20,.82)'; ui.beginPath(); ui.roundRect(X - tw / 2, ly - 10, tw, 20, 10); ui.fill();
+      ui.fillStyle = done ? '#bfefff' : 'rgba(191,239,255,.75)'; ui.fillText(t, X, ly + .5);
+    }
+    ui.restore();
   }
   // the view below ground: the soundings, the rooms dug into them, and whoever is down there
   drawBelow(F, sx, sy, z) {

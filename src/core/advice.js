@@ -15,10 +15,13 @@ export function buildAdvice(sim) {
   const mine = S.projects.filter(p => !p.gone && p.type !== 'test'), sum = (types, k) => mine.filter(p => types.includes(p.type)).reduce((a, p) => a + (capacity(p.type, p.w, p.h)[k] || 0), 0);
   const count = t => mine.filter(p => p.type === t).length, none = t => !count(t), open = t => mine.some(p => p.type === t && !p.done);
   const alive = S.cols.filter(c => !c.dead).length, soon = alive + (S.gen ? S.gen.womb.length : 0) + Math.max(S.seedc.feed, S.seedc.queue.length) + (S.seedc.printing ? 1 : 0);
-  const add = (type, why, lvl = 0) => { if (!open(type) && !out.some(o => o.type === type)) out.push({ type, why, lvl }); };
+  // whatever the colony has learned may also say where a kind of building belongs, and which bunks to close
+  const story = storyAdvice(sim), atOf = {}, close = [];
+  for (const a of story) { if (a.type && a.at && !atOf[a.type]) atOf[a.type] = a.at; if (a.close != null) close.push({ id: a.close, why: a.why || '' }); }
+  const add = (type, why, lvl = 0) => { if (!open(type) && !out.some(o => o.type === type)) out.push(atOf[type] ? { type, why, lvl, at: atOf[type] } : { type, why, lvl }); };
   const shafts = mine.filter(p => p.type === 'shaft' && p.done && !p.shut), shaft = shafts.length > 0, Y = S.stores.yard;
   // whatever the colony has learned it needs, ahead of the everyday list
-  for (const a of storyAdvice(sim)) if (a.type && !a.soft) add(a.type, a.why, a.lvl || 0);   // soft: only where it goes, if it is built
+  for (const a of story) if (a.type && !a.soft) add(a.type, a.why, a.lvl || 0);   // soft: only where it goes, if it is built
   // power first: a dark building does nothing
   const draw = mine.filter(p => p.type !== 'solar').reduce((a, p) => a + (capacity(p.type, p.w, p.h).kw || 0), 0), supply = LANDER_KW + sum(['solar'], 'supply') * DEEP_SUN + sum(['geo'], 'supply');
   const dark = built(S).filter(p => p.type !== 'solar' && !p.powered && !p.shut).length;
@@ -55,7 +58,7 @@ export function buildAdvice(sim) {
   if (shaft && sum(['vault'], 'places') < soon) add('vault', 'On a flare day, the rooms near the surface still let some of it through. A deep vault keeps out everything.', 2);
   if (shaft && none('scanner') && !mine.some(p => p.type === 'mine' && p.lvl === 3 && p.rare > 0)) add('mine', 'Rare earths only come from seams on the deep level. The scanner’s magnets need them.', 3);
   if (none('scanner') && (Y.rare || 0) >= 6) add('scanner', `There are ${Math.floor(Y.rare)} loads of rare earths in the yard, enough for a scanner. With it, the dead can be woken again from their last scan.`);
-  return { note: '', list: out };
+  return { note: '', list: out, close };
 }
 // is there hot rock on the deep level within reach of a working lift shaft, enough for a heat tap?
 function hotNear(sim, shafts) {

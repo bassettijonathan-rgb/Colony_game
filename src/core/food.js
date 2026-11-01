@@ -122,7 +122,7 @@ export function lookAround(sim, c, taking) {
     }
     if (taking && !L.tested && !L.queued && L.samples < SAMPLES && !F.sampled[i] && Math.hypot(p.x - c.x, p.y - c.y) < 4) {
       F.sampled[i] = 1; L.samples++; S.rv++;
-      if (L.samples === SAMPLES) sim.log(`Samples of ${k.name.toLowerCase()} are ready to test: ${c.name} brought back the third.`, 'good', { e: 'samples', lvl: 1, who: c.id, title: 'Ready to test' });
+      if (L.samples === SAMPLES) sim.log(`Samples of ${k.name.toLowerCase()} are ready to test: ${c.name} brought back the third.`, 'good', { e: 'samples', lvl: 1, who: c.id, title: 'Ready to test', act: 'life:local' });
     }
   });
 }
