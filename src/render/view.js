@@ -710,7 +710,7 @@ export class View {
       if (!show) continue;
       const up = p.below && !this.below && p.door, X = up ? sx(p.door.x + .5) : sx(p.x + p.w / 2), Y = (up ? sy(p.door.y) : sy(p.y)) - 10; if (X < -150 || X > this.VW + 150 || Y < -40 || Y > this.VH + 60) continue;
       const head = p.done ? p.name : `${p.name} · ${p.paused ? 'paused' : stagesOf(p.type)[p.stage].toLowerCase() + ' ' + Math.round(progress(p) * 100) + '%'}`;
-      const sub = stuck ? p.wait : '';
+      const sub = stuck && p.wait ? p.wait.split('\n')[0] : '';
       ui.font = '700 11.5px Manrope,system-ui,sans-serif';
       const tw = Math.max(ui.measureText(head).width, sub ? (ui.font = '600 11px Manrope,system-ui,sans-serif', ui.measureText(sub).width) : 0) + 14, hh = sub ? 34 : 20;
       ui.fillStyle = stuck ? 'rgba(60,34,10,.86)' : p.id === F.projSel ? 'rgba(243,182,92,.92)' : 'rgba(10,14,20,.66)'; ui.beginPath(); ui.roundRect(X - tw / 2, Y - hh, tw, hh, 9); ui.fill();

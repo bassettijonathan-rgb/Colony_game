@@ -331,7 +331,7 @@ export class News {
     if ((ids = people(p => p[4] < 35)).length) add('trust', named(ids, 'is losing trust in the Seed', 'people are losing trust in the Seed'), ids.map(i => ({ who: i })));
     if ((ids = people(p => p[1] < 0 && p[0] !== ACT.WAKE && !(p[6] & (65536 | 131072)))).length) add('nocrew', named(ids, 'has no crew', 'people have no crew'), ids.map(i => ({ who: i })));
     const stalled = U.projects.filter(p => p.stall && !p.done);
-    if (stalled.length) add('stalled', stalled.length === 1 ? `${stalled[0].name} stalled` : `${stalled.length} projects stalled`, stalled.map(p => ({ pid: p.id })), stalled.map(p => `${p.name}: ${p.wait}.`).join(' '));
+    if (stalled.length) add('stalled', stalled.length === 1 ? `${stalled[0].name} stalled` : `${stalled.length} projects stalled`, stalled.map(p => ({ pid: p.id })), stalled.map(p => { const [w, next] = (p.wait || '').split('\n'); return `${p.name}: ${w}.${next ? ' ' + next : ''}`; }).join(' '));
     const starved = U.projects.filter(p => p.type === 'plant' && p.done && p.powered && p.why && p.why.startsWith('Waiting'));
     if (starved.length) add('feedwait', starved.length === 1 ? `${starved[0].name} is waiting` : `${starved.length} feedstock plants are waiting`, starved.map(p => ({ pid: p.id })), starved[0].why);
     const dark = U.projects.filter(p => p.done && p.type !== 'solar' && !p.powered && !p.shut);
