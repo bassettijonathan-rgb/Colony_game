@@ -72,9 +72,40 @@ export class View {
     const r = this.app.getBoundingClientRect(); this.VW = Math.max(1, r.width); this.VH = Math.max(1, r.height); this.DPR = Math.min(2, window.devicePixelRatio || 1);
     const W = Math.round(this.VW * this.DPR), H = Math.round(this.VH * this.DPR);
     for (const c of [this.glc, this.uic, this.dyn]) { c.width = W; c.height = H; }
-    this.LW = Math.max(1, Math.round(this.VW * .5)); this.LH = Math.max(1, Math.round(this.VH * .5)); this.dynh.width = this.LW; this.dynh.height = this.LH;
-    if (this.G) { const G = this.G; G.free(this.rtH); G.free(this.rtL); this.rtH = G.rt(this.LW, this.LH, false); this.rtL = G.rt(this.LW, this.LH, G.float); if (!this.rtL.ok) { G.float = false; this.rtL = G.rt(this.LW, this.LH, false); } }
+    this.LW = Math.max(1, Math.round(this.VW * .5)); this.LH = Math.max(1, Math.round(this.VH * .5)); this.HW = this.HH = 0; this.heightRoom(this.LW + 128, this.LH + 128);
+    // the light layer: half the screen's resolution, two pixels over so that it can sit on the world's grid
+    this.LW2 = this.LW + 2; this.LH2 = this.LH + 2;
+    if (this.G) { const G = this.G; G.free(this.rtL); this.rtL = G.rt(this.LW2, this.LH2, G.float); if (!this.rtL.ok) { G.float = false; this.rtL = G.rt(this.LW2, this.LH2, false); } }
     this.clampCam();
+  }
+  // The heights (and so the shadows) are worked out past the screen's edges, as far as a shadow cast from off screen
+  // can reach onto it: a building just out of view still shades what is in view, and nothing at the edge is
+  // stretched outward into a wall. The layer is a whole number of blocks of 64 pixels, with blocks to spare, so that
+  // it can sit on the world's grid of blocks wherever the screen is; it grows at once when it must, and shrinks only
+  // when it is well oversized, so it isn't remade every frame as the sun moves.
+  heightRoom(w, h) {
+    w = Math.min(Math.ceil(w), this.LW * 3); h = Math.min(Math.ceil(h), this.LH * 3);
+    if (this.HW >= w && this.HW <= w + 448 && this.HH >= h && this.HH <= h + 448) return;
+    this.HW = Math.ceil(w / 64) * 64 + 128; this.HH = Math.ceil(h / 64) * 64 + 128;
+    this.dynh.width = this.HW; this.dynh.height = this.HH; this.stats.heights = [this.HW, this.HH, (this.stats.heights ? this.stats.heights[2] : 0) + 1];   // size, and how often it was made
+    if (this.G) { this.G.free(this.rtH); this.rtH = this.G.rt(this.HW, this.HH, false); }
+  }
+  // How far past each edge of the screen (left, top, right, bottom, in tiles) something can stand and still throw a
+  // shadow onto it: toward the sun (or the moon), as far as its shadows reach when it is low; toward a lamp off
+  // screen whose light reaches the screen, as far as the lamp; and a tile all round for the shading at the edge.
+  reach(E, lit, L, Tp, R, B) {
+    const m = [1, 1, 1, 1];
+    if (E.kc[0] + E.kc[1] + E.kc[2] > .002) {
+      const lh = Math.max(Math.hypot(E.key[0], E.key[1]), 1e-4), tanE = E.key[2] / Math.max(lh, 1e-3), d = clamp(3.4 / Math.max(tanE, .02), 1, 12) + .5;
+      const ux = E.key[0] / lh, uy = E.key[1] / lh;   // the shadow march heads this way, toward the light
+      m[0] = Math.max(1, -ux * d); m[1] = Math.max(1, -uy * d); m[2] = Math.max(1, ux * d); m[3] = Math.max(1, uy * d);
+    }
+    for (const l of lit) {
+      const o = [L - l.x, Tp - l.y, l.x - R, l.y - B];
+      if (Math.max(o[0], o[1], o[2], o[3]) >= l.r) continue;   // too far off for its light to reach the screen
+      for (let i = 0; i < 4; i++) if (o[i] > 0) m[i] = Math.max(m[i], o[i] + .5);
+    }
+    return m;
   }
   get zFit() { return Math.max(ZMIN, Math.min(this.VW, this.VH) / MAP * .8); }
   clampCam() {
@@ -101,27 +132,38 @@ export class View {
     const G = this.G, gl = G.gl, [L, Tp, R, B] = this.rect, z = this.cam.z, ppt = z * this.DPR;
     this.terrain.update(L, Tp, R, B, ppt, performance.now(), F.budget || 2);
     const X = this.sky(F), E = env(F.hour, X);
-    this.drawDyn(F, L, Tp, R, B, E);
     const lights = this.lights(F, E);
     const { lit, inView } = pickLights(lights, this.cam.x, this.cam.y, [L - 6, Tp - 6, R + 6, B + 6]);
+    const kx = this.LW / (this.VW / z), ky = this.LH / (this.VH / z);   // light- and height-layer pixels to a tile
+    const M = this.reach(E, lit, L, Tp, R, B);
+    this.heightRoom(this.LW + (M[0] + M[2]) * kx + 64, this.LH + (M[1] + M[3]) * ky + 64);
+    // Both layers sit on a fixed grid in the world, counted in their own pixels from the map's corner: the light
+    // layer to the pixel, the height layer to the block of 64, so its coarser levels (the soft, far part of each
+    // shadow) cover the same ground too. Dragging the map then slides the finished picture without changing what
+    // any pixel of either layer works out; on a grid that moved with the screen, every shadow shifted and flickered.
+    const lx = Math.floor(L * kx), ly = Math.floor(Tp * ky), hx = Math.floor((L - M[0]) * kx / 64) * 64, hy = Math.floor((Tp - M[1]) * ky / 64) * 64;
+    this.drawDyn(F, L, Tp, R, B, E, M, kx, ky, hx, hy);
     this.stats.lights = lit.length; this.stats.lightsInView = inView;
     this.LP.fill(0); this.LC.fill(0); lit.forEach((l, i) => { this.LP.set([l.x, l.y, l.z, l.r], i * 4); this.LC.set([l.c[0], l.c[1], l.c[2], l.g || 0], i * 4); });
     G.upload(this.tDyn, this.dyn, true); G.upload(this.tDH, this.dynh, false);
     const cam4 = [L, Tp, this.VW / z, this.VH / z], T = this.terrain;
+    const camL = [lx / kx, ly / ky, this.LW2 / kx, this.LH2 / ky], camH = [hx / kx, hy / ky, this.HW / kx, this.HH / ky];
+    const within = (a, b) => [a[2] / b[2], a[3] / b[3], (a[0] - b[0]) / b[2], (a[1] - b[1]) / b[3]];   // where rectangle a lies within b, as a scale and an offset
+    const lInH = within(camL, camH), sInH = within(cam4, camH), sInL = within(cam4, camL);
     gl.bindVertexArray(G.vao); gl.disable(gl.BLEND);
     const look = (u, base) => { G.bind(u.uTable, base, T.tTable); G.bind(u.uAlbO, base + 1, T.albO); G.bind(u.uHmO, base + 2, T.hmO); G.bind(u.uMatO, base + 3, T.matO); G.bind(u.uAlbA, base + 4, T.albA, gl.TEXTURE_2D_ARRAY); G.bind(u.uHmA, base + 5, T.hmA, gl.TEXTURE_2D_ARRAY); G.bind(u.uMatA, base + 6, T.matA, gl.TEXTURE_2D_ARRAY); gl.uniform1f(u.uMap, MAP); };
     // height
-    gl.bindFramebuffer(gl.FRAMEBUFFER, this.rtH.fb); gl.viewport(0, 0, this.LW, this.LH); gl.useProgram(this.P.h.p); let u = this.P.h.u;
-    look(u, 0); G.bind(u.uDH, 7, this.tDH); gl.uniform2f(u.uRes, this.LW, this.LH); gl.uniform4fv(u.uCam, cam4); gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.rtH.fb); gl.viewport(0, 0, this.HW, this.HH); gl.useProgram(this.P.h.p); let u = this.P.h.u;
+    look(u, 0); G.bind(u.uDH, 7, this.tDH); gl.uniform2f(u.uRes, this.HW, this.HH); gl.uniform4fv(u.uCam, camH); gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindTexture(gl.TEXTURE_2D, this.rtH.t); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR); gl.generateMipmap(gl.TEXTURE_2D);
     // light
-    gl.bindFramebuffer(gl.FRAMEBUFFER, this.rtL.fb); gl.useProgram(this.P.l.p); u = this.P.l.u;
-    look(u, 0); G.bind(u.uH, 7, this.rtH.t); gl.uniform2f(u.uRes, this.LW, this.LH); gl.uniform4fv(u.uCam, cam4); gl.uniform2f(u.uWind, .016, .006);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.rtL.fb); gl.viewport(0, 0, this.LW2, this.LH2); gl.useProgram(this.P.l.p); u = this.P.l.u;
+    look(u, 0); G.bind(u.uH, 7, this.rtH.t); gl.uniform2f(u.uRes, this.LW2, this.LH2); gl.uniform4fv(u.uCam, camL); gl.uniform4fv(u.uHM, lInH); gl.uniform2f(u.uWind, .016, .006);
     gl.uniform3fv(u.uKeyDir, E.key); gl.uniform3fv(u.uKeyCol, E.kc); gl.uniform3fv(u.uAmb, E.amb); gl.uniform1f(u.uNight, E.night); gl.uniform1f(u.uTime, F.time); gl.uniform1f(u.uCloud, E.cloud); gl.uniform1f(u.uEnc, G.float ? 0 : 1); gl.uniform1f(u.uPPT, this.LW / (this.VW / z));
     gl.uniform4fv(u.uLP, this.LP); gl.uniform4fv(u.uLC, this.LC); gl.uniform1i(u.uNL, lit.length); gl.drawArrays(gl.TRIANGLES, 0, 3);
     // composite
     gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, this.glc.width, this.glc.height); gl.useProgram(this.P.c.p); u = this.P.c.u;
-    look(u, 0); G.bind(u.uDyn, 7, this.tDyn); G.bind(u.uLight, 8, this.rtL.t); G.bind(u.uH, 9, this.rtH.t); G.bind(u.uKnown, 10, T.tKnown); gl.uniform1f(u.uFogOn, this.fog ? 1 : 0);
+    look(u, 0); G.bind(u.uDyn, 7, this.tDyn); G.bind(u.uLight, 8, this.rtL.t); G.bind(u.uH, 9, this.rtH.t); G.bind(u.uKnown, 10, T.tKnown); gl.uniform1f(u.uFogOn, this.fog ? 1 : 0); gl.uniform4fv(u.uHM, sInH); gl.uniform4fv(u.uLM, sInL);
     gl.uniform2f(u.uRes, this.glc.width, this.glc.height); gl.uniform4fv(u.uCam, cam4); gl.uniform1f(u.uTime, F.time); gl.uniform1f(u.uExposure, E.exp); gl.uniform1f(u.uSat, E.sat); gl.uniform1f(u.uMist, E.mist); gl.uniform1f(u.uNight, E.night); gl.uniform1f(u.uEnc, G.float ? 0 : 1); gl.uniform1f(u.uVig, .5);
     gl.uniform3fv(u.uKeyDir, E.key); gl.uniform3fv(u.uKeyCol, E.kc); gl.uniform3fv(u.uSky, E.sky); gl.uniform3fv(u.uFog, mul3(E.amb.map((v, i) => v + ([.9, .85, .8][i] - v) * .3), 1.1)); gl.uniform3fv(u.uLift, E.lift); gl.uniform3fv(u.uGain, E.gain);
     gl.uniform1f(u.uSnowC, X ? X.cover : 0); gl.uniform1f(u.uIce, X ? X.ice : 0); gl.uniform1f(u.uWet, X ? X.wet : 0); gl.uniform2f(u.uSeas, X ? X.aut : 0, X ? X.wint : 0);
@@ -143,11 +185,14 @@ export class View {
     return { dawn: Y.dawn, dusk: Y.dusk, cloud: w.cloud, rain: w.rain, snow: w.snow, wind: w.wind, fog: w.fog, wet: Math.min(1, w.wet * (Y.temp > 0 ? 1 : .3)), cover: Y.snow, ice: Y.ice, aut, wint, flash };
   }
 
-  drawDyn(F, L, Tp, R, B, E) {
-    const dc = this.dc, hc = this.hc, z = this.cam.z, k = z * this.DPR, kh = z * this.LW / this.VW;
+  drawDyn(F, L, Tp, R, B, E, M, kx, ky, hx, hy) {
+    const dc = this.dc, hc = this.hc, z = this.cam.z, k = z * this.DPR;
     dc.setTransform(1, 0, 0, 1, 0, 0); dc.clearRect(0, 0, this.dyn.width, this.dyn.height); dc.setTransform(k, 0, 0, k, -L * k, -Tp * k); dc.imageSmoothingQuality = 'high';
-    hc.setTransform(1, 0, 0, 1, 0, 0); hc.globalCompositeOperation = 'source-over'; hc.fillStyle = '#000'; hc.fillRect(0, 0, this.LW, this.LH); hc.setTransform(kh, 0, 0, kh, -L * kh, -Tp * kh); hc.globalCompositeOperation = 'lighten';
+    hc.setTransform(1, 0, 0, 1, 0, 0); hc.globalCompositeOperation = 'source-over'; hc.fillStyle = '#000'; hc.fillRect(0, 0, this.HW, this.HH); hc.setTransform(kx, 0, 0, ky, -hx, -hy); hc.globalCompositeOperation = 'lighten';
     const vis = (x, y, m) => x > L - m && x < R + m && y > Tp - m && y < B + m;
+    // near enough to throw a shadow onto the screen: drawn as well, so its height is in the layer (the colour that
+    // falls off the canvas costs next to nothing)
+    const L1 = L - M[0], T1 = Tp - M[1], R1 = R + M[2], B1 = B + M[3], visH = (x, y, m) => x > L1 - m && x < R1 + m && y > T1 - m && y < B1 + m;
     const hDisc = (x, y, r, top, base) => { hc.fillStyle = hcol(top, base || 0); hc.beginPath(); hc.arc(x, y, r, 0, 6.2832); hc.fill(); };
     const hRect = (x, y, w, h, top, base) => { hc.fillStyle = hcol(top, base || 0); hc.fillRect(x, y, w, h); };
     const Ld = this.W.land;
@@ -155,37 +200,37 @@ export class View {
     if (!Ld) { hc.globalCompositeOperation = 'source-over'; return; }
     const C = F.colony, site = this.W.site;
     if (C) {
-      drawMarks(dc, hRect, this.W, vis);
+      drawMarks(dc, hRect, this.W, visH);
       // posts the Seed has asked for on the map: red-topped stakes, each casting a short shadow
-      if (this.marks) for (const [x, y] of this.marks) if (vis(x, y, 2)) {
+      if (this.marks) for (const [x, y] of this.marks) if (visH(x, y, 2)) {
         dc.fillStyle = 'rgba(0,0,0,.3)'; dc.beginPath(); dc.ellipse(x + .6, y + .62, .22, .12, .5, 0, 6.3); dc.fill();
         dc.fillStyle = '#d8d2c4'; dc.fillRect(x + .4, y + .4, .2, .2); hRect(x + .4, y + .4, .2, .2, 1.4);
         dc.fillStyle = '#e0412c'; dc.beginPath(); dc.arc(x + .5, y + .5, .16, 0, 6.3); dc.fill();
         dc.strokeStyle = 'rgba(255,240,230,.7)'; dc.lineWidth = .04; dc.stroke();
       }
-      this.drawLife(dc, hDisc, C, L, Tp, R, B, k, E, F.time);
+      this.drawLife(dc, hDisc, C, L, Tp, R, B, k, E, F.time, M);
       if (C.hz && C.hz.lv > .3) this.drawFlood(dc, C.hz.lv, F.time);
-      for (const p of C.projects) if (p.below && p.via == null) { if (p.door && vis(p.door.x, p.door.y, 3)) drawHatch(dc, hRect, p, F.time); }
-      else if (p.type !== 'test' && vis(p.x + p.w / 2, p.y + p.h / 2, Math.max(p.w, p.h))) {
+      for (const p of C.projects) if (p.below && p.via == null) { if (p.door && visH(p.door.x, p.door.y, 3)) drawHatch(dc, hRect, p, F.time); }
+      else if (p.type !== 'test' && visH(p.x + p.w / 2, p.y + p.h / 2, Math.max(p.w, p.h))) {
         drawBuilding(dc, hRect, p, E, F.time, this.inside);
         if (p.wet) { dc.fillStyle = `rgba(66,78,80,${.42 + .04 * Math.sin(F.time * 1.3 + p.id)})`; dc.fillRect(p.x, p.y, p.w, p.h); }   // standing in the flood
         if (p.dmg && !p.fire && p.dmg === 'fire') { dc.fillStyle = 'rgba(20,14,10,.38)'; dc.fillRect(p.x, p.y, p.w, p.h); }      // charred, waiting for repairs
       }
     }
-    if (C && vis(Ld.x, Ld.y, 24)) {
+    if (C && visH(Ld.x, Ld.y, 24)) {
       drawCargo(dc, hRect, site, C.stores);
       drawYard(dc, hRect, site.yard, C.stores, C.projects.filter(p => p.type === 'test'), F.time);
       this.drawFire(dc, hDisc, site.fire, F.hour, F.time);
       drawKitchen(dc, hRect, C.spots, C.F && C.F.vats, F.time, C.F && C.F.vatN);
     }
-    if (C) for (const s of C.stakes) if (vis(s.x, s.y, 2)) {
+    if (C) for (const s of C.stakes) if (visH(s.x, s.y, 2)) {
       dc.fillStyle = 'rgba(0,0,0,.35)'; dc.beginPath(); dc.ellipse(s.x + .12, s.y + .1, .2, .14, 0, 0, 6.3); dc.fill();
       dc.fillStyle = '#7d8790'; dc.beginPath(); dc.arc(s.x, s.y, .13, 0, 6.3); dc.fill();
       const on = Math.sin(F.time * 2.6 + s.x) > .2; dc.fillStyle = on ? '#9ff0ff' : '#3c6070'; dc.beginPath(); dc.arc(s.x, s.y, .07, 0, 6.3); dc.fill();
       hDisc(s.x, s.y, .1, .9);
     }
     // the Seed, coming down if it's still landing
-    if (vis(Ld.x, Ld.y, 8)) {
+    if (visH(Ld.x, Ld.y, 8)) {
       const a = this.anim ? clamp((performance.now() - this.anim.t0) / LAND_MS, 0, 1) : 1, e = ease(a), up = (1 - e);
       const s = this.seed.size * (1 + up * 1.6);
       if (up > 0) {   // dust thrown out by the engines
@@ -198,9 +243,11 @@ export class View {
       const base = up * 2.6; hDisc(Ld.x, Ld.y, 1.5 * (1 + up * 1.6), Math.min(4, base + 1.6), base); hDisc(Ld.x, Ld.y, .75, Math.min(4, base + 2.3), base);
     }
     // people, back to front; nobody is drawn inside the shelter
-    const n = F.n, pos = F.pos, arts = F.arts, near = k >= 9, order = this.order;
-    order.length = 0;
-    for (let i = 0; i < n; i++) { const act = pos[i * 4 + 3] >> 1; if (hidden(act)) continue; if (vis(pos[i * 4], pos[i * 4 + 1], 1.5)) order.push(i); }
+    const n = F.n, pos = F.pos, arts = F.arts, near = k >= 9, order = this.order, edge = this.edge || (this.edge = []);
+    order.length = 0; edge.length = 0;
+    for (let i = 0; i < n; i++) { const act = pos[i * 4 + 3] >> 1; if (hidden(act)) continue; if (vis(pos[i * 4], pos[i * 4 + 1], 1.5)) order.push(i); else if (near && visH(pos[i * 4], pos[i * 4 + 1], 1.5)) edge.push(i); }
+    // a person's height: standing, sitting or bent to the work, or lying down
+    const pH = i => { const o = i * 4, act = pos[o + 3] >> 1, z = arts[i].size || 1; if (act !== ACT.BED && act !== ACT.DOWN) hDisc(pos[o], pos[o + 1], .28 * z, (act === ACT.EAT || act === ACT.ALONE || act === ACT.PLANT || act === ACT.QUARRY ? .8 : 1.2) * z); else hDisc(pos[o], pos[o + 1], .3 * z, .3); };
     this.stats.people = order.length;
     // with the roofs off, whoever is indoors shows inside: asleep in a bunk, at a table, at a bench
     if (C && this.inside) {
@@ -220,7 +267,8 @@ export class View {
     }
     if (near) {
       order.sort((a, b) => pos[a * 4 + 1] - pos[b * 4 + 1]);
-      for (const i of order) { const o = i * 4, f = pos[o + 3], act = f >> 1, mv = f & 1; drawPerson(dc, arts[i], pos[o], pos[o + 1], pos[o + 2], mv, act, F.time); const z = arts[i].size || 1; if (act !== ACT.BED && act !== ACT.DOWN) hDisc(pos[o], pos[o + 1], .28 * z, (act === ACT.EAT || act === ACT.ALONE || act === ACT.PLANT || act === ACT.QUARRY ? .8 : 1.2) * z); else hDisc(pos[o], pos[o + 1], .3 * z, .3); }
+      for (const i of order) { const o = i * 4, f = pos[o + 3]; drawPerson(dc, arts[i], pos[o], pos[o + 1], pos[o + 2], f & 1, f >> 1, F.time); pH(i); }
+      for (const i of edge) pH(i);   // just off screen: only their shadows reach it
     } else {
       const r = Math.max(.35, 2.2 / k);
       for (const i of order) drawDot(dc, arts[i], pos[i * 4], pos[i * 4 + 1], r);
@@ -228,7 +276,8 @@ export class View {
     // visitors from another settlement, in their own colours
     const G = F.G;
     if (G) for (let i = 0; i < G.n; i++) {
-      const o = i * 4, f = G.pos[o + 3], act = f >> 1; if (hidden(act) || !vis(G.pos[o], G.pos[o + 1], 1.5)) continue;
+      const o = i * 4, f = G.pos[o + 3], act = f >> 1; if (hidden(act)) continue;
+      if (!vis(G.pos[o], G.pos[o + 1], 1.5)) { if (near && act !== ACT.BED && visH(G.pos[o], G.pos[o + 1], 1.5)) hDisc(G.pos[o], G.pos[o + 1], .28, 1.2); continue; }
       if (near) { drawPerson(dc, G.arts[i], G.pos[o], G.pos[o + 1], G.pos[o + 2], f & 1, act, F.time); if (act !== ACT.BED) hDisc(G.pos[o], G.pos[o + 1], .28, 1.2); }
       else drawDot(dc, G.arts[i], G.pos[o], G.pos[o + 1], Math.max(.35, 2.2 / k));
     }
@@ -280,16 +329,17 @@ export class View {
     if (!this.life && this.W.land) { this.kinds = drawLife(this.W.seed); this.life = placeLife(this.W, this.kinds); this.goneSet = new Set(); this.goneKey = ''; }
     return this.life;
   }
-  drawLife(g, hDisc, C, L, Tp, R, B, k, E, t) {
+  drawLife(g, hDisc, C, L, Tp, R, B, k, E, t, M) {
     const FD = C.F; this.lanterns = []; if (!FD || k < 2.5) return;
     const life = this.lifeList(); if (!life) return;
     const key = FD.gone.join(','); if (key !== this.goneKey) { this.goneKey = key; this.goneSet = new Set(FD.gone); }
     const s = seasonOf(doyOf(C.day || 1)), night = E.night > .4, CH0 = 32, NC = Math.ceil(MAP / CH0);
-    const cx0 = Math.max(0, Math.floor((L - 1) / CH0)), cx1 = Math.min(NC - 1, Math.floor((R + 1) / CH0)), cy0 = Math.max(0, Math.floor((Tp - 1) / CH0)), cy1 = Math.min(NC - 1, Math.floor((B + 1) / CH0));
+    const far = k < 6, L1 = L - 1 - (far ? 0 : M[0]), T1 = Tp - 1 - (far ? 0 : M[1]), R1 = R + 1 + (far ? 0 : M[2]), B1 = B + 1 + (far ? 0 : M[3]);   // past the screen only for their shadows, which far out they don't have
+    const cx0 = Math.max(0, Math.floor(L1 / CH0)), cx1 = Math.min(NC - 1, Math.floor(R1 / CH0)), cy0 = Math.max(0, Math.floor(T1 / CH0)), cy1 = Math.min(NC - 1, Math.floor(B1 / CH0));
     for (let cy = cy0; cy <= cy1; cy++) for (let cx = cx0; cx <= cx1; cx++) for (const i of life.by[cy * NC + cx]) {
-      const p = life.list[i]; if (!FD.life[p.o] || p.x < L - 1 || p.x > R + 1 || p.y < Tp - 1 || p.y > B + 1) continue;
+      const p = life.list[i]; if (!FD.life[p.o] || p.x < L1 || p.x > R1 || p.y < T1 || p.y > B1) continue;
       const kd = this.kinds[p.o], bare = this.goneSet.has(i), dorm = !kd.season[s];
-      if (kd.look.shape === 'lantern' && !bare && !dorm) this.lanterns.push([p, kd]);
+      if (kd.look.shape === 'lantern' && !bare && !dorm && p.x >= L - 1 && p.x <= R + 1 && p.y >= Tp - 1 && p.y <= B + 1) this.lanterns.push([p, kd]);
       if (k < 6) { g.fillStyle = `rgba(${kd.look.a.join(',')},.8)`; g.fillRect(p.x - .2, p.y - .2, .4, .4); continue; }
       drawPatch(g, hDisc, kd, p, bare, dorm, night, t);
     }
