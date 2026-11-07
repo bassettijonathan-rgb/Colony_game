@@ -66,7 +66,7 @@ const voteText = votes => {
 };
 const how = steps => `<ol class="how">${steps.map(t => `<li>${t}</li>`).join('')}</ol>`;
 // a project's wait: the reason, and on a line of its own the next thing to do about it
-const waitHtml = w => { const [a, b] = String(w).split('\n'); return `<div class="pw">${esc(a)}</div>${b ? `<div class="pnext">${esc(b)}</div>` : ''}`; };
+const waitHtml = (w, id) => { const [a, b] = String(w).split('\n'); return `<div class="pw">${esc(a)}</div>${b ? `<div class="pnext">${esc(b)}</div>` : ''}${id != null && /^Queued/.test(a) ? `<div class="row2" style="margin-top:6px"><span class="grow"></span><button class="btn go" data-act="pFirst" data-id="${id}">Build next</button></div>` : ''}`; };
 const topSkills = (sk, n = 3) => SKILLS.map(k => [k, sk[k]]).sort((a, b) => b[1] - a[1]).slice(0, n);
 
 // a field's crop in words, and the buttons to choose what goes in it next
@@ -494,7 +494,7 @@ export class Panels {
         r += `</div>`;
         if (p.done) r += `<div class="ps">${[holds(p.type, p.cap), p.type === 'solar' ? '' : `${p.cap.kw || 0} kW`, p.type === 'solar' || !p.cap.kw ? '' : p.powered ? 'has power' : 'dark'].filter(Boolean).map(esc).join(' · ')}</div>${p.wait ? waitHtml(p.wait) : ''}`;
         else r += `<div class="ps">${p.paused ? 'Paused · ' : ''}${esc(stage)} · ${pct(f)}${p.type !== 'test' ? ` · stage ${p.stage + 1} of 5` : ''}</div><div class="bar"><u style="width:${pct(f)}"></u></div>
-          ${left ? `<div class="ps">Still needs ${esc(left)}</div>` : ''}${p.wait ? waitHtml(p.wait) : p.crews.length ? `<div class="ps">${esc(p.crews.join(', '))} crew${p.crews.length > 1 ? 's' : ''} on it</div>` : ''}`;
+          ${left ? `<div class="ps">Still needs ${esc(left)}</div>` : ''}${p.wait ? waitHtml(p.wait, p.id) : p.crews.length ? `<div class="ps">${esc(p.crews.join(', '))} crew${p.crews.length > 1 ? 's' : ''} on it</div>` : ''}`;
         if (p.type !== 'shelter') {
           r += `<div class="row2" style="margin-top:6px"><span class="grow"></span>`;
           if (!p.done) r += `<button class="btn" data-act="pPause" data-id="${p.id}">${p.paused ? 'Resume' : 'Pause'}</button>`;
@@ -612,6 +612,7 @@ export class Panels {
       case 'crop': this.api.cmd('crop', { id: +el.dataset.id, k: el.dataset.v }); break;
       case 'analyse': this.api.cmd('analyse', { o: +el.dataset.o }); break;
       case 'unanalyse': this.api.cmd('unanalyse', { o: +el.dataset.o }); break;
+      case 'pFirst': this.api.cmd('projMove', { id: +el.dataset.id, d: 'first' }); break;
       case 'pUp': case 'pDown': this.api.cmd('projMove', { id: +el.dataset.id, d: act === 'pUp' ? -1 : 1 }); break;
       case 'pPause': { const p = U.projects.find(q => q.id === +el.dataset.id); if (p) this.api.cmd('projPause', { id: p.id, on: !p.paused }); break; }
       case 'pCancel': this.askCancel(+el.dataset.id); break;
@@ -837,7 +838,7 @@ export class Panels {
       if (rows.length) h += `<div class="sec">This stage takes</div><div class="bill">` + rows.map(([k, q]) => { const g = Math.min(q, p.got[k] || 0); return `<div><em>${esc(cap1(matName(k, 2).replace(/^2 /, '')))}</em>${g} of ${q} in place</div>`; }).join('') + `</div>`;
       else if (p.stage === 0 && !test) h += `<div class="note" style="margin-top:6px">${T.below ? 'Marking out needs only pegs and string; the crew paces out the room above it and sets the stairs.' : 'Marking out needs only pegs and string; the crew walks the plot and clears what stands on it.'}</div>`;
       if (T.below && !p.done) h += `<div class="note" style="margin-top:6px">Press <kbd>U</kbd> to see it below ground.${p.ore > .05 ? ' There is ore in this ground.' : ''}</div>`;
-      if (p.wait) h += waitHtml(p.wait);
+      if (p.wait) h += waitHtml(p.wait, p.id);
       else if (p.crews.length) h += `<div class="ps" style="margin-top:6px">${esc(p.crews.join(', '))} crew${p.crews.length > 1 ? 's are' : ' is'} on it.</div>`;
     } else if (p.wait) h += waitHtml(p.wait);
     if (p.type !== 'shelter' && this.confirm === p.id) {
