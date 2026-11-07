@@ -119,12 +119,12 @@ export class View {
   toWorld(sx, sy) { const [L, T] = this.rect; return [L + sx / this.cam.z, T + sy / this.cam.z]; }
   toScreen(wx, wy) { const [L, T] = this.rect; return [(wx - L) * this.cam.z, (wy - T) * this.cam.z]; }
   zoomAt(f, sx, sy) { this.fly = null; const [wx, wy] = this.toWorld(sx, sy); this.cam.z *= f; this.clampCam(); const [nx, ny] = this.toWorld(sx, sy); this.cam.x += wx - nx; this.cam.y += wy - ny; this.clampCam(); }
-  // a smooth camera move: zooms out a little on the way when the trip is long
+  // a smooth camera move: zooms out a little on the way when the trip is long, and keeps the zoom on a short one
   flyTo(x, y, z) { this.fly = { x, y, z, t0: performance.now(), from: { ...this.cam } }; }
   step(dt) {
     const f = this.fly; if (!f) return;
     const t = clamp((performance.now() - f.t0) / 1400, 0, 1), e = t * t * (3 - 2 * t), c = this.cam, A = f.from;
-    const zl = Math.log(A.z) + (Math.log(f.z) - Math.log(A.z)) * e, dist = Math.hypot(f.x - A.x, f.y - A.y), dip = Math.min(1.2, dist / 120) * Math.sin(e * Math.PI);
+    const zl = Math.log(A.z) + (Math.log(f.z) - Math.log(A.z)) * e, dist = Math.hypot(f.x - A.x, f.y - A.y), dip = dist < 60 ? 0 : Math.min(1.2, dist / 120) * Math.sin(e * Math.PI);   // a short trip keeps the zoom
     c.x = A.x + (f.x - A.x) * e; c.y = A.y + (f.y - A.y) * e; c.z = Math.exp(zl - dip);
     this.clampCam(); if (t >= 1) this.fly = null;
   }
@@ -137,9 +137,13 @@ export class View {
     const X = this.sky(F), E = env(F.hour, X);
     const lights = this.lights(F, E);
     const { lit, inView } = pickLights(lights, this.cam.x, this.cam.y, [L - 6, Tp - 6, R + 6, B + 6]);
-    const kx = this.LW / (this.VW / z), ky = this.LH / (this.VH / z);   // light- and height-layer pixels to a tile
+    // light- and height-layer pixels to a tile. The scale steps with the zoom, six steps to a doubling, instead of
+    // following it smoothly: between steps a zooming or flying camera only slides the layers over the world's grid,
+    // which changes no pixel, where a scale that changed every frame re-sampled every shadow and made them shimmer.
+    // The layers are worked out a little coarser than the screen needs and cover a little more of the world.
+    const zs = Math.min(z, Math.pow(2, Math.floor(Math.log2(z) * 6 + 1e-6) / 6)), kx = this.LW / (this.VW / zs), ky = this.LH / (this.VH / zs);
     const M = this.reach(E, lit, L, Tp, R, B);
-    this.heightRoom(this.LW + (M[0] + M[2]) * kx + 64, this.LH + (M[1] + M[3]) * ky + 64);
+    this.heightRoom((this.VW / z + M[0] + M[2]) * kx + 64, (this.VH / z + M[1] + M[3]) * ky + 64);
     // Both layers sit on a fixed grid in the world, counted in their own pixels from the map's corner: the light
     // layer to the pixel, the height layer to the block of 64, so its coarser levels (the soft, far part of each
     // shadow) cover the same ground too. Dragging the map then slides the finished picture without changing what
@@ -162,7 +166,7 @@ export class View {
     // light
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.rtL.fb); gl.viewport(0, 0, this.LW2, this.LH2); gl.useProgram(this.P.l.p); u = this.P.l.u;
     look(u, 0); G.bind(u.uH, 7, this.rtH.t); gl.uniform2f(u.uRes, this.LW2, this.LH2); gl.uniform4fv(u.uCam, camL); gl.uniform4fv(u.uHM, lInH); gl.uniform2f(u.uWind, .016, .006);
-    gl.uniform3fv(u.uKeyDir, E.key); gl.uniform3fv(u.uKeyCol, E.kc); gl.uniform3fv(u.uAmb, E.amb); gl.uniform1f(u.uNight, E.night); gl.uniform1f(u.uTime, F.time); gl.uniform1f(u.uCloud, E.cloud); gl.uniform1f(u.uEnc, G.float ? 0 : 1); gl.uniform1f(u.uPPT, this.LW / (this.VW / z));
+    gl.uniform3fv(u.uKeyDir, E.key); gl.uniform3fv(u.uKeyCol, E.kc); gl.uniform3fv(u.uAmb, E.amb); gl.uniform1f(u.uNight, E.night); gl.uniform1f(u.uTime, F.time); gl.uniform1f(u.uCloud, E.cloud); gl.uniform1f(u.uEnc, G.float ? 0 : 1); gl.uniform1f(u.uPPT, kx);
     gl.uniform4fv(u.uLP, this.LP); gl.uniform4fv(u.uLC, this.LC); gl.uniform1i(u.uNL, lit.length); gl.drawArrays(gl.TRIANGLES, 0, 3);
     // composite
     gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, this.glc.width, this.glc.height); gl.useProgram(this.P.c.p); u = this.P.c.u;

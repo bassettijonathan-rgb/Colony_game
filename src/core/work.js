@@ -635,7 +635,7 @@ function metalStep(sim) {
   }
   const open = active(S).filter(q => !q.paused), plan = active(S).find(q => q.type === 'mine' && q.seam > 0);
   if (plan) return plan.paused ? `${plan.name} would bring up ore, but it is paused: resume it in Build (B).`
-    : open.indexOf(plan) > 0 ? `${plan.name} brings up ore once it is built. Move it up the project list in Build (B) to build it sooner.` : `${plan.name} brings up ore once it is built.`;
+    : open.indexOf(plan) > 0 ? `${plan.name} brings up ore once it is built. Press Build next on its card, or in Build (B), Projects, to build it first.` : `${plan.name} brings up ore once it is built.`;
   return 'Metal has to be mined now: plan a mine over a seam of ore in Build (B). Press U to see the seams.';
 }
 // why nobody is making a part the colony has the salvage for
@@ -644,6 +644,12 @@ function makerStep(sim) {
   if (shop && crewOn(S, 'workshop')) return '';
   const why = sd.printing || sd.queue.length ? 'The fabricator makes parts only when it is not printing a body' : S.fab.job ? 'The fabricator is making something else first' : '';
   return why && `${why}. ${shop ? 'Put someone on Workshop work in Crews (C) to make parts at the workshop bench.' : shops.length ? `${shops[0].name} has no power, so nobody can make parts there.` : 'A workshop makes them three times faster.'}`;
+}
+// a project no build crew has reached: who is on what, and how to have it built sooner
+function queuedWhy(sim, crews) {
+  const on = [...new Set(crews.map(cr => cr.proj).filter(id => id >= 0))].map(id => byId(sim.S, id)).filter(Boolean);
+  const who = crews.length === 1 && on.length ? `the ${crews[0].name} crew is on ${on[0].name}` : on.length === 1 ? `the build crews are on ${on[0].name}` : 'the build crews are on other projects';
+  return `Queued: ${who}\nPress Build next to have it built first, or make another crew with Build work in Crews (C): each build crew takes the next project down the list.`;
 }
 export function projectsThink(sim) {
   const S = sim.S, list = active(S), crews = S.crews.filter(cr => !cr.gone && cr.work === 'build' && cr.members.length);
@@ -658,7 +664,7 @@ export function projectsThink(sim) {
   for (const p of S.projects) {
     if (p.gone) continue;
     let w = p.done ? waitReason(sim, p) : why.get(p.id);
-    if (!p.done && !w && !taken.has(p.id)) w = crews.length ? 'Queued: the build crews are on other projects' : 'No build crew';
+    if (!p.done && !w && !taken.has(p.id)) w = crews.length ? queuedWhy(sim, crews) : 'No build crew';
     const stuck = !p.done && !!w && !/^(Paused|Queued|No build crew)/.test(w);
     if (stuck && !S.salvOut && /no salvage left/.test(w)) { S.salvOut = 1; sim.log(`The salvage the Seed brought down is used up, and ${p.name} needs parts nobody can make without it. Metal has to come from this world now: plan a mine over a seam of ore (the Build window, then press U to see the seams), and a workshop to smelt what the miners bring up.`, 'bad', { e: 'nosalvage', lvl: 2, pid: p.id, title: 'Out of salvage' }); }
     if (stuck && !S.stoneOut && /^Needs stone and there is none/.test(w)) { S.stoneOut = 1; sim.log(`There is no stone left to cut near camp: the boulders and rock faces are used up, and ${p.name} needs more. Plan a stone pit in the Build window, on ground where stone lies under shallow soil (press U to see it), and the quarry crew will cut it there for years.`, 'bad', { e: 'nostone', lvl: 2, pid: p.id, title: 'Out of stone' }); }
@@ -1090,7 +1096,15 @@ export function command(sim, m) {
     }
     case 'projMove': {
       if (!p) break;
-      const L = S.projects, i = L.indexOf(p); let j = i + (m.d < 0 ? -1 : 1);
+      const L = S.projects, i = L.indexOf(p);
+      if (m.d === 'first') {   // Build next: ahead of every project still being built (the shelter stays where it is)
+        const j = L.findIndex(q => !q.gone && !q.done && q.type !== 'shelter');
+        if (j < 0 || j >= i) break;
+        L.splice(i, 1); L.splice(j, 0, p); S.rv++;
+        sim.log(`${p.name} goes to the top of the build list.`, '', { pid: p.id });
+        assignHomes(sim); projectsThink(sim); break;
+      }
+      let j = i + (m.d < 0 ? -1 : 1);
       while (j >= 0 && j < L.length && L[j].gone) j += m.d < 0 ? -1 : 1;
       if (j < 0 || j >= L.length) break;
       L[i] = L[j]; L[j] = p; S.rv++;
